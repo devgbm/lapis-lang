@@ -108,6 +108,10 @@ public class ExpressionParser : ParserBase
                 expression = ParseLiteralExpression();
                 break;
 
+            case TokenKind.OpenParenthesis:
+                expression = ParseParenthesizedExpression();
+                break;
+
             default: return null!;
         }
 
@@ -121,6 +125,14 @@ public class ExpressionParser : ParserBase
         // }
 
         return expression;
+    }
+
+    private ExpressionSyntax ParseParenthesizedExpression()
+    {
+        var open = Match(TokenKind.OpenParenthesis);
+        var expression = ParseExpression();
+        var close = Match(TokenKind.CloseParenthesis);
+        return new ParenthesizedExpression(SourceSpan.Between(open, close), expression);
     }
 
     private ExpressionSyntax ParseLiteralExpression()

@@ -56,6 +56,7 @@ public class Binder
             case LiteralExpressionSyntax les: return BindLiteral(les);
             case BinaryExpressionSyntax bes: return BindBinaryExpression(bes);
             case UnaryExpressionSyntax ues: return BindUnaryExpression(ues);
+            case ParenthesizedExpression ps: return BindExpression(ps.Expression);
 
             default:
                 _diagnostics.Report("unkown expression syntax", expression);

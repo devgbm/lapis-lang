@@ -68,7 +68,7 @@ public class ExpressionTests
     [InlineData("4 + 5 % 3", 6)]
     [InlineData("(2 + 3) * 4", 20)]
     [InlineData("(4 + 3) / 2", 3)]
-    [InlineData("(4 + 5) % 3", 3)]
+    [InlineData("(4 + 5) % 3", 0)]
     [InlineData("-1 + 2 * 3", 5)]
     [InlineData("-(1 + 2) * 3", -9)]
     [InlineData("(-1 + 2) * 3", 3)]
