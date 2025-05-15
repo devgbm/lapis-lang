@@ -5,23 +5,30 @@ namespace LapisLang.Core;
 public record BindResult(BoundSyntax BoundSyntax, DiagnosticsBag Diagnostics);
 public class Binder
 {
-    private List<OperatorDefinition> _operators = new()
+    private List<BinaryOperatorDefinition> _operators = new()
     {
-        new OperatorDefinition(LangDefaults.Types.Integer, BinaryOperator.Add, LangDefaults.Types.Integer, LangDefaults.Types.Integer),
-        new OperatorDefinition(LangDefaults.Types.Integer, BinaryOperator.Sub, LangDefaults.Types.Integer, LangDefaults.Types.Integer),
-        new OperatorDefinition(LangDefaults.Types.Integer, BinaryOperator.Mul, LangDefaults.Types.Integer, LangDefaults.Types.Integer),
-        new OperatorDefinition(LangDefaults.Types.Integer, BinaryOperator.Div, LangDefaults.Types.Integer, LangDefaults.Types.Integer),
-        new OperatorDefinition(LangDefaults.Types.Integer, BinaryOperator.Mod, LangDefaults.Types.Integer, LangDefaults.Types.Integer),
+        new BinaryOperatorDefinition(LangDefaults.Types.Integer, BinaryOperator.Add, LangDefaults.Types.Integer, LangDefaults.Types.Integer),
+        new BinaryOperatorDefinition(LangDefaults.Types.Integer, BinaryOperator.Sub, LangDefaults.Types.Integer, LangDefaults.Types.Integer),
+        new BinaryOperatorDefinition(LangDefaults.Types.Integer, BinaryOperator.Mul, LangDefaults.Types.Integer, LangDefaults.Types.Integer),
+        new BinaryOperatorDefinition(LangDefaults.Types.Integer, BinaryOperator.Div, LangDefaults.Types.Integer, LangDefaults.Types.Integer),
+        new BinaryOperatorDefinition(LangDefaults.Types.Integer, BinaryOperator.Mod, LangDefaults.Types.Integer, LangDefaults.Types.Integer),
 
-        new OperatorDefinition(LangDefaults.Types.Integer, BinaryOperator.Equality, LangDefaults.Types.Integer, LangDefaults.Types.Boolean),
-        new OperatorDefinition(LangDefaults.Types.Integer, BinaryOperator.Inequality, LangDefaults.Types.Integer, LangDefaults.Types.Boolean),
-        new OperatorDefinition(LangDefaults.Types.Integer, BinaryOperator.Less, LangDefaults.Types.Integer, LangDefaults.Types.Boolean),
-        new OperatorDefinition(LangDefaults.Types.Integer, BinaryOperator.LessEquals, LangDefaults.Types.Integer, LangDefaults.Types.Boolean),
-        new OperatorDefinition(LangDefaults.Types.Integer, BinaryOperator.Greather, LangDefaults.Types.Integer, LangDefaults.Types.Boolean),
-        new OperatorDefinition(LangDefaults.Types.Integer, BinaryOperator.GreatherEquals, LangDefaults.Types.Integer, LangDefaults.Types.Boolean),
+        new BinaryOperatorDefinition(LangDefaults.Types.Integer, BinaryOperator.Equality, LangDefaults.Types.Integer, LangDefaults.Types.Boolean),
+        new BinaryOperatorDefinition(LangDefaults.Types.Integer, BinaryOperator.Inequality, LangDefaults.Types.Integer, LangDefaults.Types.Boolean),
+        new BinaryOperatorDefinition(LangDefaults.Types.Integer, BinaryOperator.Less, LangDefaults.Types.Integer, LangDefaults.Types.Boolean),
+        new BinaryOperatorDefinition(LangDefaults.Types.Integer, BinaryOperator.LessEquals, LangDefaults.Types.Integer, LangDefaults.Types.Boolean),
+        new BinaryOperatorDefinition(LangDefaults.Types.Integer, BinaryOperator.Greather, LangDefaults.Types.Integer, LangDefaults.Types.Boolean),
+        new BinaryOperatorDefinition(LangDefaults.Types.Integer, BinaryOperator.GreatherEquals, LangDefaults.Types.Integer, LangDefaults.Types.Boolean),
 
-        new OperatorDefinition(LangDefaults.Types.Boolean, BinaryOperator.LogicAnd, LangDefaults.Types.Boolean, LangDefaults.Types.Boolean),
-        new OperatorDefinition(LangDefaults.Types.Boolean, BinaryOperator.LogicOr, LangDefaults.Types.Boolean, LangDefaults.Types.Boolean),
+        new BinaryOperatorDefinition(LangDefaults.Types.Boolean, BinaryOperator.LogicAnd, LangDefaults.Types.Boolean, LangDefaults.Types.Boolean),
+        new BinaryOperatorDefinition(LangDefaults.Types.Boolean, BinaryOperator.LogicOr, LangDefaults.Types.Boolean, LangDefaults.Types.Boolean),
+    };
+
+    private List<UnaryOperatorDefinition> _unarys = new()
+    {
+        new UnaryOperatorDefinition(LangDefaults.Types.Integer, UnaryOperator.Identity, LangDefaults.Types.Integer),
+        new UnaryOperatorDefinition(LangDefaults.Types.Integer, UnaryOperator.Inverse, LangDefaults.Types.Integer),
+        new UnaryOperatorDefinition(LangDefaults.Types.Boolean, UnaryOperator.Negation, LangDefaults.Types.Boolean),
     };
     private DiagnosticsBag _diagnostics;
 
@@ -48,6 +55,8 @@ public class Binder
         {
             case LiteralExpressionSyntax les: return BindLiteral(les);
             case BinaryExpressionSyntax bes: return BindBinaryExpression(bes);
+            case UnaryExpressionSyntax ues: return BindUnaryExpression(ues);
+
             default:
                 _diagnostics.Report("unkown expression syntax", expression);
                 return new BoundUnkownExpression(expression);
@@ -59,13 +68,24 @@ public class Binder
         var left = BindExpression(bes.Left);
         var right = BindExpression(bes.Right);
         var oper = GetBinaryOperator(bes.OperatorToken);
-        // [TODO] check types
         var resultType = _operators.FirstOrDefault(e => e.Left == left.Type && e.Right == right.Type && e.Oper == oper);
         if (resultType is null)
         {
             _diagnostics.Report("Operator not defined for types", bes);
         }
         return new BoundBinaryExpression(bes, left, right, oper, resultType?.Result ?? LangDefaults.Types.Unkown );
+    }
+
+    private BoundUnaryExpression BindUnaryExpression(UnaryExpressionSyntax ues)
+    {
+        var left = BindExpression(ues.Expression);
+        var oper = GetUnaryOperator(ues.TokenOperator);
+        var resultType = _unarys.FirstOrDefault(e => e.Operand == left.Type  && e.Operator == oper);
+        if (resultType is null)
+        {
+            _diagnostics.Report("Operator not defined for types", ues);
+        }
+        return new BoundUnaryExpression(ues, left, oper, resultType?.Result ?? LangDefaults.Types.Unkown );
     }
 
     private BinaryOperator GetBinaryOperator(Token operatorToken)
@@ -86,6 +106,17 @@ public class Binder
             TokenKind.LeftArrow => BinaryOperator.Less,
             TokenKind.RightArrow => BinaryOperator.Greather,
             _ => BinaryOperator.Unkown
+        };
+    }
+
+    private UnaryOperator GetUnaryOperator(Token operatorToken)
+    {
+        return operatorToken.Kind switch
+        {
+            TokenKind.NotKeyword => UnaryOperator.Negation,
+            TokenKind.Minus => UnaryOperator.Inverse,
+            TokenKind.Plus => UnaryOperator.Identity,
+            _ => UnaryOperator.Unkown
         };
     }
 
@@ -122,4 +153,5 @@ public class Binder
     }
 }
 
-internal record  OperatorDefinition(LapisType Left, BinaryOperator Oper, LapisType Right, LapisType Result);
+internal record  BinaryOperatorDefinition(LapisType Left, BinaryOperator Oper, LapisType Right, LapisType Result);
+internal record  UnaryOperatorDefinition(LapisType Operand, UnaryOperator Operator, LapisType Result);

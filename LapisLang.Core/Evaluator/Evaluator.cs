@@ -29,8 +29,24 @@ public class Evaluator
 
             case BoundBinaryExpression bbe:
                 return EvaluateBinaryExpression(bbe);
+
+            case BoundUnaryExpression bue:
+                return EvaluateUnaryExpression(bue);
             default: return null;
         }
+    }
+
+    private object? EvaluateUnaryExpression(BoundUnaryExpression bue)
+    {
+        var expression = Evaluate(bue.Expression);
+        Func<object?, object?> oper = bue.UnaryOperator switch {
+            UnaryOperator.Identity => (object? obj) => obj,
+            UnaryOperator.Negation => (object? obj) => !(bool)obj,
+            UnaryOperator.Inverse => (object? obj) => -(long)obj,
+            UnaryOperator.Unkown => throw new Exception("unable to evaluate unary expression")
+        };
+
+        return oper(expression);
     }
 
     private object? EvaluateBinaryExpression(BoundBinaryExpression bbe)
