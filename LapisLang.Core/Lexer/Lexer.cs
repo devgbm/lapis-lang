@@ -40,9 +40,10 @@ public class Lexer
             while(char.IsWhiteSpace(Current)) Next();
         }
 
-        if(char.IsLetter(Current))
+        if(char.IsLetter(Current) || Current == '@')
         {
             var start = position;
+            if (Current == '@') Next();
             while(char.IsLetterOrDigit(Current)) Next();
             var length = position - start;
             ReadOnlySpan<char> textualValue = text.AsSpan(start, length);

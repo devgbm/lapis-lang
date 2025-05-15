@@ -58,11 +58,30 @@ public class Binder
             case BinaryExpressionSyntax bes: return BindBinaryExpression(bes, context);
             case UnaryExpressionSyntax ues: return BindUnaryExpression(ues, context);
             case ParenthesizedExpression ps: return BindExpression(ps.Expression, context);
+            case NameExpressionSyntax nes: return BindNameExpression(nes, context);
 
             default:
                 _diagnostics.Report("unkown expression syntax", expression);
                 return new BoundUnkownExpression(expression);
         }
+    }
+
+    private BoundExpression BindNameExpression(NameExpressionSyntax nes, BindingContext context)
+    {
+        if (!context.TryResolveName(nes.Name.String, out var rune))
+        {
+            _diagnostics.Report($"name '{nes.Name.String}' does not exist in current context", nes.Name);
+            return new BoundNameExpression(nes, LangDefaults.Types.Unkown, nes.Name.String);
+        }
+
+        var type = rune.Kind switch
+        {
+            RuneKind.Type => LangDefaults.Types.Type,
+            RuneKind.Namespace => LangDefaults.Types.Namespace,
+            _ => LangDefaults.Types.Unkown,
+        };
+
+        return new BoundNameExpression(nes, type, rune.FullName);
     }
 
     private BoundBinaryExpression BindBinaryExpression(BinaryExpressionSyntax bes, BindingContext context)
@@ -155,5 +174,5 @@ public class Binder
     }
 }
 
-internal record  BinaryOperatorDefinition(TypeRune Left, BinaryOperator Oper, TypeRune Right, TypeRune Result);
-internal record  UnaryOperatorDefinition(TypeRune Operand, UnaryOperator Operator, TypeRune Result);
+internal record BinaryOperatorDefinition(TypeRune Left, BinaryOperator Oper, TypeRune Right, TypeRune Result);
+internal record UnaryOperatorDefinition(TypeRune Operand, UnaryOperator Operator, TypeRune Result);

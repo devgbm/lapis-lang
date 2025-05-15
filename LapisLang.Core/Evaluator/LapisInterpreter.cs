@@ -12,8 +12,9 @@ public class LapisInterpreter
         var binder = new Binder();
         var bindingContext = new BindingContext();
         var bound = binder.Bind(expression, bindingContext);
+        var evaluationContext = new EvaluationContext(bindingContext.NamespaceRune);
         var evaluator = new Evaluator();
-        var result = evaluator.Evaluate(bound.BoundSyntax);
+        var result = evaluator.Evaluate(bound.BoundSyntax, evaluationContext);
         return new EvaluationResult(result, evaluator.Diagnostics);
     }
 }

@@ -9,6 +9,8 @@ public static class LangDefaults
         public static TypeRune String = new("string");
         public static TypeRune Boolean = new("boolean");
         public static TypeRune Decimal = new("decimal");
+        public static TypeRune Type = new("type");
+        public static TypeRune Namespace = new("namespace");
         public static TypeRune Unkown = new("unkown");
     }
 

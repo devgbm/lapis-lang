@@ -20,7 +20,16 @@ public abstract class Rune
     public string Name { get; }
     public RuneKind Kind { get; }
 
-    public string FullName => _parent is not null ? $"{_parent.FullName}.{Name}" : Name;
+    public string FullName
+    {
+        get
+        {
+            if (_parent is null) return Name;
+            else if (_parent.IsRoot) return $"{_parent.Name}{Name}";
+            else return $"{_parent.Name}.{Name}";
+        }
+    }
+    public bool IsRoot => _parent is null;
     public Rune Root => _parent?.Root ?? this;
 
     protected Rune(string name, RuneKind kind)
@@ -39,6 +48,11 @@ public abstract class Rune
 
     public Rune? Query(string name)
     {
+        if (name == "@")
+        {
+            if (Root.Name == "@") return Root;
+            else return null;
+        }
         if (name.StartsWith("@"))
         {
             return Root.Query(name[1..]);

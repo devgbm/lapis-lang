@@ -1,8 +1,6 @@
 
 
 namespace LapisLang.Core;
-
-public record EvaluationResult(object? value, DiagnosticsBag Diagnostics);
 public class Evaluator
 {
     public DiagnosticsBag Diagnostics { get; }
@@ -11,34 +9,47 @@ public class Evaluator
     {
         Diagnostics = new DiagnosticsBag();
     }
-    public object? Evaluate(BoundSyntax syntax)
+    public object? Evaluate(BoundSyntax syntax, EvaluationContext context)
     {
         switch (syntax)
         {
-            case BoundExpression be: return EvaluateExpression(be);
+            case BoundExpression be: return EvaluateExpression(be, context);
             default: return null;
         }
     }
 
-    public object? EvaluateExpression(BoundExpression expression)
+    public object? EvaluateExpression(BoundExpression expression, EvaluationContext context)
     {
         switch (expression)
         {
             case BoundLiteralExpression ble:
-                return EvaluateLiteral(ble);
+                return EvaluateLiteral(ble, context);
 
             case BoundBinaryExpression bbe:
-                return EvaluateBinaryExpression(bbe);
+                return EvaluateBinaryExpression(bbe, context);
 
             case BoundUnaryExpression bue:
-                return EvaluateUnaryExpression(bue);
+                return EvaluateUnaryExpression(bue, context);
+            
+            case BoundNameExpression bne:
+                return EvaluateNameExpression(bne, context);
             default: return null;
         }
     }
 
-    private object? EvaluateUnaryExpression(BoundUnaryExpression bue)
+    private object? EvaluateNameExpression(BoundNameExpression bne, EvaluationContext context)
     {
-        var expression = Evaluate(bue.Expression);
+        if (bne.Type.Kind == RuneKind.Type)
+        {
+            var rune = context.ResolveName(bne.Name);
+            return new RuneReference(rune);
+        }
+        throw new NotImplementedException();
+    }
+
+    private object? EvaluateUnaryExpression(BoundUnaryExpression bue, EvaluationContext context)
+    {
+        var expression = Evaluate(bue.Expression, context);
         Func<object?, object?> oper = bue.UnaryOperator switch {
             UnaryOperator.Identity => (object? obj) => obj,
             UnaryOperator.Negation => (object? obj) => !(bool)obj!,
@@ -49,10 +60,10 @@ public class Evaluator
         return oper(expression);
     }
 
-    private object? EvaluateBinaryExpression(BoundBinaryExpression bbe)
+    private object? EvaluateBinaryExpression(BoundBinaryExpression bbe, EvaluationContext context)
     {
-        var left = Evaluate(bbe.Left);
-        var right = Evaluate(bbe.Right);
+        var left = Evaluate(bbe.Left, context);
+        var right = Evaluate(bbe.Right, context);
         Func<object?, object?, object?> oper = bbe.BinaryOperator switch
         {
             BinaryOperator.Add => (object? left, object? right) => (long)left! + (long)right!,
@@ -78,7 +89,7 @@ public class Evaluator
 
     }
 
-    private object? EvaluateLiteral(BoundLiteralExpression ble)
+    private object? EvaluateLiteral(BoundLiteralExpression ble, EvaluationContext context)
     {
         return ble.Value;
     }

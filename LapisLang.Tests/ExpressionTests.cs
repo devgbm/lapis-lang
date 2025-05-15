@@ -79,4 +79,18 @@ public class ExpressionTests
         var result = LapisInterpreter.Evaluate(expression);
         Assert.Equivalent(expected, result.value);
     }
+
+    [Theory]
+    [InlineData("@integer", RuneKind.Type)]
+    [InlineData("@string", RuneKind.Type)]
+    [InlineData("@boolean", RuneKind.Type)]
+    [InlineData("@decimal", RuneKind.Type)]
+    [InlineData("@", RuneKind.Namespace)]
+    public void NameExpressions(string expression, RuneKind runeKind)
+    {
+        var result = LapisInterpreter.Evaluate(expression);
+        var value = Assert.IsType<RuneReference>(result.value);
+        Assert.Equal(runeKind, value.Rune.Kind);
+        Assert.Equal(expression, value.Rune.FullName);
+    }
 }
