@@ -32,15 +32,16 @@ public class Binder
     };
     private DiagnosticsBag _diagnostics;
 
+
     public Binder()
     {
         _diagnostics = new DiagnosticsBag();
     }
-    public BindResult Bind(Syntax syntax)
+    public BindResult Bind(Syntax syntax, BindingContext context)
     {
         if (syntax is ExpressionSyntax es)
         {
-            var bounded = BindExpression(es);
+            var bounded = BindExpression(es, context);
             return new BindResult(bounded, _diagnostics);
         }
         else
@@ -49,14 +50,14 @@ public class Binder
             return new BindResult(null!, _diagnostics);
         }
     }
-    public BoundExpression BindExpression(ExpressionSyntax expression)
+    public BoundExpression BindExpression(ExpressionSyntax expression, BindingContext context)
     {
         switch (expression)
         {
-            case LiteralExpressionSyntax les: return BindLiteral(les);
-            case BinaryExpressionSyntax bes: return BindBinaryExpression(bes);
-            case UnaryExpressionSyntax ues: return BindUnaryExpression(ues);
-            case ParenthesizedExpression ps: return BindExpression(ps.Expression);
+            case LiteralExpressionSyntax les: return BindLiteral(les, context);
+            case BinaryExpressionSyntax bes: return BindBinaryExpression(bes, context);
+            case UnaryExpressionSyntax ues: return BindUnaryExpression(ues, context);
+            case ParenthesizedExpression ps: return BindExpression(ps.Expression, context);
 
             default:
                 _diagnostics.Report("unkown expression syntax", expression);
@@ -64,29 +65,29 @@ public class Binder
         }
     }
 
-    private BoundBinaryExpression BindBinaryExpression(BinaryExpressionSyntax bes)
+    private BoundBinaryExpression BindBinaryExpression(BinaryExpressionSyntax bes, BindingContext context)
     {
-        var left = BindExpression(bes.Left);
-        var right = BindExpression(bes.Right);
+        var left = BindExpression(bes.Left, context);
+        var right = BindExpression(bes.Right, context);
         var oper = GetBinaryOperator(bes.OperatorToken);
         var resultType = _operators.FirstOrDefault(e => e.Left == left.Type && e.Right == right.Type && e.Oper == oper);
         if (resultType is null)
         {
             _diagnostics.Report("Operator not defined for types", bes);
         }
-        return new BoundBinaryExpression(bes, left, right, oper, resultType?.Result ?? LangDefaults.Types.Unkown );
+        return new BoundBinaryExpression(bes, left, right, oper, resultType?.Result ?? LangDefaults.Types.Unkown);
     }
 
-    private BoundUnaryExpression BindUnaryExpression(UnaryExpressionSyntax ues)
+    private BoundUnaryExpression BindUnaryExpression(UnaryExpressionSyntax ues, BindingContext context)
     {
-        var left = BindExpression(ues.Expression);
+        var left = BindExpression(ues.Expression, context);
         var oper = GetUnaryOperator(ues.TokenOperator);
-        var resultType = _unarys.FirstOrDefault(e => e.Operand == left.Type  && e.Operator == oper);
+        var resultType = _unarys.FirstOrDefault(e => e.Operand == left.Type && e.Operator == oper);
         if (resultType is null)
         {
             _diagnostics.Report("Operator not defined for types", ues);
         }
-        return new BoundUnaryExpression(ues, left, oper, resultType?.Result ?? LangDefaults.Types.Unkown );
+        return new BoundUnaryExpression(ues, left, oper, resultType?.Result ?? LangDefaults.Types.Unkown);
     }
 
     private BinaryOperator GetBinaryOperator(Token operatorToken)
@@ -121,7 +122,7 @@ public class Binder
         };
     }
 
-    private BoundLiteralExpression BindLiteral(LiteralExpressionSyntax les)
+    private BoundLiteralExpression BindLiteral(LiteralExpressionSyntax les, BindingContext context)
     {
         TypeRune type;
         object? value;

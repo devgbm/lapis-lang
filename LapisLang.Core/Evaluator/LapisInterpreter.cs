@@ -10,7 +10,8 @@ public class LapisInterpreter
         var parser = new ExpressionParser(stream);
         var expression = parser.ParseExpression();
         var binder = new Binder();
-        var bound = binder.Bind(expression);
+        var bindingContext = new BindingContext();
+        var bound = binder.Bind(expression, bindingContext);
         var evaluator = new Evaluator();
         var result = evaluator.Evaluate(bound.BoundSyntax);
         return new EvaluationResult(result, evaluator.Diagnostics);
