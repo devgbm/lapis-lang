@@ -8,7 +8,7 @@ public class BoundBinaryExpression : BoundExpression
         BoundExpression left,
         BoundExpression right,
         BinaryOperator binaryOperator,
-        LapisType type
+        TypeRune type
     )
     {
         Span = sourceSpan;
@@ -17,7 +17,7 @@ public class BoundBinaryExpression : BoundExpression
         BinaryOperator = binaryOperator;
         Type = type;
     }
-    public override LapisType Type { get; }
+    public override TypeRune Type { get; }
     public override SourceSpan Span { get; }
     public BoundExpression Left { get; }
     public BoundExpression Right { get; }

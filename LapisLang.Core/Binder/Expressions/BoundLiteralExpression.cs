@@ -5,7 +5,7 @@ public class BoundLiteralExpression : BoundExpression
 {
     public BoundLiteralExpression(
         SourceSpan span,
-        LapisType type,
+        TypeRune type,
         object? value
     )
     {
@@ -14,6 +14,6 @@ public class BoundLiteralExpression : BoundExpression
         Value = value;
     }
     public override SourceSpan Span { get; }
-    public override LapisType Type { get; }
+    public override TypeRune Type { get; }
     public object? Value { get; }
 }

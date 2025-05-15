@@ -123,7 +123,7 @@ public class Binder
 
     private BoundLiteralExpression BindLiteral(LiteralExpressionSyntax les)
     {
-        LapisType type;
+        TypeRune type;
         object? value;
         switch (les)
         {
@@ -154,5 +154,5 @@ public class Binder
     }
 }
 
-internal record  BinaryOperatorDefinition(LapisType Left, BinaryOperator Oper, LapisType Right, LapisType Result);
-internal record  UnaryOperatorDefinition(LapisType Operand, UnaryOperator Operator, LapisType Result);
+internal record  BinaryOperatorDefinition(TypeRune Left, BinaryOperator Oper, TypeRune Right, TypeRune Result);
+internal record  UnaryOperatorDefinition(TypeRune Operand, UnaryOperator Operator, TypeRune Result);

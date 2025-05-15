@@ -8,7 +8,7 @@ public class BoundUnkownExpression : BoundExpression
         Span = span;
         Type = LangDefaults.Types.Unkown;
     }
-    public override LapisType Type { get; }
+    public override TypeRune Type { get; }
 
     public override SourceSpan Span { get; }
 }

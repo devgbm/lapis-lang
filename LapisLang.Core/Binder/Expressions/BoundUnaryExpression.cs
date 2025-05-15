@@ -7,7 +7,7 @@ public class BoundUnaryExpression : BoundExpression
         SourceSpan span,
         BoundExpression expression,
         UnaryOperator unaryOperator,
-        LapisType type
+        TypeRune type
     )
     {
         Span = span;
@@ -15,7 +15,7 @@ public class BoundUnaryExpression : BoundExpression
         UnaryOperator = unaryOperator;
         Type = type;
     }
-    public override LapisType Type { get; }
+    public override TypeRune Type { get; }
 
     public override SourceSpan Span { get; }
     public BoundExpression Expression { get; }
