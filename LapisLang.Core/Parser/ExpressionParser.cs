@@ -15,26 +15,95 @@ public class ExpressionParser : ParserBase
     {
     }
 
-    public ExpressionSyntax ParseExpression()
+    public ExpressionSyntax ParseExpression(int parentPrecedence = 0)
     {
-        var primary = ParseLiteralExpression();
-        return primary;
+        ExpressionSyntax expression;
+        var unaryPrecedence = GetUnaryPrecedence(Current.Kind);
+
+        if(unaryPrecedence != 0 && unaryPrecedence > parentPrecedence)
+        {
+            var operatorToken = NextToken();
+            var operand = ParseExpression(unaryPrecedence);
+            expression = new UnaryExpressionSyntax(SourceSpan.Between(operatorToken, operand.SourceSpan), operand, operatorToken); 
+        }
+        else
+        {
+            expression = ParsePrimaryExpression();
+        }
+
+        while(true)
+        {
+
+            var binaryPrecedence = GetBinaryPrecedence(Current.Kind);
+            if (binaryPrecedence == 0 || binaryPrecedence <= parentPrecedence) break;
+
+            var operatorToken = NextToken();
+            var right = ParseExpression(binaryPrecedence);
+            expression = new BinaryExpressionSyntax(SourceSpan.Between(expression.SourceSpan, right.SourceSpan), expression, right, operatorToken);
+        }
+
+        return expression;
+    }
+
+    private int GetUnaryPrecedence(TokenKind kind)
+    {
+        switch(kind)
+        {
+            case TokenKind.NotKeyword:
+            case TokenKind.Minus:
+            case TokenKind.Plus:
+                return 5;
+
+            default: return 0;
+        }
+    }
+
+    private int GetBinaryPrecedence(TokenKind kind)
+    {
+        switch(kind)
+        {
+            case TokenKind.Star:
+            case TokenKind.Slash:
+            case TokenKind.Percent:
+                return 5;
+                
+            case TokenKind.Minus:
+            case TokenKind.Plus:
+                return 4;
+
+            case TokenKind.DoubleEquals:
+            case TokenKind.BangEquals:
+            case TokenKind.LeftArrow:
+            case TokenKind.LeftArrowEquals:
+            case TokenKind.RightArrow:
+            case TokenKind.RightArrowEquals:
+                return 3;
+
+            case TokenKind.AndKeyword:
+                return 2;
+
+            case TokenKind.OrKeyword:
+                return 1;
+            
+            
+            default: return 0;
+        }
     }
 
     private ExpressionSyntax ParsePrimaryExpression()
     {
-        ExpressionSyntax expression; 
-        switch(Current.Kind)
+        ExpressionSyntax expression;
+        switch (Current.Kind)
         {
             case TokenKind.Identifier:
                 expression = ParseNameExpression();
                 break;
-            
+
             case TokenKind.IntNumber:
             case TokenKind.True:
             case TokenKind.False:
-            case TokenKind.SingleQuoteString:            
-            case TokenKind.DoubleQuoteString:            
+            case TokenKind.SingleQuoteString:
+            case TokenKind.DoubleQuoteString:
             case TokenKind.DecimalNumber:
                 expression = ParseLiteralExpression();
                 break;

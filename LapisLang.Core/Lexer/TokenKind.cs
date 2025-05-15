@@ -24,7 +24,7 @@ public enum TokenKind {
     Minus,
     Star,
     Slash,
-    And,
+    AndKeyword,
     Or,
     DoubleEquals,
     BangEquals,
@@ -64,4 +64,7 @@ public enum TokenKind {
     LoopKeyword,
     BreakKeyword,
     ConstKeyword,
+    OrKeyword,
+    NotKeyword,
+    Percent,
 }

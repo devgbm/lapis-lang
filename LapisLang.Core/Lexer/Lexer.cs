@@ -198,6 +198,9 @@ public class Lexer
             case '@':
                 Next();
                 return new Token(TokenKind.At, source.CreateSpan(position - 1, 1));
+            case '%':
+                Next();
+                return new Token(TokenKind.Percent, source.CreateSpan(position - 1, 1));
             default:
                 Next();
                 return new Token(TokenKind.BadToken, source.CreateSpan(position - 1, 1));
@@ -208,13 +211,9 @@ public class Lexer
         return readOnlySpan switch {
             "true" => TokenKind.True,
             "false" => TokenKind.False,
-            "namespace" => TokenKind.NamespaceKeyword,
-            "import" => TokenKind.ImportKeyword,
-            "external" => TokenKind.ExternalKeyword,
-            "implement" => TokenKind.ImplementKeyword,
-            "run" => TokenKind.RunKeyword,
-            "type" => TokenKind.TypeKeyword,
-            "func" => TokenKind.FuncKeyword,
+            "and" => TokenKind.AndKeyword,
+            "or" => TokenKind.OrKeyword,
+            "not" => TokenKind.NotKeyword,
             _ => TokenKind.Identifier
         };
     }
