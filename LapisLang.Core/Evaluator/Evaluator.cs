@@ -41,9 +41,9 @@ public class Evaluator
         var expression = Evaluate(bue.Expression);
         Func<object?, object?> oper = bue.UnaryOperator switch {
             UnaryOperator.Identity => (object? obj) => obj,
-            UnaryOperator.Negation => (object? obj) => !(bool)obj,
-            UnaryOperator.Inverse => (object? obj) => -(long)obj,
-            UnaryOperator.Unkown => throw new Exception("unable to evaluate unary expression")
+            UnaryOperator.Negation => (object? obj) => !(bool)obj!,
+            UnaryOperator.Inverse => (object? obj) => -(long)obj!,
+            _=> throw new Exception("unable to evaluate unary expression")
         };
 
         return oper(expression);
@@ -55,21 +55,21 @@ public class Evaluator
         var right = Evaluate(bbe.Right);
         Func<object?, object?, object?> oper = bbe.BinaryOperator switch
         {
-            BinaryOperator.Add => (object? left, object? right) => (long)left + (long)right,
-            BinaryOperator.Sub => (object? left, object? right) => (long)left - (long)right,
-            BinaryOperator.Mul => (object? left, object? right) => (long)left * (long)right,
-            BinaryOperator.Div => (object? left, object? right) => (long)left / (long)right,
-            BinaryOperator.Mod => (object? left, object? right) => (long)left % (long)right,
+            BinaryOperator.Add => (object? left, object? right) => (long)left! + (long)right!,
+            BinaryOperator.Sub => (object? left, object? right) => (long)left! - (long)right!,
+            BinaryOperator.Mul => (object? left, object? right) => (long)left! * (long)right!,
+            BinaryOperator.Div => (object? left, object? right) => (long)left! / (long)right!,
+            BinaryOperator.Mod => (object? left, object? right) => (long)left! % (long)right!,
 
-            BinaryOperator.LogicAnd => (object? left, object? right) => (bool)left && (bool)right,
-            BinaryOperator.LogicOr => (object? left, object? right) => (bool)left || (bool)right,
+            BinaryOperator.LogicAnd => (object? left, object? right) => (bool)left! && (bool)right!,
+            BinaryOperator.LogicOr => (object? left, object? right) => (bool)left! || (bool)right!,
 
-            BinaryOperator.Equality => (object? left, object? right) => (long)left == (long)right,
-            BinaryOperator.Inequality => (object? left, object? right) => (long)left != (long)right,
-            BinaryOperator.Greather => (object? left, object? right) => (long)left > (long)right,
-            BinaryOperator.Less => (object? left, object? right) => (long)left < (long)right,
-            BinaryOperator.GreatherEquals => (object? left, object? right) => (long)left >= (long)right,
-            BinaryOperator.LessEquals => (object? left, object? right) => (long)left <= (long)right,
+            BinaryOperator.Equality => (object? left, object? right) => (long)left! == (long)right!,
+            BinaryOperator.Inequality => (object? left, object? right) => (long)left! != (long)right!,
+            BinaryOperator.Greather => (object? left, object? right) => (long)left! > (long)right!,
+            BinaryOperator.Less => (object? left, object? right) => (long)left! < (long)right!,
+            BinaryOperator.GreatherEquals => (object? left, object? right) => (long)left! >= (long)right!,
+            BinaryOperator.LessEquals => (object? left, object? right) => (long)left! <= (long)right!,
 
             _ => throw new Exception("unable to evaluate expression")
         };
