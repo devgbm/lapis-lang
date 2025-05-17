@@ -1,5 +1,7 @@
 
 
+
+
 namespace LapisLang.Core;
 
 public class ExpressionParser : ParserBase
@@ -88,6 +90,10 @@ public class ExpressionParser : ParserBase
         ExpressionSyntax expression;
         switch (Current.Kind)
         {
+            case TokenKind.Identifier when Peek(1).Kind == TokenKind.OpenCurlyBrace:
+                expression = ParseInstanceInitializationExpression();
+                break;
+
             case TokenKind.Identifier:
                 expression = ParseNameExpression();
                 break;
@@ -104,6 +110,7 @@ public class ExpressionParser : ParserBase
             case TokenKind.OpenParenthesis:
                 expression = ParseParenthesizedExpression();
                 break;
+
 
             case TokenKind.TypeKeyword:
                 expression = ParseTypeExpression();
@@ -122,6 +129,29 @@ public class ExpressionParser : ParserBase
         // }
 
         return expression;
+    }
+
+    private ExpressionSyntax ParseInstanceInitializationExpression()
+    {
+        var typename = ParseTypename();
+        Match(TokenKind.OpenCurlyBrace);
+        var initializers = MatchUntil(TokenKind.CloseCurlyBrace, () =>
+        {
+            var propertyInitialization = ParsePropertyInitialization();
+            if (Current.Kind == TokenKind.CloseCurlyBrace) MatchOptional(TokenKind.SemiCollon);
+            else Match(TokenKind.SemiCollon);
+            return propertyInitialization;
+        });
+        var close = Match(TokenKind.CloseCurlyBrace);
+        return new InstanceInitializationExpression(SourceSpan.Between(typename, close), typename, initializers);
+    }
+
+    private FieldInitilizationSyntax ParsePropertyInitialization()
+    {
+        var identifier = Match(TokenKind.Identifier);
+        Match(TokenKind.Collon);
+        var expression = ParseExpression();
+        return new FieldInitilizationSyntax(SourceSpan.Between(identifier, expression), identifier, expression);
     }
 
     private TypeExpressionSyntax ParseTypeExpression()

@@ -99,11 +99,51 @@ public class Binder
             case ParenthesizedExpression ps: return BindExpression(ps.Expression, context);
             case NameExpressionSyntax nes: return BindNameExpression(nes, context);
             case TypeExpressionSyntax tes: return BindTypeExpression(tes, context);
+            case InstanceInitializationExpression iie: return BindInstanceInitialization(iie, context);
 
             default:
                 _diagnostics.Report("unkown expression syntax", expression);
                 return new BoundUnkownExpression(expression);
         }
+    }
+
+    private BoundInstanceInitializationExpression BindInstanceInitialization(InstanceInitializationExpression iie, BindingContext context)
+    {
+        var instanceType = context.ResolveTypename(iie.TypeName);
+
+        if (instanceType == LangDefaults.Types.Unkown)
+        {
+            _diagnostics.Report("unkow type", iie.TypeName);
+            return new BoundInstanceInitializationExpression(iie, LangDefaults.Types.Unkown, []);
+        }
+
+        var initializers = ImmutableArray.CreateBuilder<BoundFieldInitialization>();
+        foreach (var initializer in iie.Initializers)
+        {
+            var foundRune = instanceType.Query(initializer.Identifier.String);
+            if (foundRune is null)
+            {
+                _diagnostics.Report("unkow field", initializer.Identifier);
+            }
+            else if (foundRune is not FieldRune fieldRune)
+            {
+                _diagnostics.Report("name is not a field", initializer.Identifier);
+            }
+            else
+            {
+                var boundExpression = BindExpression(initializer.Expression, context);
+                if (fieldRune.Type != boundExpression.Type)
+                {
+                    _diagnostics.Report("expresion type mismatch", initializer.Expression);
+                }
+                else
+                {
+                    initializers.Add(new BoundFieldInitialization(initializer.Identifier, initializer.Identifier.String, boundExpression));
+                }
+            }
+        }
+
+        return new BoundInstanceInitializationExpression(iie, instanceType, initializers.ToImmutableArray());
     }
 
     private BoundTypeExpression BindTypeExpression(TypeExpressionSyntax tes, BindingContext context)

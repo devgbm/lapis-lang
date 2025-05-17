@@ -114,8 +114,9 @@ public class ExpressionTests
         var context = new EvaluationContext(LangDefaults.RootNamespace());
         EvaluationResult result;
 
-        result = LapisInterpreter.Evaluate("var point: @type = type { x: @decimal; y: @decimal; };", context);
-        result = LapisInterpreter.Evaluate("point", context);
+        result = LapisInterpreter.Evaluate("var a: @number = 1;", context);
+        result = LapisInterpreter.Evaluate("var b: @number = a;", context);
+        result = LapisInterpreter.Evaluate("b", context);
         // Given
 
         // When

@@ -51,8 +51,18 @@ public class Evaluator
 
             case BoundNameExpression bne:
                 return EvaluateNameExpression(bne, context);
+            
+            case BoundInstanceInitializationExpression bie:
+                return EvaluateInstanceInitialization(bie, context);
+
             default: return null;
         }
+    }
+
+    private object? EvaluateInstanceInitialization(BoundInstanceInitializationExpression bie, EvaluationContext context)
+    {
+        var var = new VariableRune("__anonimous", bie.Type, bie);
+        throw new NotImplementedException();
     }
 
     private object? EvaluateNameExpression(BoundNameExpression bne, EvaluationContext context)
