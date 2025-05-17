@@ -91,6 +91,16 @@ public abstract class Rune
     }
 }
 
+
+public class FieldRune : Rune
+{
+    public FieldRune(string name, TypeRune type) : base(name, RuneKind.Field)
+    {
+        Type = type;
+    }
+
+    public TypeRune Type { get; }
+}
 public class TypeRune : Rune
 {
     public TypeRune(string name) : base(name, RuneKind.Type)

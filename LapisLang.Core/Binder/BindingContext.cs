@@ -30,6 +30,25 @@ public class BindingContext
 
     internal bool TryDeclareVariable(VariableRune rune)
     {
-        return _scope.Add(rune);
+        if (rune.Expression is BoundTypeExpression bte)
+        {
+            var typeRune = PromoteToType(rune.Name, bte);
+            return _scope.Add(typeRune);
+        }
+        else
+        {
+            return _scope.Add(rune);
+        }
+    }
+
+    private TypeRune PromoteToType(string name, BoundTypeExpression bte)
+    {
+        var typeRune = new TypeRune(name);
+        foreach (var field in bte.BoundFieldSyntaxes)
+        {
+            var fieldRune = new FieldRune(field.Name, field.TypeRune);
+            typeRune.Add(fieldRune);
+        }
+        return typeRune;
     }
 }

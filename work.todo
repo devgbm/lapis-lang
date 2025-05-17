@@ -1,0 +1,15 @@
+
+var a : @type = type {
+    nome: @string;
+    idade: @number;
+    altura: @decimal;
+    ativo: @boolean;
+};
+
+
+func main() {
+    var point = type {
+        x: @decimal;
+        y: @decimal;
+    }
+}

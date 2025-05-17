@@ -1,18 +1,21 @@
+using System.Collections.Immutable;
+
 namespace LapisLang.Core;
 
 public abstract class ExpressionSyntax : Syntax;
 
 
-public class ParenthesizedExpression : ExpressionSyntax
+public class TypeExpressionSyntax : ExpressionSyntax
 {
-    public ParenthesizedExpression(
+    public TypeExpressionSyntax(
         SourceSpan sourceSpan,
-        ExpressionSyntax expression
+        ImmutableArray<FieldDeclarationSyntax> fields
     )
     {
         SourceSpan = sourceSpan;
-        Expression = expression;
+        Fields = fields;
     }
+
     public override SourceSpan SourceSpan { get; }
-    public ExpressionSyntax Expression { get; }
+    public ImmutableArray<FieldDeclarationSyntax> Fields { get; }
 }

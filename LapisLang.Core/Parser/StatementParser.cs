@@ -34,17 +34,11 @@ public class StatementParser : ParserBase
         var keyword = Match(TokenKind.VarKeyword);
         var identifier = Match(TokenKind.Identifier);
         Match(TokenKind.Collon);
-        var typeName = ParseTypename();
+        var typeName = _expression.ParseTypename();
         Match(TokenKind.Equal);
         var expression = ParseExpression();
         var semi = Match(TokenKind.SemiCollon);
         SourceSpan sourceSpan = SourceSpan.Between(keyword, semi);
         return new VariableDeclarationSyntax(sourceSpan, identifier, typeName, expression);
-    }
-
-    private TypeNameSyntax ParseTypename()
-    {
-        var identifier = Match(TokenKind.Identifier);
-        return new TypeNameSyntax(identifier, identifier);
     }
 }

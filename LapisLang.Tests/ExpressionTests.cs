@@ -103,7 +103,23 @@ public class ExpressionTests
         Assert.Null(declarationResult.value);
 
         var evaluationResult = LapisInterpreter.Evaluate(evaluation, context);
-        
+
         Assert.Equivalent(expected, evaluationResult.value);
+    }
+
+
+    [Fact]
+    public void TestName()
+    {
+        var context = new EvaluationContext(LangDefaults.RootNamespace());
+        EvaluationResult result;
+
+        result = LapisInterpreter.Evaluate("var point: @type = type { x: @decimal; y: @decimal; };", context);
+        result = LapisInterpreter.Evaluate("point", context);
+        // Given
+
+        // When
+
+        // Then
     }
 }

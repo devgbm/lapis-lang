@@ -1,6 +1,9 @@
 
 
 
+
+using System.Collections.Immutable;
+
 namespace LapisLang.Core;
 
 public record BindResult(BoundSyntax BoundSyntax, DiagnosticsBag Diagnostics);
@@ -95,11 +98,32 @@ public class Binder
             case UnaryExpressionSyntax ues: return BindUnaryExpression(ues, context);
             case ParenthesizedExpression ps: return BindExpression(ps.Expression, context);
             case NameExpressionSyntax nes: return BindNameExpression(nes, context);
+            case TypeExpressionSyntax tes: return BindTypeExpression(tes, context);
 
             default:
                 _diagnostics.Report("unkown expression syntax", expression);
                 return new BoundUnkownExpression(expression);
         }
+    }
+
+    private BoundTypeExpression BindTypeExpression(TypeExpressionSyntax tes, BindingContext context)
+    {
+        var fieldDict = new Dictionary<string, (TypeRune Rune, SourceSpan Span)>();
+        foreach (var field in tes.Fields)
+        {
+            var type = context.ResolveTypename(field.TypeName);
+            var name = field.Identifier.String;
+            if (fieldDict.ContainsKey(name))
+            {
+                _diagnostics.Report("Field with name already exists in type", field);
+            }
+            else
+            {
+                fieldDict.Add(name, (type, field));
+            }
+        }
+
+        return new BoundTypeExpression(tes, fieldDict.Select(e => new BoundFieldSyntax(e.Value.Span, e.Key, e.Value.Rune)).ToImmutableArray());
     }
 
     private BoundExpression BindNameExpression(NameExpressionSyntax nes, BindingContext context)

@@ -1,12 +1,5 @@
 
 
-
-
-
-
-
-using System.Collections.Immutable;
-
 namespace LapisLang.Core;
 
 public class ExpressionParser : ParserBase
@@ -112,6 +105,10 @@ public class ExpressionParser : ParserBase
                 expression = ParseParenthesizedExpression();
                 break;
 
+            case TokenKind.TypeKeyword:
+                expression = ParseTypeExpression();
+                break;
+
             default: return null!;
         }
 
@@ -125,6 +122,34 @@ public class ExpressionParser : ParserBase
         // }
 
         return expression;
+    }
+
+    private TypeExpressionSyntax ParseTypeExpression()
+    {
+        var keyword = Match(TokenKind.TypeKeyword);
+        var open = Match(TokenKind.OpenCurlyBrace);
+        var fields = MatchUntil(TokenKind.CloseCurlyBrace, () =>
+        {
+            var field = ParseTypeField();
+            Match(TokenKind.SemiCollon);
+            return field;
+        });
+        var close = Match(TokenKind.CloseCurlyBrace);
+        return new TypeExpressionSyntax(SourceSpan.Between(keyword, close), fields);
+    }
+
+    public FieldDeclarationSyntax ParseTypeField()
+    {
+        var identifier = Match(TokenKind.Identifier);
+        Match(TokenKind.Collon);
+        var typename = ParseTypename();
+        return new FieldDeclarationSyntax(SourceSpan.Between(identifier, typename), identifier, typename);
+    }
+
+    public TypeNameSyntax ParseTypename()
+    {
+        var identifier = Match(TokenKind.Identifier);
+        return new TypeNameSyntax(identifier, identifier);
     }
 
     private ExpressionSyntax ParseParenthesizedExpression()

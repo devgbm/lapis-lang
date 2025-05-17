@@ -1,4 +1,3 @@
-
 namespace LapisLang.Core;
 public abstract class BoundExpression : BoundSyntax
 {

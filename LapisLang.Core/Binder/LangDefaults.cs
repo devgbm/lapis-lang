@@ -22,6 +22,7 @@ public static class LangDefaults
         root.Add(Types.String);
         root.Add(Types.Boolean);
         root.Add(Types.Decimal);
+        root.Add(Types.Type);
         root.Add(Types.Unkown);
 
         return root;
