@@ -104,3 +104,15 @@ public class NamespaceRune : Rune
     {
     }
 }
+
+public class VariableRune : Rune
+{
+    public VariableRune(string name, TypeRune type, BoundExpression expression) : base(name, RuneKind.Variable)
+    {
+        Type = type;
+        Expression = expression;
+    }
+
+    public TypeRune Type { get; }
+    public BoundExpression Expression { get; }
+}

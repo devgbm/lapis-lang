@@ -215,6 +215,7 @@ public class Lexer
             "and" => TokenKind.AndKeyword,
             "or" => TokenKind.OrKeyword,
             "not" => TokenKind.NotKeyword,
+            "var" => TokenKind.VarKeyword,
             _ => TokenKind.Identifier
         };
     }

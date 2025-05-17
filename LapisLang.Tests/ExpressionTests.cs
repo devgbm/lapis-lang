@@ -93,4 +93,17 @@ public class ExpressionTests
         Assert.Equal(runeKind, value.Rune.Kind);
         Assert.Equal(expression, value.Rune.FullName);
     }
+
+    [Theory]
+    [InlineData("var a: @integer = 1;", "a", 1)]
+    public void VariableDeclaration(string declaration, string evaluation, object? expected)
+    {
+        var context = new EvaluationContext(LangDefaults.RootNamespace());
+        var declarationResult = LapisInterpreter.Evaluate(declaration, context);
+        Assert.Null(declarationResult.value);
+
+        var evaluationResult = LapisInterpreter.Evaluate(evaluation, context);
+        
+        Assert.Equivalent(expected, evaluationResult.value);
+    }
 }

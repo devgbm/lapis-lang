@@ -1,5 +1,6 @@
 
 
+
 namespace LapisLang.Core;
 
 public record BindResult(BoundSyntax BoundSyntax, DiagnosticsBag Diagnostics);
@@ -44,12 +45,47 @@ public class Binder
             var bounded = BindExpression(es, context);
             return new BindResult(bounded, _diagnostics);
         }
+        else if (syntax is StatementSyntax ss)
+        {
+            var bounded = BindStatement(ss, context);
+            return new BindResult(bounded, _diagnostics);
+        }
         else
         {
             _diagnostics.Report("unsuported syntax type", syntax);
             return new BindResult(null!, _diagnostics);
         }
     }
+
+    private BoundStatement BindStatement(StatementSyntax statement, BindingContext context)
+    {
+        switch (statement)
+        {
+            case VariableDeclarationSyntax vds: return BindVariableDeclaration(vds, context);
+            case ExpressionStatementSyntax ess: return BindExpressionStatement(ess, context);
+            default: return new BoundUnkownStatement(statement);
+        }
+    }
+
+    private BoundExpressionStatement BindExpressionStatement(ExpressionStatementSyntax ess, BindingContext context)
+    {
+        var expression = BindExpression(ess.Expression, context);
+        return new BoundExpressionStatement(ess, expression);
+    }
+
+    private BoundVariableDeclaration BindVariableDeclaration(VariableDeclarationSyntax vds, BindingContext context)
+    {
+        var expression = BindExpression(vds.Expression, context);
+        var type = context.ResolveTypename(vds.TypeName);
+        var name = vds.Identifier.String;
+        var rune = new VariableRune(name, type, expression);
+        if (!context.TryDeclareVariable(rune))
+        {
+            _diagnostics.Report("variable redeclared", vds);
+        }
+        return new BoundVariableDeclaration(vds, rune);
+    }
+
     public BoundExpression BindExpression(ExpressionSyntax expression, BindingContext context)
     {
         switch (expression)
@@ -78,6 +114,7 @@ public class Binder
         {
             RuneKind.Type => LangDefaults.Types.Type,
             RuneKind.Namespace => LangDefaults.Types.Namespace,
+            RuneKind.Variable => ((VariableRune)rune).Type,
             _ => LangDefaults.Types.Unkown,
         };
 

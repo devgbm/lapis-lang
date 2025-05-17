@@ -14,8 +14,26 @@ public class Evaluator
         switch (syntax)
         {
             case BoundExpression be: return EvaluateExpression(be, context);
+            case BoundStatement bs: return EvaluateStatement(bs, context);
             default: return null;
         }
+    }
+
+    public object? EvaluateStatement(BoundStatement statement, EvaluationContext context)
+    {
+        switch (statement)
+        {
+            case BoundVariableDeclaration bvd: return EvaluateVariableDeclaration(bvd, context);
+            case BoundExpressionStatement bes: return EvaluateExpression(bes.Expression, context);
+            default: return null;
+        }
+    }
+
+    private object? EvaluateVariableDeclaration(BoundVariableDeclaration bvd, EvaluationContext context)
+    {
+        var value = EvaluateExpression(bvd.Rune.Expression, context);
+        context.DeclareVariable(bvd.Rune, value);
+        return null;
     }
 
     public object? EvaluateExpression(BoundExpression expression, EvaluationContext context)
@@ -30,7 +48,7 @@ public class Evaluator
 
             case BoundUnaryExpression bue:
                 return EvaluateUnaryExpression(bue, context);
-            
+
             case BoundNameExpression bne:
                 return EvaluateNameExpression(bne, context);
             default: return null;
@@ -39,12 +57,13 @@ public class Evaluator
 
     private object? EvaluateNameExpression(BoundNameExpression bne, EvaluationContext context)
     {
-        if (bne.Type.Kind == RuneKind.Type)
+        var rune = context.ResolveName(bne.Name);
+        if (rune.Kind == RuneKind.Variable)
         {
-            var rune = context.ResolveName(bne.Name);
-            return new RuneReference(rune);
+            return EvaluateExpression(((VariableRune)rune).Expression, context);
         }
-        throw new NotImplementedException();
+        
+        return new RuneReference(rune);
     }
 
     private object? EvaluateUnaryExpression(BoundUnaryExpression bue, EvaluationContext context)
