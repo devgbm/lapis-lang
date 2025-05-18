@@ -119,14 +119,10 @@ public class ExpressionParser : ParserBase
             default: return null!;
         }
 
-        // while(Current.Kind == TokenKind.Dot || Current.Kind == TokenKind.LeftArrow)
-        // {
-        //     if(Current.Kind == TokenKind.Dot) expression = ParseMemberExpression(expression);
-        //     if(expression is NameExpressionSyntax || (expression is MemberExpressionSyntax mes && mes.Member is NameExpressionSyntax))
-        //     {
-        //         if(Current.Kind == TokenKind.LeftArrow) expression = ParseNameParameters(expression);
-        //     }
-        // }
+        while(Current.Kind == TokenKind.Dot)
+        {
+            if(Current.Kind == TokenKind.Dot) expression = ParseMemberExpression(expression);
+        }
 
         return expression;
     }
@@ -234,7 +230,7 @@ public class ExpressionParser : ParserBase
         {
             NextToken();
             var nextName = ParseNameExpression();
-            member = new MemberExpressionSyntax(nextName.SourceSpan, member, nextName);
+            member = new MemberExpressionSyntax(SourceSpan.Between(member, nextName.SourceSpan), member, nextName);
         }
         return member;
     }

@@ -22,10 +22,10 @@ public class StatementParser : ParserBase
         {
             case TokenKind.VarKeyword: return ParseVariableDeclaration();
             default:
-            {
-                var expression = ParseExpression();
-                return new ExpressionStatementSyntax(expression, expression);
-            }     
+                {
+                    var expression = ParseExpression();
+                    return new ExpressionStatementSyntax(expression, expression);
+                }
         }
     }
 

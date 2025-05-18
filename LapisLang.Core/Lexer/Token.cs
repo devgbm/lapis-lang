@@ -2,7 +2,7 @@ using System.Diagnostics;
 
 namespace LapisLang.Core;
 
-[DebuggerDisplay("<Token {String} {Value}>")]
+[DebuggerDisplay("<Token {String}>")]
 public class Token 
 {
     public Token(TokenKind kind, SourceSpan span)

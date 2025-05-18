@@ -125,4 +125,5 @@ public class VariableRune : Rune
 
     public TypeRune Type { get; }
     public BoundExpression Expression { get; }
+    public object? Value { get; set; }
 }

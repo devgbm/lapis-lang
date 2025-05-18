@@ -89,13 +89,14 @@ public class ExpressionTests
     public void NameExpressions(string expression, RuneKind runeKind)
     {
         var result = LapisInterpreter.Evaluate(expression);
-        var value = Assert.IsType<RuneReference>(result.value);
-        Assert.Equal(runeKind, value.Rune.Kind);
-        Assert.Equal(expression, value.Rune.FullName);
+        var value = Assert.IsAssignableFrom<Rune>(result.value);
+        Assert.Equal(runeKind, value.Kind);
+        Assert.Equal(expression, value.FullName);
     }
 
     [Theory]
     [InlineData("var a: @integer = 1;", "a", 1)]
+    [InlineData("var Point: @type = @type", "Point", null)]
     public void VariableDeclaration(string declaration, string evaluation, object? expected)
     {
         var context = new EvaluationContext(LangDefaults.RootNamespace());
@@ -109,18 +110,17 @@ public class ExpressionTests
 
 
     [Fact]
-    public void TestName()
+    public void DeclareAndInstantiateTypes()
     {
         var context = new EvaluationContext(LangDefaults.RootNamespace());
         EvaluationResult result;
 
-        result = LapisInterpreter.Evaluate("var a: @number = 1;", context);
-        result = LapisInterpreter.Evaluate("var b: @number = a;", context);
-        result = LapisInterpreter.Evaluate("b", context);
-        // Given
-
-        // When
-
-        // Then
+        result = LapisInterpreter.Evaluate("var Point: @type = type { x: @decimal; y: @decimal; };", context);
+        result = LapisInterpreter.Evaluate("var Line: @type = type { a: Point; b: Point; };", context);
+        result = LapisInterpreter.Evaluate("var pointA: @Point = @Point { x: 1.0; y: 2.0; };", context);
+        result = LapisInterpreter.Evaluate("var pointB: @Point = @Point { x: 3.0; y: 4.0; };", context);
+        result = LapisInterpreter.Evaluate("var line: @Line = @Line { a: pointA; b: pointB; };", context);
+        result = LapisInterpreter.Evaluate("line.a.x + line.a.y + line.b.x + line.b.y", context);
+        Assert.Equivalent(10.0, result.value);
     }
 }

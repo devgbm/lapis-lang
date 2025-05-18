@@ -32,9 +32,10 @@ public class BoundInstanceInitializationExpression : BoundExpression
     {
         Span = span;
         Type = type;
+        Initiaizations = initiaizations;
     }
 
     public override TypeRune Type { get; }
-
+    public ImmutableArray<BoundFieldInitialization> Initiaizations { get; }
     public override SourceSpan Span { get; }
 }

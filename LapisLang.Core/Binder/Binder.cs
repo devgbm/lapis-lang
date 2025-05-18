@@ -24,6 +24,20 @@ public class Binder
         new BinaryOperatorDefinition(LangDefaults.Types.Integer, BinaryOperator.Greather, LangDefaults.Types.Integer, LangDefaults.Types.Boolean),
         new BinaryOperatorDefinition(LangDefaults.Types.Integer, BinaryOperator.GreatherEquals, LangDefaults.Types.Integer, LangDefaults.Types.Boolean),
 
+        new BinaryOperatorDefinition(LangDefaults.Types.Decimal, BinaryOperator.Add, LangDefaults.Types.Decimal, LangDefaults.Types.Decimal),
+        new BinaryOperatorDefinition(LangDefaults.Types.Decimal, BinaryOperator.Sub, LangDefaults.Types.Decimal, LangDefaults.Types.Decimal),
+        new BinaryOperatorDefinition(LangDefaults.Types.Decimal, BinaryOperator.Mul, LangDefaults.Types.Decimal, LangDefaults.Types.Decimal),
+        new BinaryOperatorDefinition(LangDefaults.Types.Decimal, BinaryOperator.Div, LangDefaults.Types.Decimal, LangDefaults.Types.Decimal),
+        new BinaryOperatorDefinition(LangDefaults.Types.Decimal, BinaryOperator.Mod, LangDefaults.Types.Decimal, LangDefaults.Types.Decimal),
+
+        new BinaryOperatorDefinition(LangDefaults.Types.Decimal, BinaryOperator.Equality, LangDefaults.Types.Decimal, LangDefaults.Types.Boolean),
+        new BinaryOperatorDefinition(LangDefaults.Types.Decimal, BinaryOperator.Inequality, LangDefaults.Types.Decimal, LangDefaults.Types.Boolean),
+        new BinaryOperatorDefinition(LangDefaults.Types.Decimal, BinaryOperator.Less, LangDefaults.Types.Decimal, LangDefaults.Types.Boolean),
+        new BinaryOperatorDefinition(LangDefaults.Types.Decimal, BinaryOperator.LessEquals, LangDefaults.Types.Decimal, LangDefaults.Types.Boolean),
+        new BinaryOperatorDefinition(LangDefaults.Types.Decimal, BinaryOperator.Greather, LangDefaults.Types.Decimal, LangDefaults.Types.Boolean),
+        new BinaryOperatorDefinition(LangDefaults.Types.Decimal, BinaryOperator.GreatherEquals, LangDefaults.Types.Decimal, LangDefaults.Types.Boolean),
+
+
         new BinaryOperatorDefinition(LangDefaults.Types.Boolean, BinaryOperator.LogicAnd, LangDefaults.Types.Boolean, LangDefaults.Types.Boolean),
         new BinaryOperatorDefinition(LangDefaults.Types.Boolean, BinaryOperator.LogicOr, LangDefaults.Types.Boolean, LangDefaults.Types.Boolean),
     };
@@ -79,8 +93,8 @@ public class Binder
     private BoundVariableDeclaration BindVariableDeclaration(VariableDeclarationSyntax vds, BindingContext context)
     {
         var expression = BindExpression(vds.Expression, context);
-        var type = context.ResolveTypename(vds.TypeName);
         var name = vds.Identifier.String;
+        var type = context.ResolveTypename(vds.TypeName);
         var rune = new VariableRune(name, type, expression);
         if (!context.TryDeclareVariable(rune))
         {
@@ -100,11 +114,26 @@ public class Binder
             case NameExpressionSyntax nes: return BindNameExpression(nes, context);
             case TypeExpressionSyntax tes: return BindTypeExpression(tes, context);
             case InstanceInitializationExpression iie: return BindInstanceInitialization(iie, context);
-
+            case MemberExpressionSyntax mes: return BindMemberExpressionSyntax(mes, context);
             default:
                 _diagnostics.Report("unkown expression syntax", expression);
                 return new BoundUnkownExpression(expression);
         }
+    }
+
+    private BoundExpression BindMemberExpressionSyntax(MemberExpressionSyntax mes, BindingContext context)
+    {
+        var expression = BindExpression(mes.Expresison, context);
+        var name = mes.Member.Name.String;
+        var member = expression.Type.Query(name);
+
+        if (member is not FieldRune fr)
+        {
+            _diagnostics.Report("unkown member", mes.Member);
+            return new BoundMemberExpression(mes, LangDefaults.Types.Unkown, expression, LangDefaults.Types.Unkown);
+        }
+
+        return new BoundMemberExpression(mes, fr.Type, expression, fr);
     }
 
     private BoundInstanceInitializationExpression BindInstanceInitialization(InstanceInitializationExpression iie, BindingContext context)
