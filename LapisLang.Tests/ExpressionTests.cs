@@ -96,7 +96,14 @@ public class ExpressionTests
 
     [Theory]
     [InlineData("var a: @integer = 1;", "a", 1)]
-    [InlineData("var Point: @type = @type", "Point", null)]
+    [InlineData("var a: @integer = 0;", "a", 0)]
+    [InlineData("var a: @integer = -1;", "a", -1)]
+    [InlineData("var a: @decimal = 1.0;", "a", 1.0)]
+    [InlineData("var a: @decimal = 0.0;", "a", 0.0)]
+    [InlineData("var a: @decimal = -1.0;", "a", -1.0)]
+    [InlineData("var a: @boolean = true;", "a", true)]
+    [InlineData("var a: @boolean = false;", "a", false)]
+    [InlineData("var a: @string = 'gabriel';", "a", "gabriel")]
     public void VariableDeclaration(string declaration, string evaluation, object? expected)
     {
         var context = new EvaluationContext(LangDefaults.RootNamespace());
@@ -107,7 +114,6 @@ public class ExpressionTests
 
         Assert.Equivalent(expected, evaluationResult.value);
     }
-
 
     [Fact]
     public void DeclareAndInstantiateTypes()

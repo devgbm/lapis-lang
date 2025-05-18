@@ -102,7 +102,7 @@ public class Evaluator
         Func<object?, object?> oper = bue.UnaryOperator switch {
             UnaryOperator.Identity => (object? obj) => obj,
             UnaryOperator.Negation => (object? obj) => !(bool)obj!,
-            UnaryOperator.Inverse => (object? obj) => -(long)obj!,
+            UnaryOperator.Inverse => (object? obj) => obj is long l ? -l : -(decimal)obj!,
             _=> throw new Exception("unable to evaluate unary expression")
         };
 
