@@ -1,15 +1,6 @@
 
-var a : @type = type {
-    nome: @string;
-    idade: @number;
-    altura: @decimal;
-    ativo: @boolean;
-};
 
 
-func main() {
-    var point = type {
-        x: @decimal;
-        y: @decimal;
-    }
+var sum: @function = func(@integer: a, @integer: b) {
+    return a + b;
 }

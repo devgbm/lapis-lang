@@ -1,8 +1,6 @@
 namespace LapisLang.Core;
 
 public abstract class BoundStatement : BoundSyntax;
-
-
 public class BoundExpressionStatement : BoundStatement
 {
     public BoundExpressionStatement(SourceSpan span, BoundExpression expression)

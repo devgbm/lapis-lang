@@ -6,36 +6,23 @@ public abstract class BoundExpression : BoundSyntax
     public abstract TypeRune Type { get; }
 }
 
-public class BoundFieldInitialization : BoundSyntax
-{
-    public BoundFieldInitialization(
-        SourceSpan span,
-        string name,
-        BoundExpression expression)
-    {
-        Span = span;
-        Name = name;
-        Expression = expression;
-    }
 
-    public override SourceSpan Span { get; }
-    public string Name { get; }
-    public BoundExpression Expression { get; }
-}
-public class BoundInstanceInitializationExpression : BoundExpression
+public class BoundCallExpression : BoundExpression
 {
-    public BoundInstanceInitializationExpression(
+    public BoundCallExpression(
         SourceSpan span,
-        TypeRune type,
-        ImmutableArray<BoundFieldInitialization> initiaizations
+        BoundExpression expression,
+        ImmutableArray<BoundExpression> arguments
     )
     {
         Span = span;
-        Type = type;
-        Initiaizations = initiaizations;
+        Expression = expression;
+        Arguments = arguments;
     }
 
-    public override TypeRune Type { get; }
-    public ImmutableArray<BoundFieldInitialization> Initiaizations { get; }
+    public override TypeRune Type => throw new NotImplementedException();
+
     public override SourceSpan Span { get; }
+    public BoundExpression Expression { get; }
+    public ImmutableArray<BoundExpression> Arguments { get; }
 }

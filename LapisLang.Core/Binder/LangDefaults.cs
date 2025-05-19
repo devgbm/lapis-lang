@@ -12,6 +12,7 @@ public static class LangDefaults
         public static TypeRune Type = new("type");
         public static TypeRune Namespace = new("namespace");
         public static TypeRune Unkown = new("unkown");
+        public static TypeRune Function = new("function");
     }
 
     public static NamespaceRune RootNamespace()

@@ -1,3 +1,5 @@
+using System.Collections.Immutable;
+
 namespace LapisLang.Core;
 
 
@@ -11,6 +13,9 @@ public enum RuneKind
     Parameter,   // Parâmetro
     Variable,    // Variável local
     Constant,    // Constante
+    Function,
+    Argument,
+    Scope,
 }
 public abstract class Rune
 {
@@ -108,11 +113,43 @@ public class TypeRune : Rune
     }
 }
 
+
+public class FunctionRune : Rune
+{
+    public FunctionRune(
+        string name,
+        ImmutableArray<BoundArgument> boundArgument,
+        BoundStatement statement,
+        TypeRune returnType) : base(name, RuneKind.Function)
+    {
+        Name = name;
+        BoundArgument = boundArgument;
+        Statement = statement;
+        ReturnType = returnType;
+    }
+
+    public string Name { get; }
+    public ImmutableArray<BoundArgument> BoundArgument { get; }
+    public BoundStatement Statement { get; }
+    public TypeRune ReturnType { get; }
+}
+
 public class NamespaceRune : Rune
 {
     public NamespaceRune(string name) : base(name, RuneKind.Namespace)
     {
     }
+}
+
+
+public class ArgumentRune : Rune
+{
+    public ArgumentRune(string name, TypeRune type) : base(name, RuneKind.Argument)
+    {
+        Type = type;
+    }
+
+    public TypeRune Type { get; }
 }
 
 public class VariableRune : Rune

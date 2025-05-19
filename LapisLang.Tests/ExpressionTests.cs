@@ -129,4 +129,16 @@ public class ExpressionTests
         result = LapisInterpreter.Evaluate("line.a.x + line.a.y + line.b.x + line.b.y", context);
         Assert.Equivalent(10.0, result.value);
     }
+
+
+    [Fact]
+    public void DeclareAndRunFunctions()
+    {
+        var context = new EvaluationContext(LangDefaults.RootNamespace());
+        EvaluationResult result;
+
+        result = LapisInterpreter.Evaluate("var add: @function = func(@integer left, @integer right) @integer { return left + right; };", context);
+        result = LapisInterpreter.Evaluate("add(3.0, 4.5)", context);
+        Assert.Equivalent(10.0, result.value);
+    }
 }

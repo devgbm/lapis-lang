@@ -2,11 +2,15 @@
 
 
 
+
+
+
+
 namespace LapisLang.Core;
 
-public class ExpressionParser : ParserBase
+public class LapisParser : ParserBase
 {
-    public ExpressionParser(TokenStream tokenStream) : base(tokenStream)
+    public LapisParser(TokenStream tokenStream) : base(tokenStream)
     {
     }
 
@@ -15,18 +19,18 @@ public class ExpressionParser : ParserBase
         ExpressionSyntax expression;
         var unaryPrecedence = GetUnaryPrecedence(Current.Kind);
 
-        if(unaryPrecedence != 0 && unaryPrecedence > parentPrecedence)
+        if (unaryPrecedence != 0 && unaryPrecedence > parentPrecedence)
         {
             var operatorToken = NextToken();
             var operand = ParseExpression(unaryPrecedence);
-            expression = new UnaryExpressionSyntax(SourceSpan.Between(operatorToken, operand.SourceSpan), operand, operatorToken); 
+            expression = new UnaryExpressionSyntax(SourceSpan.Between(operatorToken, operand.SourceSpan), operand, operatorToken);
         }
         else
         {
             expression = ParsePrimaryExpression();
         }
 
-        while(true)
+        while (true)
         {
 
             var binaryPrecedence = GetBinaryPrecedence(Current.Kind);
@@ -42,7 +46,7 @@ public class ExpressionParser : ParserBase
 
     private int GetUnaryPrecedence(TokenKind kind)
     {
-        switch(kind)
+        switch (kind)
         {
             case TokenKind.NotKeyword:
             case TokenKind.Minus:
@@ -55,13 +59,13 @@ public class ExpressionParser : ParserBase
 
     private int GetBinaryPrecedence(TokenKind kind)
     {
-        switch(kind)
+        switch (kind)
         {
             case TokenKind.Star:
             case TokenKind.Slash:
             case TokenKind.Percent:
                 return 5;
-                
+
             case TokenKind.Minus:
             case TokenKind.Plus:
                 return 4;
@@ -79,8 +83,8 @@ public class ExpressionParser : ParserBase
 
             case TokenKind.OrKeyword:
                 return 1;
-            
-            
+
+
             default: return 0;
         }
     }
@@ -115,16 +119,60 @@ public class ExpressionParser : ParserBase
             case TokenKind.TypeKeyword:
                 expression = ParseTypeExpression();
                 break;
+            case TokenKind.FuncKeyword:
+                expression = ParseFuncExpression();
+                break;
 
             default: return null!;
         }
 
-        while(Current.Kind == TokenKind.Dot)
+        while (Current.Kind == TokenKind.Dot || Current.Kind == TokenKind.OpenParenthesis)
         {
-            if(Current.Kind == TokenKind.Dot) expression = ParseMemberExpression(expression);
+            if (Current.Kind == TokenKind.Dot) expression = ParseMemberExpression(expression);
+            if (Current.Kind == TokenKind.OpenParenthesis) expression = ParseCallExpression(expression);
         }
 
         return expression;
+    }
+
+    private CallExpressionSyntax ParseCallExpression(ExpressionSyntax expression)
+    {
+        var open = Match(TokenKind.OpenParenthesis);
+        var parameters = MatchUntil(TokenKind.CloseParenthesis, () =>
+        {
+            var expression = ParseExpression();
+            if (Current.Kind != TokenKind.CloseParenthesis) Match(TokenKind.Comma);
+            return expression;
+        });
+
+        var close = Match(TokenKind.OpenParenthesis);
+        return new CallExpressionSyntax(SourceSpan.Between(open,close), expression, parameters);
+    }
+
+    private ExpressionSyntax ParseFuncExpression()
+    {
+        var keyword = Match(TokenKind.FuncKeyword);
+        var openParams = Match(TokenKind.OpenParenthesis);
+        var arguments = MatchUntil(TokenKind.CloseParenthesis, () =>
+        {
+            var parameterSyntax = ParseArgumentSyntax();
+            if (Current.Kind != TokenKind.CloseParenthesis) Match(TokenKind.Comma);
+            return parameterSyntax;
+        });
+        var closeParams = Match(TokenKind.CloseParenthesis);
+
+        var returnType = ParseTypename();
+
+
+        var statement = ParseStatement();
+        return new FuncExpression(keyword, arguments, returnType, statement);
+    }
+
+    private ArgumentSyntax ParseArgumentSyntax()
+    {
+        var typename = ParseTypename();
+        var identifier = Match(TokenKind.Identifier);
+        return new ArgumentSyntax(SourceSpan.Between(typename, identifier), typename, identifier);
     }
 
     private ExpressionSyntax ParseInstanceInitializationExpression()
@@ -189,7 +237,8 @@ public class ExpressionParser : ParserBase
     private ExpressionSyntax ParseLiteralExpression()
     {
         var token = NextToken();
-        var literalType = token switch {
+        var literalType = token switch
+        {
             { Kind: TokenKind.IntNumber } => LiteralType.Integer,
             { Kind: TokenKind.True } => LiteralType.Boolean,
             { Kind: TokenKind.False } => LiteralType.Boolean,
@@ -205,11 +254,12 @@ public class ExpressionParser : ParserBase
     {
         var open = Match(TokenKind.LeftArrow);
 
-        var parameters = MatchUntil(TokenKind.RightArrow, () => {
+        var parameters = MatchUntil(TokenKind.RightArrow, () =>
+        {
             var name = Match(TokenKind.Identifier);
             Match(TokenKind.Collon);
             var parameterExpression = ParseExpression();
-            if(Current.Kind != TokenKind.RightArrow)
+            if (Current.Kind != TokenKind.RightArrow)
             {
                 Match(TokenKind.Comma);
             }
@@ -226,7 +276,7 @@ public class ExpressionParser : ParserBase
     private ExpressionSyntax ParseMemberExpression(ExpressionSyntax expression)
     {
         ExpressionSyntax member = expression;
-        while(Current.Kind == TokenKind.Dot)
+        while (Current.Kind == TokenKind.Dot)
         {
             NextToken();
             var nextName = ParseNameExpression();
@@ -234,10 +284,58 @@ public class ExpressionParser : ParserBase
         }
         return member;
     }
-    
+
     private NameExpressionSyntax ParseNameExpression()
     {
         var identifier = Match(TokenKind.Identifier);
         return new NameExpressionSyntax(identifier, identifier);
     }
+
+    #region Statements
+    public StatementSyntax ParseStatement()
+    {
+        switch (Current.Kind)
+        {
+            case TokenKind.VarKeyword: return ParseVariableDeclaration();
+            case TokenKind.OpenCurlyBrace: return ParseScopeStatement();
+            case TokenKind.ReturnKeyword: return ParseReturnStatement();
+            default:
+                {
+                    var expression = ParseExpression();
+                    return new ExpressionStatementSyntax(expression, expression);
+                }
+        }
+    }
+
+    private ScopeStatement ParseScopeStatement()
+    {
+        var open = Match(TokenKind.OpenCurlyBrace);
+
+        var statements = MatchUntil(TokenKind.CloseCurlyBrace, ParseStatement);
+
+        var close = Match(TokenKind.CloseCurlyBrace);
+        return new ScopeStatement(SourceSpan.Between(open, close), statements);
+    }
+
+    private ReturnStatement ParseReturnStatement()
+    {
+        var keyword = Match(TokenKind.ReturnKeyword);
+        var expression = ParseExpression();
+        var semi = Match(TokenKind.SemiCollon);
+        return new ReturnStatement(SourceSpan.Between(keyword, semi), expression);
+    }
+
+    private StatementSyntax ParseVariableDeclaration()
+    {
+        var keyword = Match(TokenKind.VarKeyword);
+        var identifier = Match(TokenKind.Identifier);
+        Match(TokenKind.Collon);
+        var typeName = ParseTypename();
+        Match(TokenKind.Equal);
+        var expression = ParseExpression();
+        var semi = Match(TokenKind.SemiCollon);
+        SourceSpan sourceSpan = SourceSpan.Between(keyword, semi);
+        return new VariableDeclarationSyntax(sourceSpan, identifier, typeName, expression);
+    }
+    #endregion
 }

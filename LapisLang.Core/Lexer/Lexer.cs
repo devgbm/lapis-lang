@@ -217,6 +217,8 @@ public class Lexer
             "not" => TokenKind.NotKeyword,
             "var" => TokenKind.VarKeyword,
             "type" => TokenKind.TypeKeyword,
+            "func" => TokenKind.FuncKeyword,
+            "return" => TokenKind.ReturnKeyword,
             _ => TokenKind.Identifier
         };
     }

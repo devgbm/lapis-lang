@@ -8,7 +8,7 @@ public class LapisInterpreter
         var evaluationContext = context ?? new EvaluationContext(LangDefaults.RootNamespace());
         var lexer = new Lexer(source);
         var stream = lexer.TokenStream();
-        var parser = new StatementParser(stream);
+        var parser = new LapisParser(stream);
         var expression = parser.ParseStatement();
         var binder = new Binder();
         var bindingContext = new BindingContext(evaluationContext.NamespaceRune);

@@ -1,6 +1,24 @@
 
 
+using System.Collections.Immutable;
+
 namespace LapisLang.Core;
+
+
+public class FunctionValue
+{
+    public FunctionValue(
+        ImmutableArray<BoundArgument> arguments,
+        BoundStatement statement
+    )
+    {
+        Arguments = arguments;
+        Statement = statement;
+    }
+    public ImmutableArray<BoundArgument> Arguments { get; }
+    public BoundStatement Statement { get; }
+}
+
 public class Evaluator
 {
     public DiagnosticsBag Diagnostics { get; }
@@ -25,8 +43,20 @@ public class Evaluator
         {
             case BoundVariableDeclaration bvd: return EvaluateVariableDeclaration(bvd, context);
             case BoundExpressionStatement bes: return EvaluateExpression(bes.Expression, context);
+            case BoundScopeStatement bss: return EvaluateScopeStatement(bss, context);
+            case BoundReturnStatement brs: return EvaluateExpression(brs.Expression, context);
             default: return null;
         }
+    }
+
+    private object? EvaluateScopeStatement(BoundScopeStatement bss, EvaluationContext context)
+    {
+        foreach (var statement in bss.Statements)
+        {
+            var value = EvaluateStatement(statement, context);
+            if (statement is BoundReturnStatement) return value;
+        }
+        return null;
     }
 
     private object? EvaluateVariableDeclaration(BoundVariableDeclaration bvd, EvaluationContext context)
@@ -55,15 +85,40 @@ public class Evaluator
 
             case BoundNameExpression bne:
                 return EvaluateNameExpression(bne, context);
-            
+
             case BoundInstanceInitializationExpression bie:
                 return EvaluateInstanceInitialization(bie, context);
 
             case BoundMemberExpression bme:
                 return EvaluateMemberExpression(bme, context);
 
+            case BoundFunctionExpression bfe:
+                return EvaluateFunctionExpression(bfe, context);
+            
+            case BoundCallExpression bce:
+                return EvaluateCallExpression(bce, context);
+
             default: return null;
         }
+    }
+
+    private object? EvaluateCallExpression(BoundCallExpression bce, EvaluationContext context)
+    {
+        var expression = (EvaluateExpression(bce.Expression, context) as FunctionRune)!;
+
+        foreach (var arg in expression.BoundArgument.Zip(bce.Arguments))
+        {
+            var argumentValue = EvaluateExpression(arg.Second, context);
+            var variable = new VariableRune(arg.First.Name, arg.First.Type, arg.Second);
+            variable.Value = argumentValue;
+            context.DeclareVariable(variable, argumentValue);
+        }
+        return EvaluateStatement(expression.Statement, context);
+    }
+
+    private object? EvaluateFunctionExpression(BoundFunctionExpression bfe, EvaluationContext context)
+    {
+        return new FunctionValue(bfe.Arguments, bfe.Statement);
     }
 
     private object? EvaluateMemberExpression(BoundMemberExpression bme, EvaluationContext context)
@@ -92,18 +147,19 @@ public class Evaluator
 
             return ((VariableRune)rune).Value;
         }
-        
+
         return rune;
     }
 
     private object? EvaluateUnaryExpression(BoundUnaryExpression bue, EvaluationContext context)
     {
         var expression = Evaluate(bue.Expression, context);
-        Func<object?, object?> oper = bue.UnaryOperator switch {
+        Func<object?, object?> oper = bue.UnaryOperator switch
+        {
             UnaryOperator.Identity => (object? obj) => obj,
             UnaryOperator.Negation => (object? obj) => !(bool)obj!,
             UnaryOperator.Inverse => (object? obj) => obj is long l ? -l : -(decimal)obj!,
-            _=> throw new Exception("unable to evaluate unary expression")
+            _ => throw new Exception("unable to evaluate unary expression")
         };
 
         return oper(expression);

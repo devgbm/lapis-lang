@@ -80,8 +80,29 @@ public class Binder
         {
             case VariableDeclarationSyntax vds: return BindVariableDeclaration(vds, context);
             case ExpressionStatementSyntax ess: return BindExpressionStatement(ess, context);
+            case ScopeStatement ss: return BindScopeStatement(ss, context);
+            case ReturnStatement rs: return BindReturnStatement(rs, context);
             default: return new BoundUnkownStatement(statement);
         }
+    }
+
+    private BoundStatement BindReturnStatement(ReturnStatement rs, BindingContext context)
+    {
+        var expression = BindExpression(rs.Expression, context);
+        return new BoundReturnStatement(rs, expression);
+    }
+
+    private BoundScopeStatement BindScopeStatement(ScopeStatement ss, BindingContext context)
+    {
+        var scopeContext = new BindingContext(context.NamespaceRune);
+        var statements = ImmutableArray.CreateBuilder<BoundStatement>();
+        foreach (var statement in ss.Statements)
+        {
+            var bound = BindStatement(statement, scopeContext);
+            statements.Add(bound);
+
+        }
+        return new BoundScopeStatement(ss, statements.ToImmutableArray());
     }
 
     private BoundExpressionStatement BindExpressionStatement(ExpressionStatementSyntax ess, BindingContext context)
@@ -115,10 +136,65 @@ public class Binder
             case TypeExpressionSyntax tes: return BindTypeExpression(tes, context);
             case InstanceInitializationExpression iie: return BindInstanceInitialization(iie, context);
             case MemberExpressionSyntax mes: return BindMemberExpressionSyntax(mes, context);
+            case FuncExpression fes: return BindFuncExpressionSyntax(fes, context);
+            case CallExpressionSyntax ces: return BindCallExpressionSyntax(ces, context);
             default:
                 _diagnostics.Report("unkown expression syntax", expression);
                 return new BoundUnkownExpression(expression);
         }
+    }
+
+    private BoundExpression BindCallExpressionSyntax(CallExpressionSyntax ces, BindingContext context)
+    {
+        var expresion = BindExpression(ces.Expression, context);
+        if (expresion.Type != LangDefaults.Types.Function)
+        {
+            _diagnostics.Report("expression is not callable", ces.Expression);
+            return new BoundCallExpression(ces, expresion, []);
+        }
+
+        var a = expresion is BoundNameExpression bne ? bne.Rune as FunctionRune : null; // [TODO] verificar outros tipos
+
+        var parameters = ImmutableArray.CreateBuilder<BoundExpression>();
+        foreach (var item in ces.Parameters)
+        {
+            var parameter = BindExpression(item, context);
+            parameters.Add(parameter);
+        }
+
+        return new BoundCallExpression(ces, expresion, parameters.ToImmutableArray());
+    }
+
+    private BoundExpression BindFuncExpressionSyntax(FuncExpression fes, BindingContext context)
+    {
+        var arguments = ImmutableArray.CreateBuilder<BoundArgument>();
+        var scope = new ScopeRune("_temp", RuneKind.Scope);
+        context.NamespaceRune.Add(new ScopeRune("_temp", RuneKind.Scope));
+        var auxContext = new BindingContext(scope);
+        foreach (var argument in fes.Arguments)
+        {
+            var bound = BindArgument(argument, auxContext);
+            var variable = new ArgumentRune(bound.Name, bound.Type);
+            if (!auxContext.TryDeclareVariable(variable))
+            {
+                _diagnostics.Report("argument redeclared", argument);
+            }
+            else
+            {
+                arguments.Add(bound);
+            }
+
+        }
+        var returnType = auxContext.ResolveTypename(fes.ReturnType);
+        auxContext.ExpectedReturn(returnType);
+        var statement = BindStatement(fes.Statement, auxContext);
+        return new BoundFunctionExpression(fes, arguments.ToImmutableArray(), returnType, statement);
+    }
+
+    private BoundArgument BindArgument(ArgumentSyntax e, BindingContext context)
+    {
+        var type = context.ResolveTypename(e.TypeName);
+        return new BoundArgument(e, e.Name.String, type);
     }
 
     private BoundExpression BindMemberExpressionSyntax(MemberExpressionSyntax mes, BindingContext context)
@@ -200,7 +276,7 @@ public class Binder
         if (!context.TryResolveName(nes.Name.String, out var rune))
         {
             _diagnostics.Report($"name '{nes.Name.String}' does not exist in current context", nes.Name);
-            return new BoundNameExpression(nes, LangDefaults.Types.Unkown, nes.Name.String);
+            return new BoundNameExpression(nes, LangDefaults.Types.Unkown, LangDefaults.Types.Unkown, nes.Name.String);
         }
 
         var type = rune.Kind switch
@@ -208,10 +284,12 @@ public class Binder
             RuneKind.Type => LangDefaults.Types.Type,
             RuneKind.Namespace => LangDefaults.Types.Namespace,
             RuneKind.Variable => ((VariableRune)rune).Type,
+            RuneKind.Argument => ((ArgumentRune)rune).Type,
+            RuneKind.Function => LangDefaults.Types.Function,
             _ => LangDefaults.Types.Unkown,
         };
 
-        return new BoundNameExpression(nes, type, rune.FullName);
+        return new BoundNameExpression(nes,rune, type, rune.Name);
     }
 
     private BoundBinaryExpression BindBinaryExpression(BinaryExpressionSyntax bes, BindingContext context)

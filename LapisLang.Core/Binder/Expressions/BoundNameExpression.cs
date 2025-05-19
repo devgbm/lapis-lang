@@ -5,17 +5,20 @@ public class BoundNameExpression : BoundExpression
 {
     public BoundNameExpression(
         SourceSpan sourceSpan,
+        Rune rune,
         TypeRune type,
         string name
     )
     {
         Span = sourceSpan;
+        Rune = rune;
         Type = type;
         Name = name;
     }
     public override TypeRune Type { get; }
     public string Name { get; }
     public override SourceSpan Span { get; }
+    public Rune Rune { get; }
 }
 
 public class BoundMemberExpression : BoundExpression
