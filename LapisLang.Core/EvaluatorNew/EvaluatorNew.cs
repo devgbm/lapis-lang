@@ -25,8 +25,35 @@ public class EvaluatorNew
         {
             case ValueSymbol vs: return EvaluateValueSymbol(vs);
             case BinaryExpressionSymbol bss: return EvaluateBinarySymbol(bss, scope);
+            case UnaryExpressionSymbol ues: return EvaluateUnarySymbol(ues, scope);
         }
         return null;
+    }
+
+    private object? EvaluateUnarySymbol(UnaryExpressionSymbol ues, ScopeSymbol scope)
+    {
+        var value = EvaluateExpressionSymbol(ues.Expression, scope);
+        Func<object?, object?> op;
+
+        if (ues.Expression.Type == DefaultSymbols.Types.Integer)
+        {
+            op = ues.UnaryOp switch
+            {
+                UnaryOperatorKind.Identity => (object? obj) => obj,
+                UnaryOperatorKind.Inverse => (object? obj) => -(long)obj,
+                _ => (object? obj) => 0
+            };
+        }
+        else
+        {
+            op = ues.UnaryOp switch
+            {
+                UnaryOperatorKind.Negation => (object? obj) => !(bool)obj,
+                _ => (object? obj) => obj
+            };
+        }
+
+        return op(value);
     }
 
     private object? EvaluateBinarySymbol(BinaryExpressionSymbol bss, ScopeSymbol scope)

@@ -44,6 +44,10 @@ public class DefaultSymbols
             type.DefineSymbol(TokenKind.LeftArrow, new BinaryOperatorSymbol(BinaryOperatorKind.LessThan, Integer, Boolean));
             type.DefineSymbol(TokenKind.LeftArrowEquals, new BinaryOperatorSymbol(BinaryOperatorKind.LessOrEqual, Integer, Boolean));
 
+
+            type.DefineSymbol(TokenKind.Minus, new UnaryOperatorSymbol(UnaryOperatorKind.Inverse, Integer));
+            type.DefineSymbol(TokenKind.Plus, new UnaryOperatorSymbol(UnaryOperatorKind.Identity, Integer));
+
             return type;
         }
 
@@ -56,12 +60,28 @@ public class DefaultSymbols
             type.DefineSymbol(TokenKind.DoubleEquals, new BinaryOperatorSymbol(BinaryOperatorKind.Equality, Boolean, Boolean));
             type.DefineSymbol(TokenKind.BangEquals, new BinaryOperatorSymbol(BinaryOperatorKind.Inequality, Boolean, Boolean));
 
+            type.DefineSymbol(TokenKind.NotKeyword, new UnaryOperatorSymbol(UnaryOperatorKind.Negation, Boolean));
+
             return type;
         }
     }
 }
 
+public class UnaryExpressionSymbol : ExpressionSymbol
+    {
+        public UnaryExpressionSymbol(
+            ExpressionSymbol expression,
+            UnaryOperatorKind unaryOp,
+            TypeSymbol type
+        ) : base(type)
+        {
+        Expression = expression;
+        UnaryOp = unaryOp;
+    }
 
+    public ExpressionSymbol Expression { get; }
+    public UnaryOperatorKind UnaryOp { get; }
+}
     public class BinaryExpressionSymbol : ExpressionSymbol
     {
         public BinaryExpressionSymbol(

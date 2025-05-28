@@ -37,15 +37,24 @@ public class BinderNew
         {
             case LiteralExpressionSyntax les: return BindLiteralExpression(les, context);
             case BinaryExpressionSyntax bes: return BindBinaryExpression(bes, context);
+            case UnaryExpressionSyntax ues: return BindUnaryExpression(ues, context);
             default: return ExpressionSymbol.Unknown;
         }
+    }
+
+    private ExpressionSymbol BindUnaryExpression(UnaryExpressionSyntax ues, ScopeSymbol context)
+    {
+        var operand = BindExpression(ues.Expression, context);
+        var oper = operand.Type.GetUnaryOperatorFor(ues.TokenOperator.Kind);
+
+        return new UnaryExpressionSymbol(operand, oper.Kind, oper.Result);
     }
 
     private BinaryExpressionSymbol BindBinaryExpression(BinaryExpressionSyntax bes, ScopeSymbol context)
     {
         var left = BindExpression(bes.Left, context);
         var right = BindExpression(bes.Right, context);
-        var oper = left.Type.GetOperatorFor(bes.OperatorToken.Kind);
+        var oper = left.Type.GetBinaryOperatorFor(bes.OperatorToken.Kind);
 
         if (oper.With != right.Type)
         {
