@@ -25,4 +25,9 @@ public class ScopeSymbol : Symbol
         symbol = _scope[key];
         return true;
     }
+
+    public void SetSymbol(object? key, Symbol value)
+    {
+        _scope[key] = value;
+    }
 }

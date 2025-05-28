@@ -104,13 +104,13 @@ public class ExpressionTests
     [InlineData("var a: @string = 'gabriel';", "a", "gabriel")]
     public void VariableDeclaration(string declaration, string evaluation, object? expected)
     {
-        // var context = new EvaluationContext(LangDefaults.RootNamespace());
-        // var declarationResult = LapisInterpreter.Evaluate(declaration, context);
-        // Assert.Null(declarationResult.value);
+        var scope = BinderNew.CreateDefaultScope();
+        var declarationResult = LapisInterpreter.Evaluate(declaration, scope);
+        Assert.Null(declarationResult.value);
 
-        // var evaluationResult = LapisInterpreter.Evaluate(evaluation, context);
+        var evaluationResult = LapisInterpreter.Evaluate(evaluation, scope);
 
-        // Assert.Equivalent(expected, evaluationResult.value);
+        Assert.Equivalent(expected, evaluationResult.value);
     }
 
     [Fact]

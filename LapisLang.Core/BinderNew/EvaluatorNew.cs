@@ -109,29 +109,29 @@ public class UnaryExpressionSymbol : ExpressionSymbol
         Left = left;
         Right = right;
         BinaryOp = binaryOp;
-    }
+        }
 
-    public ExpressionSymbol Left { get; }
-    public ExpressionSymbol Right { get; }
-    public BinaryOperatorKind BinaryOp { get; }
-}
+        public ExpressionSymbol Left { get; }
+        public ExpressionSymbol Right { get; }
+        public BinaryOperatorKind BinaryOp { get; }
+    }
 
     public enum BinaryOperatorKind { Unknown = -1, Add, Sub, Mul, Div, Mod, Equality, Inequality, GreatherThan, GreatherOrEqual, LessThan, LessOrEqual, LogicAnd, LogicOr }
     public abstract class Symbol
     {
         public static Symbol Unkown = new UnkwonSymbol();
     }
-
+    
     public abstract class ExpressionSymbol : Symbol
+{
+    public static ExpressionSymbol Unknown = new UnkwonExpressionSymbol();
+    public ExpressionSymbol(TypeSymbol type)
     {
-        public static ExpressionSymbol Unknown = new UnkwonExpressionSymbol();
-        public ExpressionSymbol(TypeSymbol type)
-        {
-            Type = type;
-        }
-
-        public TypeSymbol Type { get; }
+        Type = type;
     }
+
+    public TypeSymbol Type { get; }
+}
     public class UnkwonSymbol : Symbol;
     public class UnkwonExpressionSymbol : ExpressionSymbol
     {
@@ -139,6 +139,7 @@ public class UnaryExpressionSymbol : ExpressionSymbol
         {
         }
     }
+    public class UnkownStatementSymbol: StatementSymbol;
     public class ValueSymbol : ExpressionSymbol
     {
         public ValueSymbol(object? value, TypeSymbol type) : base(type)

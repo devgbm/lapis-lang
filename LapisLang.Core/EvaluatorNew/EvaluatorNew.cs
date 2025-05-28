@@ -14,9 +14,31 @@ public class EvaluatorNew
             case ExpressionSymbol es:
                 value = EvaluateExpressionSymbol(es, scope);
                 break;
+
+            case StatementSymbol ss:
+                EvaluateStatementSymbol(ss, scope);
+                value = null;
+                break;
         }
 
         return new EvaluationResult(value, _diagnostics);
+    }
+
+    private void EvaluateStatementSymbol(StatementSymbol ss, ScopeSymbol scope)
+    {
+        switch (ss)
+        {
+            case VariableDeclarationSymbol vds:
+                EvaluateVariableDeclaration(vds, scope);
+                break;
+        }
+    }
+
+    private void EvaluateVariableDeclaration(VariableDeclarationSymbol vds, ScopeSymbol scope)
+    {
+        var value = EvaluateExpressionSymbol(vds.Symbol, scope);
+        var valueSymbol = new ValueSymbol(value, vds.Symbol.Type);
+        scope.SetSymbol(vds.Name, valueSymbol);
     }
 
     private object? EvaluateExpressionSymbol(ExpressionSymbol es, ScopeSymbol scope)

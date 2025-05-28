@@ -15,13 +15,40 @@ public class BinderNew
     public Symbol Bind(Syntax syntax, ScopeSymbol? bindingContext = null)
     {
         var context = bindingContext ?? CreateDefaultScope();
-        if(typeof(ExpressionSyntax).IsAssignableFrom(syntax.GetType()))
-        switch (syntax)
-        {
-            case ExpressionSyntax es:
-                return BindExpression(es, context);
-        }
+        if(typeof(ExpressionSyntax).IsAssignableFrom(syntax.GetType())) return BindExpression(((ExpressionSyntax)syntax), context);
+        if(typeof(StatementSyntax).IsAssignableFrom(syntax.GetType())) return BindStatement(((StatementSyntax)syntax), context);
+
         return Symbol.Unkown;
+    }
+
+    private StatementSymbol BindStatement(StatementSyntax ss, ScopeSymbol context)
+    {
+        switch (ss)
+        {
+            case VariableDeclarationSyntax vds: return BindVariableDeclaration(vds, context);
+            default: return StatementSymbol.Unknown;
+        }
+    }
+
+    private StatementSymbol BindVariableDeclaration(VariableDeclarationSyntax vds, ScopeSymbol context)
+    {
+        var expression = BindExpression(vds.Expression, context);
+        if (!context.GetSymbol(vds.TypeName.Identifier.String, out var type))
+        {
+            Diagnostics.Report("type could not be found", vds.TypeName);
+            type = DefaultSymbols.Types.Unkown;
+        }
+
+        if (type is not TypeSymbol ts)
+        {
+            Diagnostics.Report("symbol is not a type", vds.TypeName);
+            ts = DefaultSymbols.Types.Unkown;
+        }
+
+        var name = vds.Identifier.String;
+        context.DefineSymbol(name, expression);
+
+        return new VariableDeclarationSymbol(name, expression, ts);
     }
 
     public static ScopeSymbol CreateDefaultScope()

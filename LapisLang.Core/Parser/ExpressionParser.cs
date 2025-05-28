@@ -14,6 +14,19 @@ public class LapisParser : ParserBase
     {
     }
 
+    public Syntax Parse()
+    {
+        switch (Current.Kind)
+        {
+            case TokenKind.VarKeyword:
+            case TokenKind.OpenCurlyBrace:
+            case TokenKind.ReturnKeyword:
+                return ParseStatement();
+            
+            default: return ParseExpression();
+        }
+    }
+
     public ExpressionSyntax ParseExpression(int parentPrecedence = 0)
     {
         ExpressionSyntax expression;
