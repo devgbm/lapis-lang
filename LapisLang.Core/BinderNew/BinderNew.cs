@@ -28,6 +28,15 @@ public class BinderNew
     {
         var root = new ScopeSymbol();
 
+        root.DefineSymbol("@integer", DefaultSymbols.Types.Integer);
+        root.DefineSymbol("@boolean", DefaultSymbols.Types.Boolean);
+        root.DefineSymbol("@decimal", DefaultSymbols.Types.Decimal);
+        root.DefineSymbol("@string", DefaultSymbols.Types.String);
+        root.DefineSymbol("@type", DefaultSymbols.Types.Type);
+        root.DefineSymbol("@scope", DefaultSymbols.Types.Scope);
+        root.DefineSymbol("@unkown", DefaultSymbols.Types.Unkown);
+        root.DefineSymbol("@", root);
+
         return root;
     }
 
@@ -39,8 +48,28 @@ public class BinderNew
             case BinaryExpressionSyntax bes: return BindBinaryExpression(bes, context);
             case UnaryExpressionSyntax ues: return BindUnaryExpression(ues, context);
             case ParenthesizedExpression pe: return BindExpression(pe.Expression, context);
+            case NameExpressionSyntax ne: return BindNameExpression(ne, context);
             default: return ExpressionSymbol.Unknown;
         }
+    }
+
+    private ExpressionSymbol BindNameExpression(NameExpressionSyntax ne, ScopeSymbol context)
+    {
+        if (!context.GetSymbol(ne.Name.String, out var symbol))
+        {
+            Diagnostics.Report("unkown symbol", ne);
+            return ExpressionSymbol.Unknown;
+        }
+
+        var type = symbol switch
+        {
+            ExpressionSymbol es => es.Type,
+            TypeSymbol => DefaultSymbols.Types.Type,
+            ScopeSymbol => DefaultSymbols.Types.Scope,
+            _ => DefaultSymbols.Types.Unkown
+        };
+
+        return new NameExpressionSymbol(symbol, type);
     }
 
     private ExpressionSymbol BindUnaryExpression(UnaryExpressionSyntax ues, ScopeSymbol context)

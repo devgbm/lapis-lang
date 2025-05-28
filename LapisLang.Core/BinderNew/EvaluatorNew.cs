@@ -24,6 +24,8 @@ public class DefaultSymbols
         public static TypeSymbol Integer = CreateInteger();
         public static TypeSymbol Decimal = new TypeSymbol("decimal");
         public static TypeSymbol String = new TypeSymbol("string");
+        public static TypeSymbol Type = new TypeSymbol("type");
+        public static TypeSymbol Scope = new TypeSymbol("scope");
         public static TypeSymbol Unkown = new TypeSymbol("unkown");
 
 
@@ -67,14 +69,27 @@ public class DefaultSymbols
     }
 }
 
-public class UnaryExpressionSymbol : ExpressionSymbol
+
+public class NameExpressionSymbol : ExpressionSymbol
+{
+    public NameExpressionSymbol(
+        Symbol symbol,
+        TypeSymbol type
+    ) : base(type)
     {
-        public UnaryExpressionSymbol(
-            ExpressionSymbol expression,
-            UnaryOperatorKind unaryOp,
-            TypeSymbol type
-        ) : base(type)
-        {
+        Symbol = symbol;
+    }
+
+    public Symbol Symbol { get; }
+}
+public class UnaryExpressionSymbol : ExpressionSymbol
+{
+    public UnaryExpressionSymbol(
+        ExpressionSymbol expression,
+        UnaryOperatorKind unaryOp,
+        TypeSymbol type
+    ) : base(type)
+    {
         Expression = expression;
         UnaryOp = unaryOp;
     }

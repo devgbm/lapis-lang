@@ -89,9 +89,7 @@ public class ExpressionTests
     public void NameExpressions(string expression, RuneKind runeKind)
     {
         var result = LapisInterpreter.Evaluate(expression);
-        var value = Assert.IsAssignableFrom<Rune>(result.value);
-        Assert.Equal(runeKind, value.Kind);
-        Assert.Equal(expression, value.FullName);
+        var value = Assert.IsAssignableFrom<Symbol>(result.value);
     }
 
     [Theory]

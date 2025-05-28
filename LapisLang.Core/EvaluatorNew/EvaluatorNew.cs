@@ -26,8 +26,19 @@ public class EvaluatorNew
             case ValueSymbol vs: return EvaluateValueSymbol(vs);
             case BinaryExpressionSymbol bss: return EvaluateBinarySymbol(bss, scope);
             case UnaryExpressionSymbol ues: return EvaluateUnarySymbol(ues, scope);
+            case NameExpressionSymbol nes: return EvaluateNameSymbol(nes, scope);
         }
         return null;
+    }
+
+    private object? EvaluateNameSymbol(NameExpressionSymbol nes, ScopeSymbol scope)
+    {
+
+        return nes.Symbol switch
+        {
+            ValueSymbol vs => vs.Value,
+            _ => nes.Symbol
+        };
     }
 
     private object? EvaluateUnarySymbol(UnaryExpressionSymbol ues, ScopeSymbol scope)
