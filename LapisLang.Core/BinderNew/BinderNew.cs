@@ -38,6 +38,7 @@ public class BinderNew
             case LiteralExpressionSyntax les: return BindLiteralExpression(les, context);
             case BinaryExpressionSyntax bes: return BindBinaryExpression(bes, context);
             case UnaryExpressionSyntax ues: return BindUnaryExpression(ues, context);
+            case ParenthesizedExpression pe: return BindExpression(pe.Expression, context);
             default: return ExpressionSymbol.Unknown;
         }
     }
