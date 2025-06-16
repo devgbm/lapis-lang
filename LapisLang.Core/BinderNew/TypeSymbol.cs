@@ -38,6 +38,35 @@ public class BinaryOperatorSymbol : Symbol
 
 public class TypeSymbol : ScopeSymbol
 {
+    private static Dictionary<TokenKind, string> _uops = new()
+    {
+        [TokenKind.Minus] = "@uop_-",
+        [TokenKind.Plus] = "@uop_+",
+        [TokenKind.Bang] = "@uop_!",
+        [TokenKind.NotKeyword] = "@uop_not"
+    };
+
+    private static Dictionary<TokenKind, string> _bops = new()
+    {
+        [TokenKind.Plus] = "@bop_+",
+        [TokenKind.Minus] = "@bop_-",
+        [TokenKind.Slash] = "@bop_/",
+        [TokenKind.Star] = "@bop_*",
+        [TokenKind.Percent] = "@bop_%",
+        [TokenKind.Minus] = "@bop_-",
+        [TokenKind.Minus] = "@bop_-",
+
+        [TokenKind.DoubleEquals] = "@bop_eq",
+        [TokenKind.BangEquals] = "@bop_neq",
+        [TokenKind.LeftArrow] = "@bop_lt",
+        [TokenKind.LeftArrowEquals] = "@bop_lteq",
+        [TokenKind.RightArrow] = "@bop_gt",
+        [TokenKind.RightArrowEquals] = "@bop_gteq",
+
+        [TokenKind.AndKeyword] = "@bop_and",
+        [TokenKind.OrKeyword] = "@bop_or",
+    };
+
     public TypeSymbol(string typeName)
     {
         TypeName = typeName;
@@ -46,7 +75,8 @@ public class TypeSymbol : ScopeSymbol
 
     internal BinaryOperatorSymbol GetBinaryOperatorFor(TokenKind kind)
     {
-        if (!GetSymbol(kind, out var symbol))
+        var mapped = _bops[kind];
+        if (!GetSymbol(mapped, out var symbol))
         {
             return BinaryOperatorSymbol.Unknown;
         }
@@ -55,7 +85,8 @@ public class TypeSymbol : ScopeSymbol
 
     internal UnaryOperatorSymbol GetUnaryOperatorFor(TokenKind kind)
     {
-        if (!GetSymbol(kind, out var symbol))
+        var mapped = _uops[kind];
+        if (!GetSymbol(mapped, out var symbol))
         {
             return UnaryOperatorSymbol.Unknown;
         }
