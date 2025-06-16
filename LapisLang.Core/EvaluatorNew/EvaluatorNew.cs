@@ -77,6 +77,15 @@ public class EvaluatorNew
                 _ => (object? obj) => 0
             };
         }
+        else if (ues.Expression.Type == DefaultSymbols.Types.Decimal)
+        {
+            op = ues.UnaryOp switch
+            {
+                UnaryOperatorKind.Identity => (object? obj) => obj,
+                UnaryOperatorKind.Inverse => (object? obj) => -(decimal)obj,
+                _ => (object? obj) => 0
+            };
+        }
         else
         {
             op = ues.UnaryOp switch
@@ -110,6 +119,24 @@ public class EvaluatorNew
                 BinaryOperatorKind.GreatherOrEqual => (object? left, object? right) => (long)left >= (long)right,
                 BinaryOperatorKind.LessThan => (object? left, object? right) => (long)left < (long)right,
                 BinaryOperatorKind.LessOrEqual => (object? left, object? right) => (long)left <= (long)right,
+                _ => (object? left, object? right) => 0
+            };
+        }
+        else if (bss.Left.Type == DefaultSymbols.Types.Decimal)
+        {
+            op = bss.BinaryOp switch
+            {
+                BinaryOperatorKind.Add => (object? left, object? right) => (decimal)left + (decimal)right,
+                BinaryOperatorKind.Sub => (object? left, object? right) => (decimal)left - (decimal)right,
+                BinaryOperatorKind.Mul => (object? left, object? right) => (decimal)left * (decimal)right,
+                BinaryOperatorKind.Div => (object? left, object? right) => (decimal)left / (decimal)right,
+                BinaryOperatorKind.Mod => (object? left, object? right) => (decimal)left % (decimal)right,
+                BinaryOperatorKind.Equality => (object? left, object? right) => (decimal)left == (decimal)right,
+                BinaryOperatorKind.Inequality => (object? left, object? right) => (decimal)left != (decimal)right,
+                BinaryOperatorKind.GreatherThan => (object? left, object? right) => (decimal)left > (decimal)right,
+                BinaryOperatorKind.GreatherOrEqual => (object? left, object? right) => (decimal)left >= (decimal)right,
+                BinaryOperatorKind.LessThan => (object? left, object? right) => (decimal)left < (decimal)right,
+                BinaryOperatorKind.LessOrEqual => (object? left, object? right) => (decimal)left <= (decimal)right,
                 _ => (object? left, object? right) => 0
             };
         }

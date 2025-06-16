@@ -1,7 +1,4 @@
 
-
-
-
 namespace LapisLang.Core;
 
 public class DefaultSymbols
@@ -10,12 +7,35 @@ public class DefaultSymbols
     {
         public static TypeSymbol Boolean = CreateBool();
         public static TypeSymbol Integer = CreateInteger();
-        public static TypeSymbol Decimal = new TypeSymbol("decimal");
+        public static TypeSymbol Decimal = CreateDecimal();
         public static TypeSymbol String = new TypeSymbol("string");
         public static TypeSymbol Type = new TypeSymbol("type");
         public static TypeSymbol Scope = new TypeSymbol("scope");
         public static TypeSymbol Unkown = new TypeSymbol("unkown");
 
+        private static TypeSymbol CreateDecimal()
+        {
+            var type = new TypeSymbol("decimal");
+
+            type.DefineSymbol("@bop_+", new BinaryOperatorSymbol(BinaryOperatorKind.Add, type, type));
+            type.DefineSymbol("@bop_-", new BinaryOperatorSymbol(BinaryOperatorKind.Sub, type, type));
+            type.DefineSymbol("@bop_/", new BinaryOperatorSymbol(BinaryOperatorKind.Div, type, type));
+            type.DefineSymbol("@bop_*", new BinaryOperatorSymbol(BinaryOperatorKind.Mul, type, type));
+            type.DefineSymbol("@bop_%", new BinaryOperatorSymbol(BinaryOperatorKind.Mod, type, type));
+
+            type.DefineSymbol("@bop_eq", new BinaryOperatorSymbol(BinaryOperatorKind.Equality, type, Boolean));
+            type.DefineSymbol("@bop_neq", new BinaryOperatorSymbol(BinaryOperatorKind.Inequality, type, Boolean));
+            type.DefineSymbol("@bop_gt", new BinaryOperatorSymbol(BinaryOperatorKind.GreatherThan, type, Boolean));
+            type.DefineSymbol("@bop_gteq", new BinaryOperatorSymbol(BinaryOperatorKind.GreatherOrEqual, type, Boolean));
+            type.DefineSymbol("@bop_lt", new BinaryOperatorSymbol(BinaryOperatorKind.LessThan, type, Boolean));
+            type.DefineSymbol("@bop_lteq", new BinaryOperatorSymbol(BinaryOperatorKind.LessOrEqual, type, Boolean));
+
+
+            type.DefineSymbol("@uop_-", new UnaryOperatorSymbol(UnaryOperatorKind.Inverse, type));
+            type.DefineSymbol("@uop_+", new UnaryOperatorSymbol(UnaryOperatorKind.Identity, type));
+
+            return type;
+        }
 
         private static TypeSymbol CreateInteger()
         {

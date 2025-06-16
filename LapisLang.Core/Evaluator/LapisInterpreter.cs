@@ -10,7 +10,7 @@ public class LapisInterpreter
         var parser = new LapisParser(stream);
         var syntax = parser.Parse();
         var binder = new BinderNew();
-        var bindScope = scope ?? BinderNew.CreateDefaultScope();
+        var bindScope = scope ?? DefaultSymbols.CreateDefaultScope();
         var symbol = binder.Bind(syntax, bindScope);
         var evaluator = new EvaluatorNew();
         return evaluator.Evaluate(symbol, bindScope);
