@@ -4,18 +4,6 @@
 
 namespace LapisLang.Core;
 
-
-public class LapisEvaluator
-{
-
-}
-
-public class BindingContextNew
-{
-
-}
-
-
 public class DefaultSymbols
 {
     public static class Types
@@ -66,86 +54,21 @@ public class DefaultSymbols
 
             return type;
         }
+
     }
-}
-
-
-public class NameExpressionSymbol : ExpressionSymbol
-{
-    public NameExpressionSymbol(
-        Symbol symbol,
-        TypeSymbol type
-    ) : base(type)
+    public static ScopeSymbol CreateDefaultScope()
     {
-        Symbol = symbol;
-    }
+        var root = new ScopeSymbol();
 
-    public Symbol Symbol { get; }
-}
-public class UnaryExpressionSymbol : ExpressionSymbol
-{
-    public UnaryExpressionSymbol(
-        ExpressionSymbol expression,
-        UnaryOperatorKind unaryOp,
-        TypeSymbol type
-    ) : base(type)
-    {
-        Expression = expression;
-        UnaryOp = unaryOp;
-    }
+        root.DefineSymbol("@integer", DefaultSymbols.Types.Integer);
+        root.DefineSymbol("@boolean", DefaultSymbols.Types.Boolean);
+        root.DefineSymbol("@decimal", DefaultSymbols.Types.Decimal);
+        root.DefineSymbol("@string", DefaultSymbols.Types.String);
+        root.DefineSymbol("@type", DefaultSymbols.Types.Type);
+        root.DefineSymbol("@scope", DefaultSymbols.Types.Scope);
+        root.DefineSymbol("@unkown", DefaultSymbols.Types.Unkown);
+        root.DefineSymbol("@", root);
 
-    public ExpressionSymbol Expression { get; }
-    public UnaryOperatorKind UnaryOp { get; }
-}
-    public class BinaryExpressionSymbol : ExpressionSymbol
-    {
-        public BinaryExpressionSymbol(
-            ExpressionSymbol left,
-            ExpressionSymbol right,
-            BinaryOperatorKind binaryOp,
-            TypeSymbol type
-        ) : base(type)
-        {
-        Left = left;
-        Right = right;
-        BinaryOp = binaryOp;
-        }
-
-        public ExpressionSymbol Left { get; }
-        public ExpressionSymbol Right { get; }
-        public BinaryOperatorKind BinaryOp { get; }
+        return root;
     }
-
-    public enum BinaryOperatorKind { Unknown = -1, Add, Sub, Mul, Div, Mod, Equality, Inequality, GreatherThan, GreatherOrEqual, LessThan, LessOrEqual, LogicAnd, LogicOr }
-    public abstract class Symbol
-    {
-        public static Symbol Unkown = new UnkwonSymbol();
-    }
-    
-    public abstract class ExpressionSymbol : Symbol
-{
-    public static ExpressionSymbol Unknown = new UnkwonExpressionSymbol();
-    public ExpressionSymbol(TypeSymbol type)
-    {
-        Type = type;
-    }
-
-    public TypeSymbol Type { get; }
-}
-    public class UnkwonSymbol : Symbol;
-    public class UnkwonExpressionSymbol : ExpressionSymbol
-    {
-        public UnkwonExpressionSymbol() : base(DefaultSymbols.Types.Unkown)
-        {
-        }
-    }
-    public class UnkownStatementSymbol: StatementSymbol;
-    public class ValueSymbol : ExpressionSymbol
-    {
-        public ValueSymbol(object? value, TypeSymbol type) : base(type)
-        {
-        Value = value;
-    }
-
-    public object? Value { get; }
 }

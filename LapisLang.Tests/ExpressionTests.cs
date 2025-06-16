@@ -1,3 +1,4 @@
+using System;
 using LapisLang.Core;
 
 namespace LapisLang.Tests;
@@ -81,15 +82,15 @@ public class ExpressionTests
     }
 
     [Theory]
-    [InlineData("@integer", RuneKind.Type)]
-    [InlineData("@string", RuneKind.Type)]
-    [InlineData("@boolean", RuneKind.Type)]
-    [InlineData("@decimal", RuneKind.Type)]
-    [InlineData("@", RuneKind.Namespace)]
-    public void NameExpressions(string expression, RuneKind runeKind)
+    [InlineData("@integer", typeof(TypeSymbol))]
+    [InlineData("@string", typeof(TypeSymbol))]
+    [InlineData("@boolean", typeof(TypeSymbol))]
+    [InlineData("@decimal", typeof(TypeSymbol))]
+    [InlineData("@", typeof(ScopeSymbol))]
+    public void NameExpressions(string expression, Type runeType)
     {
         var result = LapisInterpreter.Evaluate(expression);
-        var value = Assert.IsAssignableFrom<Symbol>(result.value);
+        Assert.IsType(runeType, result.value);
     }
 
     [Theory]
@@ -104,7 +105,7 @@ public class ExpressionTests
     [InlineData("var a: @string = 'gabriel';", "a", "gabriel")]
     public void VariableDeclaration(string declaration, string evaluation, object? expected)
     {
-        var scope = BinderNew.CreateDefaultScope();
+        var scope = DefaultSymbols.CreateDefaultScope();
         var declarationResult = LapisInterpreter.Evaluate(declaration, scope);
         Assert.Null(declarationResult.value);
 

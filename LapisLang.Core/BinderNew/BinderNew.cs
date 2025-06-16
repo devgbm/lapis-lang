@@ -14,7 +14,7 @@ public class BinderNew
     }
     public Symbol Bind(Syntax syntax, ScopeSymbol? bindingContext = null)
     {
-        var context = bindingContext ?? CreateDefaultScope();
+        var context = bindingContext ?? DefaultSymbols.CreateDefaultScope();
         if(typeof(ExpressionSyntax).IsAssignableFrom(syntax.GetType())) return BindExpression(((ExpressionSyntax)syntax), context);
         if(typeof(StatementSyntax).IsAssignableFrom(syntax.GetType())) return BindStatement(((StatementSyntax)syntax), context);
 
@@ -51,21 +51,6 @@ public class BinderNew
         return new VariableDeclarationSymbol(name, expression, ts);
     }
 
-    public static ScopeSymbol CreateDefaultScope()
-    {
-        var root = new ScopeSymbol();
-
-        root.DefineSymbol("@integer", DefaultSymbols.Types.Integer);
-        root.DefineSymbol("@boolean", DefaultSymbols.Types.Boolean);
-        root.DefineSymbol("@decimal", DefaultSymbols.Types.Decimal);
-        root.DefineSymbol("@string", DefaultSymbols.Types.String);
-        root.DefineSymbol("@type", DefaultSymbols.Types.Type);
-        root.DefineSymbol("@scope", DefaultSymbols.Types.Scope);
-        root.DefineSymbol("@unkown", DefaultSymbols.Types.Unkown);
-        root.DefineSymbol("@", root);
-
-        return root;
-    }
 
     private ExpressionSymbol BindExpression(ExpressionSyntax es, ScopeSymbol context)
     {
