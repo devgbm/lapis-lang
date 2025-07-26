@@ -7,6 +7,8 @@ namespace LapisLang.Core;
 
 public interface IScopeSymbol
 {
+    public IEnumerable<Symbol> GetSymbols();
+
     bool DefineSymbol(object? key, Symbol value);
 
     bool GetSymbol(object? key, out Symbol? symbol);
@@ -17,6 +19,8 @@ public interface IScopeSymbol
 public class ScopeSymbol : Symbol, IScopeSymbol
 {
     private Dictionary<object?, Symbol> _scope = new();
+
+    public IEnumerable<Symbol> GetSymbols() => _scope.Values;
 
     public bool DefineSymbol(object? key, Symbol value)
     {

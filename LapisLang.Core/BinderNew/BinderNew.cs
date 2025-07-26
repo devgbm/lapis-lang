@@ -74,8 +74,70 @@ public class BinderNew
             case ParenthesizedExpression pe: return BindExpression(pe.Expression, context);
             case NameExpressionSyntax ne: return BindNameExpression(ne, context);
             case TypeExpressionSyntax tes: return BindTypeEspression(tes, context);
+            case MemberExpressionSyntax mes: return BindMemberExpression(mes, context);
+            case InstanceInitializationExpression iie: return BindInstanceInitializationExpression(iie, context);
             default: return ExpressionSymbol.Unknown;
         }
+    }
+
+    private ExpressionSymbol BindMemberExpression(MemberExpressionSyntax mes, ScopeSymbol context)
+    {
+        var expression = BindExpression(mes.Expresison, context);
+        var foundFieldMember = expression.Type.GetSymbols().OfType<FieldSymbol>().FirstOrDefault(e => e.Name == mes.Member.Name.String);
+        if (foundFieldMember is null)
+        {
+            Diagnostics.Report("Unkown member", mes.Member);
+            return ExpressionSymbol.Unknown;
+        }
+
+
+        return new MemberExpressionSymbol(expression, foundFieldMember);
+    }
+
+    private ExpressionSymbol BindInstanceInitializationExpression(InstanceInitializationExpression iie, ScopeSymbol context)
+    {
+        if (!context.GetSymbol(iie.TypeName.Identifier.String, out var symbol))
+        {
+            Diagnostics.Report("Unkown type", iie.TypeName);
+            symbol = DefaultSymbols.Types.Unkown;
+        }
+
+
+        if (symbol is not TypeSymbol typesymbol)
+        {
+            Diagnostics.Report("symbol is not a type", iie.TypeName);
+            typesymbol = DefaultSymbols.Types.Unkown;
+        }
+
+        Dictionary<FieldSymbol, ExpressionSymbol?> fieldInitializers = typesymbol.GetSymbols().OfType<FieldSymbol>().ToDictionary(e => e, e => null as ExpressionSymbol);
+
+        foreach (var initializer in iie.Initializers)
+        {
+            if (!fieldInitializers.Keys.Any(e => e.Name == initializer.Identifier.String))
+            {
+                Diagnostics.Report("unkwon field", initializer.Identifier);
+                continue;
+            }
+
+            var expression = BindExpression(initializer.Expression, context);
+
+            if (expression.Type != fieldInitializers.Keys.First(e => e.Name == initializer.Identifier.String).Type)
+            {
+                Diagnostics.Report("field have mismatched types", initializer.Expression);
+                continue;
+            }
+
+            var fieldKey = fieldInitializers.Keys.First(e => e.Name == initializer.Identifier.String);
+            fieldInitializers[fieldKey] = expression;
+        }
+
+        if (fieldInitializers.Any(e => e.Value == null))
+        {
+            var field = fieldInitializers.Where(e => e.Value == null).First();
+            Diagnostics.Report("uninitialized field", iie.TypeName);
+        }
+
+        return new InstanceInitializeSymbol(typesymbol, fieldInitializers);
     }
 
     private ExpressionSymbol BindTypeEspression(TypeExpressionSyntax tes, ScopeSymbol context)

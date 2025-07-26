@@ -3,6 +3,7 @@
 
 
 
+
 namespace LapisLang.Core;
 
 
@@ -95,6 +96,11 @@ public class TypeSymbol : ExpressionSymbol, IScopeSymbol
     public bool GetSymbol(object? key, out Symbol? symbol)
     {
         return _scope.GetSymbol(key, out symbol);
+    }
+
+    public IEnumerable<Symbol> GetSymbols()
+    {
+        return _scope.GetSymbols();
     }
 
     public void SetSymbol(object? key, Symbol value)

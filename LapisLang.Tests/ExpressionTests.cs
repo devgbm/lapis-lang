@@ -122,11 +122,11 @@ public class ExpressionTests
 
         result = LapisInterpreter.Evaluate("var Point: @type = type { x: @decimal; y: @decimal; };", scope);
         result = LapisInterpreter.Evaluate("var Line: @type = type { a: Point; b: Point; };", scope);
-        // result = LapisInterpreter.Evaluate("var pointA: @Point = @Point { x: 1.0; y: 2.0; };", context);
-        // result = LapisInterpreter.Evaluate("var pointB: @Point = @Point { x: 3.0; y: 4.0; };", context);
-        // result = LapisInterpreter.Evaluate("var line: @Line = @Line { a: pointA; b: pointB; };", context);
-        // result = LapisInterpreter.Evaluate("line.a.x + line.a.y + line.b.x + line.b.y", context);
-        // Assert.Equivalent(10.0, result.value);
+        result = LapisInterpreter.Evaluate("var pointA: Point = Point { x: 1.0; y: 2.0; };", scope);
+        result = LapisInterpreter.Evaluate("var pointB: Point = Point { x: 3.0; y: 4.0; };", scope);
+        result = LapisInterpreter.Evaluate("var line: Line = Line { a: pointA; b: pointB; };", scope);
+        result = LapisInterpreter.Evaluate("line.a.x + line.a.y + line.b.x + line.b.y", scope);
+        Assert.Equivalent(10.0, result.value);
     }
 
 

@@ -50,8 +50,26 @@ public class EvaluatorNew
             case BinaryExpressionSymbol bss: return EvaluateBinarySymbol(bss, scope);
             case UnaryExpressionSymbol ues: return EvaluateUnarySymbol(ues, scope);
             case NameExpressionSymbol nes: return EvaluateNameSymbol(nes, scope);
+            case MemberExpressionSymbol mes: return EvaluateMemberExpression(mes, scope);
+            case InstanceInitializeSymbol iis: return EvaluateInstaceInitializeSymbol(iis, scope);
         }
         return null;
+    }
+
+    private object? EvaluateMemberExpression(MemberExpressionSymbol mes, ScopeSymbol scope)
+    {
+        var value = EvaluateExpressionSymbol(mes.Expression, scope);
+        if (value is not Dictionary<string, object?> instance)
+        {
+            throw new Exception("value should be a instance");
+        }
+
+        return instance.GetValueOrDefault(mes.FieldSymbol.Name);
+    }
+
+    private object? EvaluateInstaceInitializeSymbol(InstanceInitializeSymbol iis, ScopeSymbol scope)
+    {
+        return iis.Initializers.ToDictionary(e => e.Key.Name, e => EvaluateExpressionSymbol(e.Value, scope));
     }
 
     private object? EvaluateNameSymbol(NameExpressionSymbol nes, ScopeSymbol scope)
