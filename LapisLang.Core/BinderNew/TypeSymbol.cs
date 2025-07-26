@@ -35,8 +35,20 @@ public class BinaryOperatorSymbol : Symbol
     public static BinaryOperatorSymbol Unknown = new BinaryOperatorSymbol(BinaryOperatorKind.Unknown ,DefaultSymbols.Types.Unkown, DefaultSymbols.Types.Unkown);
 
 }
+public class FieldSymbol : Symbol
+{
+    public FieldSymbol(TypeSymbol owner, string name, TypeSymbol type)
+    {
+        Owner = owner;
+        Name = name;
+        Type = type;
+    }
 
-public class TypeSymbol : ScopeSymbol
+    public TypeSymbol Owner { get; }
+    public string Name { get; }
+    public TypeSymbol Type { get; }
+}
+public class TypeSymbol : ExpressionSymbol, IScopeSymbol
 {
     private static Dictionary<TokenKind, string> _uops = new()
     {
@@ -67,11 +79,28 @@ public class TypeSymbol : ScopeSymbol
         [TokenKind.OrKeyword] = "@bop_or",
     };
 
-    public TypeSymbol(string typeName)
+    private ScopeSymbol _scope = new ScopeSymbol();
+
+    public TypeSymbol(string typeName) : base(DefaultSymbols.Types.Type)
     {
         TypeName = typeName;
     }
-    public string TypeName { get; }
+    public string TypeName { get; set; }
+
+    public bool DefineSymbol(object? key, Symbol value)
+    {
+        return _scope.DefineSymbol(key, value);
+    }
+
+    public bool GetSymbol(object? key, out Symbol? symbol)
+    {
+        return _scope.GetSymbol(key, out symbol);
+    }
+
+    public void SetSymbol(object? key, Symbol value)
+    {
+        _scope.SetSymbol(key, value);
+    }
 
     internal BinaryOperatorSymbol GetBinaryOperatorFor(TokenKind kind)
     {

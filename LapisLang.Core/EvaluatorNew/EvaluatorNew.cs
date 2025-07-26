@@ -36,6 +36,7 @@ public class EvaluatorNew
 
     private void EvaluateVariableDeclaration(VariableDeclarationSymbol vds, ScopeSymbol scope)
     {
+        if (vds.Symbol is TypeSymbol typeSymbol) return;
         var value = EvaluateExpressionSymbol(vds.Symbol, scope);
         var valueSymbol = new ValueSymbol(value, vds.Symbol.Type);
         scope.SetSymbol(vds.Name, valueSymbol);

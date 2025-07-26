@@ -4,7 +4,17 @@
 
 namespace LapisLang.Core;
 
-public class ScopeSymbol : Symbol
+
+public interface IScopeSymbol
+{
+    bool DefineSymbol(object? key, Symbol value);
+
+    bool GetSymbol(object? key, out Symbol? symbol);
+
+    void SetSymbol(object? key, Symbol value);
+}
+
+public class ScopeSymbol : Symbol, IScopeSymbol
 {
     private Dictionary<object?, Symbol> _scope = new();
 

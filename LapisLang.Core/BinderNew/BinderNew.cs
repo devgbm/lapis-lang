@@ -46,9 +46,21 @@ public class BinderNew
         }
 
         var name = vds.Identifier.String;
+        if (expression is TypeSymbol typeSymbol && typeSymbol.TypeName == "<anonimous-type>")
+        {
+            typeSymbol.TypeName = vds.Identifier.String;
+        }
         context.DefineSymbol(name, expression);
 
+
         return new VariableDeclarationSymbol(name, expression, ts);
+    }
+
+    private TypeSymbol PromoteToType(TypeSymbol typeSymbol, string name)
+    {
+        // [TODO] clone value
+        typeSymbol.TypeName = name;
+        return typeSymbol;
     }
 
 
@@ -61,8 +73,33 @@ public class BinderNew
             case UnaryExpressionSyntax ues: return BindUnaryExpression(ues, context);
             case ParenthesizedExpression pe: return BindExpression(pe.Expression, context);
             case NameExpressionSyntax ne: return BindNameExpression(ne, context);
+            case TypeExpressionSyntax tes: return BindTypeEspression(tes, context);
             default: return ExpressionSymbol.Unknown;
         }
+    }
+
+    private ExpressionSymbol BindTypeEspression(TypeExpressionSyntax tes, ScopeSymbol context)
+    {
+        var type = new TypeSymbol("<anonimous-type>");
+
+        foreach (var field in tes.Fields)
+        {
+            if (!context.GetSymbol(field.TypeName.Identifier.String, out var fieldType))
+            {
+                Diagnostics.Report("unkow type of field", field.TypeName);
+                fieldType = DefaultSymbols.Types.Unkown;
+            }
+
+            if (fieldType is not TypeSymbol typeSymbol)
+            {
+                Diagnostics.Report("Symbol is not a type", field.TypeName);
+                typeSymbol = DefaultSymbols.Types.Unkown;
+            }
+
+            type.DefineSymbol(field.Identifier.String, new FieldSymbol(type, field.Identifier.String, typeSymbol));
+        }
+
+        return type;
     }
 
     private ExpressionSymbol BindNameExpression(NameExpressionSyntax ne, ScopeSymbol context)
@@ -76,7 +113,6 @@ public class BinderNew
         var type = symbol switch
         {
             ExpressionSymbol es => es.Type,
-            TypeSymbol => DefaultSymbols.Types.Type,
             ScopeSymbol => DefaultSymbols.Types.Scope,
             _ => DefaultSymbols.Types.Unkown
         };

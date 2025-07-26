@@ -117,11 +117,11 @@ public class ExpressionTests
     [Fact]
     public void DeclareAndInstantiateTypes()
     {
-        // var context = new EvaluationContext(LangDefaults.RootNamespace());
-        // EvaluationResult result;
+        var scope = DefaultSymbols.CreateDefaultScope();
+        EvaluationResult result;
 
-        // result = LapisInterpreter.Evaluate("var Point: @type = type { x: @decimal; y: @decimal; };", context);
-        // result = LapisInterpreter.Evaluate("var Line: @type = type { a: Point; b: Point; };", context);
+        result = LapisInterpreter.Evaluate("var Point: @type = type { x: @decimal; y: @decimal; };", scope);
+        result = LapisInterpreter.Evaluate("var Line: @type = type { a: Point; b: Point; };", scope);
         // result = LapisInterpreter.Evaluate("var pointA: @Point = @Point { x: 1.0; y: 2.0; };", context);
         // result = LapisInterpreter.Evaluate("var pointB: @Point = @Point { x: 3.0; y: 4.0; };", context);
         // result = LapisInterpreter.Evaluate("var line: @Line = @Line { a: pointA; b: pointB; };", context);
