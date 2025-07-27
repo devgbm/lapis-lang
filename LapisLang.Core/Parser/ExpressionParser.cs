@@ -6,6 +6,8 @@
 
 
 
+using System.Collections.Immutable;
+
 namespace LapisLang.Core;
 
 public class LapisParser : ParserBase
@@ -214,7 +216,24 @@ public class LapisParser : ParserBase
     private TypeExpressionSyntax ParseTypeExpression()
     {
         var keyword = Match(TokenKind.TypeKeyword);
+
+        var arguments = ImmutableArray.Create<TypeArgumentSyntax>();
+
+        if (Current.Kind == TokenKind.LeftArrow)
+        {
+            NextToken();
+            arguments = MatchUntil(TokenKind.RightArrow, () =>
+            {
+                var field = ParseTypeArgument();
+                if(Current.Kind != TokenKind.RightArrow) Match(TokenKind.Comma);
+                return field;
+            });
+            Match(TokenKind.RightArrow);
+        }
+
         var open = Match(TokenKind.OpenCurlyBrace);
+
+
         var fields = MatchUntil(TokenKind.CloseCurlyBrace, () =>
         {
             var field = ParseTypeField();
@@ -222,7 +241,15 @@ public class LapisParser : ParserBase
             return field;
         });
         var close = Match(TokenKind.CloseCurlyBrace);
-        return new TypeExpressionSyntax(SourceSpan.Between(keyword, close), fields);
+
+        return new TypeExpressionSyntax(SourceSpan.Between(keyword, close), fields, arguments);
+    }
+
+    public TypeArgumentSyntax ParseTypeArgument()
+    {
+        var typeName = ParseTypename();
+        var identifier = Match(TokenKind.Identifier);
+        return new TypeArgumentSyntax(typeName, identifier, SourceSpan.Between(typeName, identifier));
     }
 
     public FieldDeclarationSyntax ParseTypeField()
@@ -236,7 +263,19 @@ public class LapisParser : ParserBase
     public TypeNameSyntax ParseTypename()
     {
         var identifier = Match(TokenKind.Identifier);
-        return new TypeNameSyntax(identifier, identifier);
+        var arguments = ImmutableArray.Create<TypeNameSyntax>();
+
+        if (Current.Kind == TokenKind.LeftArrow)
+        {
+            arguments = MatchUntil(TokenKind.RightArrow, () =>
+            {
+                var argumentName = ParseTypename();
+                if (Current.Kind != TokenKind.RightArrow) Match(TokenKind.Comma);
+                return argumentName;
+            });
+        }
+
+        return new TypeNameSyntax(identifier, identifier, arguments);
     }
 
     private ExpressionSyntax ParseParenthesizedExpression()

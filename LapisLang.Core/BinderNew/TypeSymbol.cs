@@ -4,6 +4,9 @@
 
 
 
+using System.Collections.Immutable;
+using System.Reflection.Metadata;
+
 namespace LapisLang.Core;
 
 
@@ -33,12 +36,35 @@ public class BinaryOperatorSymbol : Symbol
     public TypeSymbol With { get; set; }
     public TypeSymbol Result { get; set; }
 
-    public static BinaryOperatorSymbol Unknown = new BinaryOperatorSymbol(BinaryOperatorKind.Unknown ,DefaultSymbols.Types.Unkown, DefaultSymbols.Types.Unkown);
+    public static BinaryOperatorSymbol Unknown = new BinaryOperatorSymbol(BinaryOperatorKind.Unknown, DefaultSymbols.Types.Unkown, DefaultSymbols.Types.Unkown);
 
+}
+
+public abstract class FieldSymbolValue;
+
+public class FieldSymbolArgument : FieldSymbolValue
+{
+    public FieldSymbolArgument(TypeSymbolArgument typeSymbolArgument, int index)
+    {
+        TypeSymbolArgument = typeSymbolArgument;
+        Index = index;
+    }
+
+    public TypeSymbolArgument TypeSymbolArgument { get; }
+    public int Index { get; }
+}
+public class FieldSymbolType : FieldSymbolValue
+{
+    public FieldSymbolType(TypeSymbol typeSymbol)
+    {
+        TypeSymbol = typeSymbol;
+    }
+
+    public TypeSymbol TypeSymbol { get; }
 }
 public class FieldSymbol : Symbol
 {
-    public FieldSymbol(TypeSymbol owner, string name, TypeSymbol type)
+    public FieldSymbol(TypeSymbol owner, string name, FieldSymbolValue type)
     {
         Owner = owner;
         Name = name;
@@ -47,7 +73,19 @@ public class FieldSymbol : Symbol
 
     public TypeSymbol Owner { get; }
     public string Name { get; }
+    public FieldSymbolValue Type { get; }
+}
+
+public class TypeSymbolArgument
+{
+    public TypeSymbolArgument(TypeSymbol type, string name)
+    {
+        Type = type;
+        Name = name;
+    }
+
     public TypeSymbol Type { get; }
+    public string Name { get; }
 }
 public class TypeSymbol : ExpressionSymbol, IScopeSymbol
 {
@@ -82,11 +120,17 @@ public class TypeSymbol : ExpressionSymbol, IScopeSymbol
 
     private ScopeSymbol _scope = new ScopeSymbol();
 
-    public TypeSymbol(string typeName) : base(DefaultSymbols.Types.Type)
+    public TypeSymbol(string typeName) : this(typeName, [])
+    {
+    }
+    public TypeSymbol(string typeName, ImmutableArray<TypeSymbolArgument> arguments) : base(DefaultSymbols.Types.Type)
     {
         TypeName = typeName;
+        Arguments = arguments;
     }
     public string TypeName { get; set; }
+
+    public ImmutableArray<TypeSymbolArgument> Arguments { get; }
 
     public bool DefineSymbol(object? key, Symbol value)
     {

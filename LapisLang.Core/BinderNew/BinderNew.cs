@@ -2,6 +2,8 @@
 
 
 
+using System.Collections.Immutable;
+
 namespace LapisLang.Core;
 
 public class BinderNew
@@ -94,26 +96,34 @@ public class BinderNew
         return new MemberExpressionSymbol(expression, foundFieldMember);
     }
 
+    private TypeSymbol BindTypeName(TypeNameSyntax typeName, ScopeSymbol context)
+    {
+        if (!context.GetSymbol(typeName.Identifier.String, out var found))
+        {
+            Diagnostics.Report("Unkow type simbol", typeName);
+            found = DefaultSymbols.Types.Unkown;
+        }
+
+        if (found is not TypeSymbol typeSymbol)
+        {
+            Diagnostics.Report("symbol is not a type", typeName);
+            typeSymbol = DefaultSymbols.Types.Unkown;
+        }
+
+        foreach (var argument in typeName.TypeArguments) BindTypeName(argument, context);
+
+        return typeSymbol;
+    }
     private ExpressionSymbol BindInstanceInitializationExpression(InstanceInitializationExpression iie, ScopeSymbol context)
     {
-        if (!context.GetSymbol(iie.TypeName.Identifier.String, out var symbol))
-        {
-            Diagnostics.Report("Unkown type", iie.TypeName);
-            symbol = DefaultSymbols.Types.Unkown;
-        }
-
-
-        if (symbol is not TypeSymbol typesymbol)
-        {
-            Diagnostics.Report("symbol is not a type", iie.TypeName);
-            typesymbol = DefaultSymbols.Types.Unkown;
-        }
+        var typesymbol = BindTypeName(iie.TypeName, context);
 
         Dictionary<FieldSymbol, ExpressionSymbol?> fieldInitializers = typesymbol.GetSymbols().OfType<FieldSymbol>().ToDictionary(e => e, e => null as ExpressionSymbol);
 
         foreach (var initializer in iie.Initializers)
         {
-            if (!fieldInitializers.Keys.Any(e => e.Name == initializer.Identifier.String))
+            var foundInitializer = fieldInitializers.Keys.FirstOrDefault(e => e.Name == initializer.Identifier.String);
+            if (foundInitializer is null)
             {
                 Diagnostics.Report("unkwon field", initializer.Identifier);
                 continue;
@@ -121,11 +131,29 @@ public class BinderNew
 
             var expression = BindExpression(initializer.Expression, context);
 
-            if (expression.Type != fieldInitializers.Keys.First(e => e.Name == initializer.Identifier.String).Type)
+            if (foundInitializer.Type is FieldSymbolType fst)
             {
-                Diagnostics.Report("field have mismatched types", initializer.Expression);
+                if (fst.TypeSymbol != expression.Type)
+                {
+                    Diagnostics.Report("field have mismatched types", initializer.Expression);
+                    continue;
+                }
+            }
+            else if (foundInitializer.Type is FieldSymbolArgument fsa)
+            {
+                var type = typesymbol.Arguments[fsa.Index].Type;
+                if (type != expression.Type)
+                {
+                    Diagnostics.Report("field have mismatched types", initializer.Expression);
+                    continue;
+                }
+            }
+            else
+            {
+                Diagnostics.Report("unkown field type", initializer);
                 continue;
             }
+
 
             var fieldKey = fieldInitializers.Keys.First(e => e.Name == initializer.Identifier.String);
             fieldInitializers[fieldKey] = expression;
@@ -142,10 +170,29 @@ public class BinderNew
 
     private ExpressionSymbol BindTypeEspression(TypeExpressionSyntax tes, ScopeSymbol context)
     {
-        var type = new TypeSymbol("<anonimous-type>");
+        var argumentsBuilder = ImmutableArray.CreateBuilder<TypeSymbolArgument>();
+
+        foreach (var argument in tes.Arguments)
+        {
+            var typeSymbol = BindTypeName(argument.TypeName, context);
+            argumentsBuilder.Add(new TypeSymbolArgument(typeSymbol, argument.Identifier.String));
+        }
+
+        var arguments = argumentsBuilder.ToImmutableArray();
+        var type = new TypeSymbol("<anonimous-type>", arguments);
 
         foreach (var field in tes.Fields)
         {
+            if (arguments.Length > 0)
+            {
+                var foundArgument = arguments.FirstOrDefault(e => e.Name == field.TypeName.Identifier.String);
+                if (foundArgument is not null)
+                {
+                    var fieldTypeReference = new FieldSymbolArgument(foundArgument, arguments.IndexOf(foundArgument));
+                    type.DefineSymbol(field.Identifier.String, new FieldSymbol(type, field.Identifier.String, fieldTypeReference));
+                    continue;
+                }
+            }
             if (!context.GetSymbol(field.TypeName.Identifier.String, out var fieldType))
             {
                 Diagnostics.Report("unkow type of field", field.TypeName);
@@ -158,7 +205,8 @@ public class BinderNew
                 typeSymbol = DefaultSymbols.Types.Unkown;
             }
 
-            type.DefineSymbol(field.Identifier.String, new FieldSymbol(type, field.Identifier.String, typeSymbol));
+            var fieldSymbolValue = new FieldSymbolType(typeSymbol);
+            type.DefineSymbol(field.Identifier.String, new FieldSymbol(type, field.Identifier.String, fieldSymbolValue));
         }
 
         return type;

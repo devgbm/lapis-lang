@@ -129,6 +129,15 @@ public class ExpressionTests
         Assert.Equivalent(10.0, result.value);
     }
 
+    [Fact]
+    public void DeclareAndInstantiateGenericTypes()
+    {
+        var scope = DefaultSymbols.CreateDefaultScope();
+        EvaluationResult result;
+
+        result = LapisInterpreter.Evaluate("var Optional: @type  = type <@type t> { value: x, hasValue: @boolean }", scope);
+    }
+
 
     [Fact]
     public void DeclareAndRunFunctions()
