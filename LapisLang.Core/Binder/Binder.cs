@@ -35,17 +35,6 @@ public class Binder
     private StatementSymbol BindVariableDeclaration(VariableDeclarationSyntax vds, ScopeSymbol context)
     {
         var expression = BindExpression(vds.Expression, context);
-        if (!context.GetSymbol(vds.TypeName.Identifier.String, out var type))
-        {
-            Diagnostics.Report("type could not be found", vds.TypeName);
-            type = DefaultSymbols.Types.Unkown;
-        }
-
-        if (type is not TypeSymbol ts)
-        {
-            Diagnostics.Report("symbol is not a type", vds.TypeName);
-            ts = DefaultSymbols.Types.Unkown;
-        }
 
         var name = vds.Identifier.String;
         if (expression is TypeSymbol typeSymbol && typeSymbol.TypeName == "<anonimous-type>")
@@ -55,7 +44,7 @@ public class Binder
         context.DefineSymbol(name, expression);
 
 
-        return new VariableDeclarationSymbol(name, expression, ts);
+        return new VariableDeclarationSymbol(name, expression, expression.Type);
     }
 
     private TypeSymbol PromoteToType(TypeSymbol typeSymbol, string name)

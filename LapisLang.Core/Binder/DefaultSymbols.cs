@@ -80,13 +80,13 @@ public class DefaultSymbols
     {
         var root = new ScopeSymbol();
 
-        root.DefineSymbol("@integer", DefaultSymbols.Types.Integer);
-        root.DefineSymbol("@boolean", DefaultSymbols.Types.Boolean);
-        root.DefineSymbol("@decimal", DefaultSymbols.Types.Decimal);
-        root.DefineSymbol("@string", DefaultSymbols.Types.String);
-        root.DefineSymbol("@type", DefaultSymbols.Types.Type);
-        root.DefineSymbol("@scope", DefaultSymbols.Types.Scope);
-        root.DefineSymbol("@unkown", DefaultSymbols.Types.Unkown);
+        root.DefineSymbol("integer", DefaultSymbols.Types.Integer);
+        root.DefineSymbol("boolean", DefaultSymbols.Types.Boolean);
+        root.DefineSymbol("decimal", DefaultSymbols.Types.Decimal);
+        root.DefineSymbol("string", DefaultSymbols.Types.String);
+        root.DefineSymbol("type", DefaultSymbols.Types.Type);
+        root.DefineSymbol("scope", DefaultSymbols.Types.Scope);
+        root.DefineSymbol("unkown", DefaultSymbols.Types.Unkown);
         root.DefineSymbol("@", root);
 
         return root;

@@ -82,10 +82,10 @@ public class ExpressionTests
     }
 
     [Theory]
-    [InlineData("@integer", typeof(TypeSymbol))]
-    [InlineData("@string", typeof(TypeSymbol))]
-    [InlineData("@boolean", typeof(TypeSymbol))]
-    [InlineData("@decimal", typeof(TypeSymbol))]
+    [InlineData("integer", typeof(TypeSymbol))]
+    [InlineData("string", typeof(TypeSymbol))]
+    [InlineData("boolean", typeof(TypeSymbol))]
+    [InlineData("decimal", typeof(TypeSymbol))]
     [InlineData("@", typeof(ScopeSymbol))]
     public void NameExpressions(string expression, Type runeType)
     {
@@ -94,15 +94,15 @@ public class ExpressionTests
     }
 
     [Theory]
-    [InlineData("var a: @integer = 1;", "a", 1)]
-    [InlineData("var a: @integer = 0;", "a", 0)]
-    [InlineData("var a: @integer = -1;", "a", -1)]
-    [InlineData("var a: @decimal = 1.0;", "a", 1.0)]
-    [InlineData("var a: @decimal = 0.0;", "a", 0.0)]
-    [InlineData("var a: @decimal = -1.0;", "a", -1.0)]
-    [InlineData("var a: @boolean = true;", "a", true)]
-    [InlineData("var a: @boolean = false;", "a", false)]
-    [InlineData("var a: @string = 'gabriel';", "a", "gabriel")]
+    [InlineData("def a = 1;", "a", 1)]
+    [InlineData("def a = 0;", "a", 0)]
+    [InlineData("def a = -1;", "a", -1)]
+    [InlineData("def a = 1.0;", "a", 1.0)]
+    [InlineData("def a = 0.0;", "a", 0.0)]
+    [InlineData("def a = -1.0;", "a", -1.0)]
+    [InlineData("def a = true;", "a", true)]
+    [InlineData("def a = false;", "a", false)]
+    [InlineData("def a = 'gabriel';", "a", "gabriel")]
     public void VariableDeclaration(string declaration, string evaluation, object? expected)
     {
         var scope = DefaultSymbols.CreateDefaultScope();
@@ -120,24 +120,14 @@ public class ExpressionTests
         var scope = DefaultSymbols.CreateDefaultScope();
         EvaluationResult result;
 
-        result = LapisInterpreter.Evaluate("var Point: @type = type { x: @decimal; y: @decimal; };", scope);
-        result = LapisInterpreter.Evaluate("var Line: @type = type { a: Point; b: Point; };", scope);
-        result = LapisInterpreter.Evaluate("var pointA: Point = Point { x: 1.0; y: 2.0; };", scope);
-        result = LapisInterpreter.Evaluate("var pointB: Point = Point { x: 3.0; y: 4.0; };", scope);
-        result = LapisInterpreter.Evaluate("var line: Line = Line { a: pointA; b: pointB; };", scope);
+        result = LapisInterpreter.Evaluate("def Point = type { x: decimal; y: decimal; };", scope);
+        result = LapisInterpreter.Evaluate("def Line = type { a: Point; b: Point; };", scope);
+        result = LapisInterpreter.Evaluate("def pointA = Point { x: 1.0; y: 2.0; };", scope);
+        result = LapisInterpreter.Evaluate("def pointB = Point { x: 3.0; y: 4.0; };", scope);
+        result = LapisInterpreter.Evaluate("def line = Line { a: pointA; b: pointB; };", scope);
         result = LapisInterpreter.Evaluate("line.a.x + line.a.y + line.b.x + line.b.y", scope);
         Assert.Equivalent(10.0, result.value);
     }
-
-    [Fact]
-    public void DeclareAndInstantiateGenericTypes()
-    {
-        var scope = DefaultSymbols.CreateDefaultScope();
-        EvaluationResult result;
-
-        result = LapisInterpreter.Evaluate("var Optional: @type  = type <@type t> { value: x, hasValue: @boolean }", scope);
-    }
-
 
     [Fact]
     public void DeclareAndRunFunctions()

@@ -67,4 +67,5 @@ public enum TokenKind {
     OrKeyword,
     NotKeyword,
     Percent,
+    DefineKeyword,
 }

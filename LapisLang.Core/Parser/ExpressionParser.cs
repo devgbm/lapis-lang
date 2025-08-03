@@ -20,7 +20,7 @@ public class LapisParser : ParserBase
     {
         switch (Current.Kind)
         {
-            case TokenKind.VarKeyword:
+            case TokenKind.DefineKeyword:
             case TokenKind.OpenCurlyBrace:
             case TokenKind.ReturnKeyword:
                 return ParseStatement();
@@ -348,7 +348,7 @@ public class LapisParser : ParserBase
     {
         switch (Current.Kind)
         {
-            case TokenKind.VarKeyword: return ParseVariableDeclaration();
+            case TokenKind.DefineKeyword: return ParseVariableDeclaration();
             case TokenKind.OpenCurlyBrace: return ParseScopeStatement();
             case TokenKind.ReturnKeyword: return ParseReturnStatement();
             default:
@@ -379,15 +379,13 @@ public class LapisParser : ParserBase
 
     private StatementSyntax ParseVariableDeclaration()
     {
-        var keyword = Match(TokenKind.VarKeyword);
+        var keyword = Match(TokenKind.DefineKeyword);
         var identifier = Match(TokenKind.Identifier);
-        Match(TokenKind.Collon);
-        var typeName = ParseTypename();
         Match(TokenKind.Equal);
         var expression = ParseExpression();
         var semi = Match(TokenKind.SemiCollon);
         SourceSpan sourceSpan = SourceSpan.Between(keyword, semi);
-        return new VariableDeclarationSyntax(sourceSpan, identifier, typeName, expression);
+        return new VariableDeclarationSyntax(sourceSpan, identifier, expression);
     }
     #endregion
 }

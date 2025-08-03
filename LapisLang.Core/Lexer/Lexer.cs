@@ -215,7 +215,7 @@ public class Lexer
             "and" => TokenKind.AndKeyword,
             "or" => TokenKind.OrKeyword,
             "not" => TokenKind.NotKeyword,
-            "var" => TokenKind.VarKeyword,
+            "def" => TokenKind.DefineKeyword,
             "type" => TokenKind.TypeKeyword,
             "func" => TokenKind.FuncKeyword,
             "return" => TokenKind.ReturnKeyword,
