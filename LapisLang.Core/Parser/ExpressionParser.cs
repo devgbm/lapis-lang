@@ -219,18 +219,6 @@ public class LapisParser : ParserBase
 
         var arguments = ImmutableArray.Create<TypeArgumentSyntax>();
 
-        if (Current.Kind == TokenKind.LeftArrow)
-        {
-            NextToken();
-            arguments = MatchUntil(TokenKind.RightArrow, () =>
-            {
-                var field = ParseTypeArgument();
-                if(Current.Kind != TokenKind.RightArrow) Match(TokenKind.Comma);
-                return field;
-            });
-            Match(TokenKind.RightArrow);
-        }
-
         var open = Match(TokenKind.OpenCurlyBrace);
 
 
@@ -256,26 +244,14 @@ public class LapisParser : ParserBase
     {
         var identifier = Match(TokenKind.Identifier);
         Match(TokenKind.Collon);
-        var typename = ParseTypename();
-        return new FieldDeclarationSyntax(SourceSpan.Between(identifier, typename), identifier, typename);
+        var expression = ParseExpression();
+        return new FieldDeclarationSyntax(SourceSpan.Between(identifier, expression), identifier, expression);
     }
 
     public TypeNameSyntax ParseTypename()
     {
         var identifier = Match(TokenKind.Identifier);
-        var arguments = ImmutableArray.Create<TypeNameSyntax>();
-
-        if (Current.Kind == TokenKind.LeftArrow)
-        {
-            arguments = MatchUntil(TokenKind.RightArrow, () =>
-            {
-                var argumentName = ParseTypename();
-                if (Current.Kind != TokenKind.RightArrow) Match(TokenKind.Comma);
-                return argumentName;
-            });
-        }
-
-        return new TypeNameSyntax(identifier, identifier, arguments);
+        return new TypeNameSyntax(identifier, identifier);
     }
 
     private ExpressionSyntax ParseParenthesizedExpression()

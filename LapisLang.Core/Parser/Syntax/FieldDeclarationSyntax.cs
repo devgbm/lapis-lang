@@ -5,16 +5,16 @@ public class FieldDeclarationSyntax : Syntax
     public FieldDeclarationSyntax(
         SourceSpan sourceSpan,
         Token identifier,
-        TypeNameSyntax typeName
+        ExpressionSyntax typeName
 
     )
     {
         SourceSpan = sourceSpan;
         Identifier = identifier;
-        TypeName = typeName;
+        Expression = typeName;
     }
 
     public override SourceSpan SourceSpan { get; }
     public Token Identifier { get; }
-    public TypeNameSyntax TypeName { get; }
+    public ExpressionSyntax Expression { get; }
 }

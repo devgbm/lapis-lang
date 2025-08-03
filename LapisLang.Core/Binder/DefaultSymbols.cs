@@ -5,15 +5,15 @@ public class DefaultSymbols
 {
     public static class Types
     {
-        public static TypeSymbol Boolean = CreateBool();
-        public static TypeSymbol Integer = CreateInteger();
-        public static TypeSymbol Decimal = CreateDecimal();
-        public static TypeSymbol String = new TypeSymbol("string");
         public static TypeSymbol Type = new TypeSymbol("type");
         public static TypeSymbol Scope = new TypeSymbol("scope");
         public static TypeSymbol Unkown = new TypeSymbol("unkown");
         public static TypeSymbol Void = new TypeSymbol("void");
         public static TypeSymbol Function = new TypeSymbol("function");
+        public static TypeSymbol Boolean = CreateBool();
+        public static TypeSymbol Integer = CreateInteger();
+        public static TypeSymbol Decimal = CreateDecimal();
+        public static TypeSymbol String = new TypeSymbol("string");
 
         private static TypeSymbol CreateDecimal()
         {

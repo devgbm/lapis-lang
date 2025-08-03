@@ -128,6 +128,7 @@ public class ExpressionTests
         result = LapisInterpreter.Evaluate("line.a.x + line.a.y + line.b.x + line.b.y", scope);
         Assert.Equivalent(10.0, result.value);
     }
+    
     [Fact]
     public void DeclareAndRunFunctions()
     {

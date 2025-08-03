@@ -43,7 +43,7 @@ public class MemberExpressionSymbol : ExpressionSymbol
 {
     public MemberExpressionSymbol(
         ExpressionSymbol expression,
-        FieldSymbol fieldSymbol) : base(fieldSymbol.Type is FieldSymbolType fst ? fst.TypeSymbol : (fieldSymbol.Type as FieldSymbolArgument).TypeSymbolArgument.Type)
+        FieldSymbol fieldSymbol) : base(fieldSymbol.Expression is TypeSymbol ts? ts : fieldSymbol.Expression.Type)
     {
         Expression = expression;
         FieldSymbol = fieldSymbol;
