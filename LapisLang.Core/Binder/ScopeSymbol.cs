@@ -19,6 +19,8 @@ public interface IScopeSymbol
 public class ScopeSymbol : Symbol, IScopeSymbol
 {
     private Dictionary<object?, Symbol> _scope = new();
+    private ScopeSymbol? _parent;
+    public TypeSymbol? ExpectedReturn { get; set; }
 
     public IEnumerable<Symbol> GetSymbols() => _scope.Values;
 
@@ -33,8 +35,15 @@ public class ScopeSymbol : Symbol, IScopeSymbol
     {
         if (!_scope.ContainsKey(key))
         {
-            symbol = null;
-            return false;
+            if (_parent is not null)
+            {
+                return _parent.GetSymbol(key, out symbol);
+            }
+            else
+            {
+                symbol = null;
+                return false;
+            }
         }
         symbol = _scope[key];
         return true;
@@ -43,5 +52,13 @@ public class ScopeSymbol : Symbol, IScopeSymbol
     public void SetSymbol(object? key, Symbol value)
     {
         _scope[key] = value;
+    }
+
+
+    public ScopeSymbol Derive()
+    {
+        var derived = new ScopeSymbol();
+        derived._parent = this;
+        return derived;
     }
 }

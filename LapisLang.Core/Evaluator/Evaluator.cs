@@ -22,19 +22,37 @@ public class Evaluator
         return new EvaluationResult(value, _diagnostics);
     }
 
-    private void EvaluateStatementSymbol(StatementSymbol ss, ScopeSymbol scope)
+    private object? EvaluateStatementSymbol(StatementSymbol ss, ScopeSymbol scope)
     {
         switch (ss)
         {
             case VariableDeclarationSymbol vds:
                 EvaluateVariableDeclaration(vds, scope);
                 break;
+            case ScopeStatementSymbol sss:
+                return EvaluateScopeStatement(sss, scope);
+
+            case ReturnStatementSymbol rss:
+                return EvaluateExpressionSymbol(rss.Expression, scope);
         }
+
+        return null;
+    }
+
+    private object? EvaluateScopeStatement(ScopeStatementSymbol sss, ScopeSymbol scope)
+    {
+        foreach (var statement in sss.Statements)
+        {
+            var returnValue = EvaluateStatementSymbol(statement, scope);
+            if (statement is ReturnStatementSymbol) return returnValue;
+        }
+        return null;
     }
 
     private void EvaluateVariableDeclaration(VariableDeclarationSymbol vds, ScopeSymbol scope)
     {
         if (vds.Symbol is TypeSymbol typeSymbol) return;
+        if (vds.Symbol is FuncSymbol) return;
         var value = EvaluateExpressionSymbol(vds.Symbol, scope);
         var valueSymbol = new ValueSymbol(value, vds.Symbol.Type);
         scope.SetSymbol(vds.Name, valueSymbol);
@@ -50,8 +68,21 @@ public class Evaluator
             case NameExpressionSymbol nes: return EvaluateNameSymbol(nes, scope);
             case MemberExpressionSymbol mes: return EvaluateMemberExpression(mes, scope);
             case InstanceInitializeSymbol iis: return EvaluateInstaceInitializeSymbol(iis, scope);
+            case CallSymbol cs: return EvaluateCallSymbol(cs, scope);
         }
         return null;
+    }
+
+    private object? EvaluateCallSymbol(CallSymbol cs, ScopeSymbol scope)
+    {
+        var derived = scope.Derive();
+        foreach (var arg in cs.Arguments)
+        {
+            var argumentValue = EvaluateExpressionSymbol(arg.Expression, derived);
+            derived.DefineSymbol(arg.Name, argumentValue is  Symbol argSymbol ? argSymbol : new ValueSymbol(argumentValue, arg.Expression.Type));
+        }
+
+        return EvaluateStatementSymbol(cs.Function.Statement, derived);
     }
 
     private object? EvaluateMemberExpression(MemberExpressionSymbol mes, ScopeSymbol scope)
@@ -72,12 +103,17 @@ public class Evaluator
 
     private object? EvaluateNameSymbol(NameExpressionSymbol nes, ScopeSymbol scope)
     {
-
-        return nes.Symbol switch
+        var symbolToEvaluate = nes.Symbol;
+        if (nes.Symbol is NameSymbol ns)
         {
-            ValueSymbol vs => vs.Value,
-            _ => nes.Symbol
-        };
+            scope.GetSymbol(ns.Name, out var symbol);
+            symbolToEvaluate = symbol;
+        }
+        return symbolToEvaluate switch
+            {
+                ValueSymbol vs => vs.Value,
+                _ => nes.Symbol
+            };
     }
 
     private object? EvaluateUnarySymbol(UnaryExpressionSymbol ues, ScopeSymbol scope)

@@ -128,15 +128,31 @@ public class ExpressionTests
         result = LapisInterpreter.Evaluate("line.a.x + line.a.y + line.b.x + line.b.y", scope);
         Assert.Equivalent(10.0, result.value);
     }
-
     [Fact]
     public void DeclareAndRunFunctions()
     {
-        // var context = new EvaluationContext(LangDefaults.RootNamespace());
-        // EvaluationResult result;
+        var scope = DefaultSymbols.CreateDefaultScope();
+        EvaluationResult result;
 
-        // result = LapisInterpreter.Evaluate("var add: @function = func(@integer left, @integer right) @integer { return left + right; };", context);
-        // result = LapisInterpreter.Evaluate("add(3.0, 4.5)", context);
-        // Assert.Equivalent(10.0, result.value);
+        result = LapisInterpreter.Evaluate("def add = func (integer left, integer right) integer { return left + right; }", scope);
+        result = LapisInterpreter.Evaluate("add(1, 1)", scope);
+        var value = Assert.IsType<long>(result.value);
+        Assert.Equal(2, value);
+    }
+
+    [Fact]
+    public void FunctionsWorkWithComplexTypes()
+    {
+        var scope = DefaultSymbols.CreateDefaultScope();
+        EvaluationResult result;
+
+        result = LapisInterpreter.Evaluate("def Point = type { x: decimal; y: decimal; };", scope);
+        result = LapisInterpreter.Evaluate(@"def addPoint = func (Point left, Point right) Point {
+            return Point { x: left.x + right.x; y: left.y + right.y; };
+        };", scope);
+        result = LapisInterpreter.Evaluate("def pointAdd = addPoint(Point { x: 3.0; y: 3.0; }, Point { x: 2.0; y: -1.0; });", scope);
+        result = LapisInterpreter.Evaluate("pointAdd.x + pointAdd.y", scope);
+        var resultValue = Assert.IsType<decimal>(result.value);
+        Assert.Equal(7, resultValue);
     }
 }

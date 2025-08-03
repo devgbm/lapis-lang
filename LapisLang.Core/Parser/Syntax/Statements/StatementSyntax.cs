@@ -6,21 +6,21 @@ namespace LapisLang.Core;
 public abstract class StatementSyntax : Syntax;
 
 
-public class ReturnStatement : StatementSyntax
+public class ReturnStatementSyntax : StatementSyntax
 {
-    public ReturnStatement(SourceSpan sourceSpan, ExpressionSyntax expression)
+    public ReturnStatementSyntax(SourceSpan sourceSpan, ExpressionSyntax? expression)
     {
         SourceSpan = sourceSpan;
         Expression = expression;
     }
 
     public override SourceSpan SourceSpan { get; }
-    public ExpressionSyntax Expression { get; }
+    public ExpressionSyntax? Expression { get; }
 }
 
-public class ScopeStatement : StatementSyntax
+public class ScopeStatementSyntax : StatementSyntax
 {
-    public ScopeStatement(SourceSpan sourceSpan, ImmutableArray<StatementSyntax> statements)
+    public ScopeStatementSyntax(SourceSpan sourceSpan, ImmutableArray<StatementSyntax> statements)
     {
         SourceSpan = sourceSpan;
         Statements = statements;

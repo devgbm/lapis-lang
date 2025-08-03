@@ -160,7 +160,7 @@ public class LapisParser : ParserBase
             return expression;
         });
 
-        var close = Match(TokenKind.OpenParenthesis);
+        var close = Match(TokenKind.CloseParenthesis);
         return new CallExpressionSyntax(SourceSpan.Between(open,close), expression, parameters);
     }
 
@@ -359,22 +359,22 @@ public class LapisParser : ParserBase
         }
     }
 
-    private ScopeStatement ParseScopeStatement()
+    private ScopeStatementSyntax ParseScopeStatement()
     {
         var open = Match(TokenKind.OpenCurlyBrace);
 
         var statements = MatchUntil(TokenKind.CloseCurlyBrace, ParseStatement);
 
         var close = Match(TokenKind.CloseCurlyBrace);
-        return new ScopeStatement(SourceSpan.Between(open, close), statements);
+        return new ScopeStatementSyntax(SourceSpan.Between(open, close), statements);
     }
 
-    private ReturnStatement ParseReturnStatement()
+    private ReturnStatementSyntax ParseReturnStatement()
     {
         var keyword = Match(TokenKind.ReturnKeyword);
         var expression = ParseExpression();
         var semi = Match(TokenKind.SemiCollon);
-        return new ReturnStatement(SourceSpan.Between(keyword, semi), expression);
+        return new ReturnStatementSyntax(SourceSpan.Between(keyword, semi), expression);
     }
 
     private StatementSyntax ParseVariableDeclaration()

@@ -12,6 +12,8 @@ public class DefaultSymbols
         public static TypeSymbol Type = new TypeSymbol("type");
         public static TypeSymbol Scope = new TypeSymbol("scope");
         public static TypeSymbol Unkown = new TypeSymbol("unkown");
+        public static TypeSymbol Void = new TypeSymbol("void");
+        public static TypeSymbol Function = new TypeSymbol("function");
 
         private static TypeSymbol CreateDecimal()
         {
@@ -80,13 +82,16 @@ public class DefaultSymbols
     {
         var root = new ScopeSymbol();
 
-        root.DefineSymbol("integer", DefaultSymbols.Types.Integer);
-        root.DefineSymbol("boolean", DefaultSymbols.Types.Boolean);
-        root.DefineSymbol("decimal", DefaultSymbols.Types.Decimal);
-        root.DefineSymbol("string", DefaultSymbols.Types.String);
-        root.DefineSymbol("type", DefaultSymbols.Types.Type);
-        root.DefineSymbol("scope", DefaultSymbols.Types.Scope);
-        root.DefineSymbol("unkown", DefaultSymbols.Types.Unkown);
+        root.DefineSymbol("integer", Types.Integer);
+        root.DefineSymbol("boolean", Types.Boolean);
+        root.DefineSymbol("decimal", Types.Decimal);
+        root.DefineSymbol("string", Types.String);
+        root.DefineSymbol("type", Types.Type);
+        root.DefineSymbol("scope", Types.Scope);
+        root.DefineSymbol("unkown", Types.Unkown);
+        root.DefineSymbol("function", Types.Function);
+        root.DefineSymbol("void", Types.Void);
+
         root.DefineSymbol("@", root);
 
         return root;

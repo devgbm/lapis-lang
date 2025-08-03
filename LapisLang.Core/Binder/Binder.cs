@@ -28,8 +28,41 @@ public class Binder
         switch (ss)
         {
             case VariableDeclarationSyntax vds: return BindVariableDeclaration(vds, context);
+            case ScopeStatementSyntax sss: return BindScopeStatement(sss, context);
+            case ReturnStatementSyntax rss: return BindReturnStatementSyntax(rss, context);
             default: return StatementSymbol.Unknown;
         }
+    }
+
+    private StatementSymbol BindReturnStatementSyntax(ReturnStatementSyntax rss, ScopeSymbol context)
+    {
+        var expression =  rss.Expression is null ? ExpressionSymbol.Void : BindExpression(rss.Expression, context);
+
+        if (context.ExpectedReturn != expression.Type)
+        {
+            Diagnostics.Report("wrong return type", rss);
+        }
+
+        return new ReturnStatementSymbol(expression);
+    }
+
+    private StatementSymbol BindScopeStatement(ScopeStatementSyntax sss, ScopeSymbol context)
+    {
+        var statements = ImmutableArray.CreateBuilder<StatementSymbol>();
+        TypeSymbol? foundReturn = null;
+        foreach (var statement in sss.Statements)
+        {
+            var boundStatement = BindStatement(statement, context);
+            statements.Add(boundStatement);
+            if (boundStatement is ReturnStatementSymbol rss) foundReturn = rss.Expression.Type;
+        }
+
+        if (context.ExpectedReturn is not null && context.ExpectedReturn != DefaultSymbols.Types.Void && foundReturn is null)
+        {
+            Diagnostics.Report("function must return a value", sss);
+        }
+
+        return new ScopeStatementSymbol(statements.ToImmutableArray(), foundReturn ?? DefaultSymbols.Types.Unkown);
     }
 
     private StatementSymbol BindVariableDeclaration(VariableDeclarationSyntax vds, ScopeSymbol context)
@@ -67,8 +100,54 @@ public class Binder
             case TypeExpressionSyntax tes: return BindTypeEspression(tes, context);
             case MemberExpressionSyntax mes: return BindMemberExpression(mes, context);
             case InstanceInitializationExpression iie: return BindInstanceInitializationExpression(iie, context);
+            case FuncExpression fe: return BindFuncExpression(fe, context);
+            case CallExpressionSyntax ces: return BindCallExpressionSyntax(ces, context);
             default: return ExpressionSymbol.Unknown;
         }
+    }
+
+    private ExpressionSymbol BindCallExpressionSyntax(CallExpressionSyntax ces, ScopeSymbol context)
+    {
+        var expression = BindExpression(ces.Expression, context);
+        if (expression.Type != DefaultSymbols.Types.Function || !(expression is NameExpressionSymbol nes && nes.Symbol is FuncSymbol functionSymbol))
+        {
+            Diagnostics.Report("expression is not callable", ces);
+            return ExpressionSymbol.Unknown;
+        }
+
+        var parameterPairs = functionSymbol.Parameters.Zip(ces.Parameters);
+        var parameterExpressions = ImmutableArray.CreateBuilder<CallArgument>();
+
+        foreach (var pair in parameterPairs)
+        {
+            var parameterExpression = BindExpression(pair.Second, context);
+            if (pair.First.Type != parameterExpression.Type)
+            {
+                Diagnostics.Report("wrong parameter type", pair.Second);
+            }
+            parameterExpressions.Add(new CallArgument(pair.First.Name, parameterExpression));
+        }
+        if (functionSymbol.Parameters.Count() != ces.Parameters.Count())
+        {
+            Diagnostics.Report("wrong parameter count", ces);
+        }
+
+        return new CallSymbol(functionSymbol, parameterExpressions.ToImmutableArray());
+    }
+
+    private ExpressionSymbol BindFuncExpression(FuncExpression fe, ScopeSymbol context)
+    {
+        var returnType = BindTypeName(fe.ReturnType, context);
+        var parameters = fe.Arguments.Select(e => new FunctionParameter(e.Name.String, BindTypeName(e.TypeName, context))).ToImmutableArray();
+
+        var derived = context.Derive();
+        derived.ExpectedReturn = returnType;
+
+        foreach (var param in parameters) derived.DefineSymbol(param.Name, new NameSymbol(param.Name, param.Type));
+        
+        var statement = BindStatement(fe.Statement, derived);
+
+        return new FuncSymbol(fe.SourceSpan, parameters, returnType, statement);
     }
 
     private ExpressionSymbol BindMemberExpression(MemberExpressionSyntax mes, ScopeSymbol context)
