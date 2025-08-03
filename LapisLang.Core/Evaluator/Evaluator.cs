@@ -1,225 +1,180 @@
 
 
-using System.Collections.Immutable;
-
 namespace LapisLang.Core;
-
-
-public class FunctionValue
-{
-    public FunctionValue(
-        ImmutableArray<BoundArgument> arguments,
-        BoundStatement statement
-    )
-    {
-        Arguments = arguments;
-        Statement = statement;
-    }
-    public ImmutableArray<BoundArgument> Arguments { get; }
-    public BoundStatement Statement { get; }
-}
-
 public class Evaluator
 {
-    public DiagnosticsBag Diagnostics { get; }
-
-    public Evaluator()
+    private readonly DiagnosticsBag _diagnostics = new();
+    public EvaluationResult Evaluate(Symbol symbol, ScopeSymbol scope)
     {
-        Diagnostics = new DiagnosticsBag();
-    }
-    public object? Evaluate(BoundSyntax syntax, EvaluationContext context)
-    {
-        switch (syntax)
+        object? value = null;
+        switch (symbol)
         {
-            case BoundExpression be: return EvaluateExpression(be, context);
-            case BoundStatement bs: return EvaluateStatement(bs, context);
-            default: return null;
+            case ExpressionSymbol es:
+                value = EvaluateExpressionSymbol(es, scope);
+                break;
+
+            case StatementSymbol ss:
+                EvaluateStatementSymbol(ss, scope);
+                value = null;
+                break;
+        }
+
+        return new EvaluationResult(value, _diagnostics);
+    }
+
+    private void EvaluateStatementSymbol(StatementSymbol ss, ScopeSymbol scope)
+    {
+        switch (ss)
+        {
+            case VariableDeclarationSymbol vds:
+                EvaluateVariableDeclaration(vds, scope);
+                break;
         }
     }
 
-    public object? EvaluateStatement(BoundStatement statement, EvaluationContext context)
+    private void EvaluateVariableDeclaration(VariableDeclarationSymbol vds, ScopeSymbol scope)
     {
-        switch (statement)
-        {
-            case BoundVariableDeclaration bvd: return EvaluateVariableDeclaration(bvd, context);
-            case BoundExpressionStatement bes: return EvaluateExpression(bes.Expression, context);
-            case BoundScopeStatement bss: return EvaluateScopeStatement(bss, context);
-            case BoundReturnStatement brs: return EvaluateExpression(brs.Expression, context);
-            default: return null;
-        }
+        if (vds.Symbol is TypeSymbol typeSymbol) return;
+        var value = EvaluateExpressionSymbol(vds.Symbol, scope);
+        var valueSymbol = new ValueSymbol(value, vds.Symbol.Type);
+        scope.SetSymbol(vds.Name, valueSymbol);
     }
 
-    private object? EvaluateScopeStatement(BoundScopeStatement bss, EvaluationContext context)
+    private object? EvaluateExpressionSymbol(ExpressionSymbol es, ScopeSymbol scope)
     {
-        foreach (var statement in bss.Statements)
+        switch (es)
         {
-            var value = EvaluateStatement(statement, context);
-            if (statement is BoundReturnStatement) return value;
+            case ValueSymbol vs: return EvaluateValueSymbol(vs);
+            case BinaryExpressionSymbol bss: return EvaluateBinarySymbol(bss, scope);
+            case UnaryExpressionSymbol ues: return EvaluateUnarySymbol(ues, scope);
+            case NameExpressionSymbol nes: return EvaluateNameSymbol(nes, scope);
+            case MemberExpressionSymbol mes: return EvaluateMemberExpression(mes, scope);
+            case InstanceInitializeSymbol iis: return EvaluateInstaceInitializeSymbol(iis, scope);
         }
         return null;
     }
 
-    private object? EvaluateVariableDeclaration(BoundVariableDeclaration bvd, EvaluationContext context)
+    private object? EvaluateMemberExpression(MemberExpressionSymbol mes, ScopeSymbol scope)
     {
-        var value = EvaluateExpression(bvd.Rune.Expression, context);
-        if (value is not null)
+        var value = EvaluateExpressionSymbol(mes.Expression, scope);
+        if (value is not Dictionary<string, object?> instance)
         {
-            bvd.Rune.Value = value;
-            context.DeclareVariable(bvd.Rune, value);
-        }
-        return null;
-    }
-
-    public object? EvaluateExpression(BoundExpression expression, EvaluationContext context)
-    {
-        switch (expression)
-        {
-            case BoundLiteralExpression ble:
-                return EvaluateLiteral(ble, context);
-
-            case BoundBinaryExpression bbe:
-                return EvaluateBinaryExpression(bbe, context);
-
-            case BoundUnaryExpression bue:
-                return EvaluateUnaryExpression(bue, context);
-
-            case BoundNameExpression bne:
-                return EvaluateNameExpression(bne, context);
-
-            case BoundInstanceInitializationExpression bie:
-                return EvaluateInstanceInitialization(bie, context);
-
-            case BoundMemberExpression bme:
-                return EvaluateMemberExpression(bme, context);
-
-            case BoundFunctionExpression bfe:
-                return EvaluateFunctionExpression(bfe, context);
-            
-            case BoundCallExpression bce:
-                return EvaluateCallExpression(bce, context);
-
-            default: return null;
-        }
-    }
-
-    private object? EvaluateCallExpression(BoundCallExpression bce, EvaluationContext context)
-    {
-        var expression = (EvaluateExpression(bce.Expression, context) as FunctionRune)!;
-
-        foreach (var arg in expression.BoundArgument.Zip(bce.Arguments))
-        {
-            var argumentValue = EvaluateExpression(arg.Second, context);
-            var variable = new VariableRune(arg.First.Name, arg.First.Type, arg.Second);
-            variable.Value = argumentValue;
-            context.DeclareVariable(variable, argumentValue);
-        }
-        return EvaluateStatement(expression.Statement, context);
-    }
-
-    private object? EvaluateFunctionExpression(BoundFunctionExpression bfe, EvaluationContext context)
-    {
-        return new FunctionValue(bfe.Arguments, bfe.Statement);
-    }
-
-    private object? EvaluateMemberExpression(BoundMemberExpression bme, EvaluationContext context)
-    {
-        var expression = EvaluateExpression(bme.Expression, context) as Dictionary<string, object?>;
-        return expression![bme.Member.Name];
-    }
-
-    private object? EvaluateInstanceInitialization(BoundInstanceInitializationExpression bie, EvaluationContext context)
-    {
-        var dict = new Dictionary<string, object?>();
-
-        foreach (var fieldInit in bie.Initiaizations)
-        {
-            var fieldValue = EvaluateExpression(fieldInit.Expression, context);
-            dict[fieldInit.Name] = fieldValue;
-        }
-        return dict;
-    }
-
-    private object? EvaluateNameExpression(BoundNameExpression bne, EvaluationContext context)
-    {
-        var rune = context.ResolveName(bne.Name);
-        if (rune.Kind == RuneKind.Variable)
-        {
-
-            return ((VariableRune)rune).Value;
+            throw new Exception("value should be a instance");
         }
 
-        return rune;
+        return instance.GetValueOrDefault(mes.FieldSymbol.Name);
     }
 
-    private object? EvaluateUnaryExpression(BoundUnaryExpression bue, EvaluationContext context)
+    private object? EvaluateInstaceInitializeSymbol(InstanceInitializeSymbol iis, ScopeSymbol scope)
     {
-        var expression = Evaluate(bue.Expression, context);
-        Func<object?, object?> oper = bue.UnaryOperator switch
+        return iis.Initializers.ToDictionary(e => e.Key.Name, e => EvaluateExpressionSymbol(e.Value, scope));
+    }
+
+    private object? EvaluateNameSymbol(NameExpressionSymbol nes, ScopeSymbol scope)
+    {
+
+        return nes.Symbol switch
         {
-            UnaryOperator.Identity => (object? obj) => obj,
-            UnaryOperator.Negation => (object? obj) => !(bool)obj!,
-            UnaryOperator.Inverse => (object? obj) => obj is long l ? -l : -(decimal)obj!,
-            _ => throw new Exception("unable to evaluate unary expression")
+            ValueSymbol vs => vs.Value,
+            _ => nes.Symbol
         };
-
-        return oper(expression);
     }
 
-    private object? EvaluateBinaryExpression(BoundBinaryExpression bbe, EvaluationContext context)
+    private object? EvaluateUnarySymbol(UnaryExpressionSymbol ues, ScopeSymbol scope)
     {
-        var left = Evaluate(bbe.Left, context);
-        var right = Evaluate(bbe.Right, context);
+        var value = EvaluateExpressionSymbol(ues.Expression, scope);
+        Func<object?, object?> op;
 
-        Func<object?, object?, object?> oper;
-        if (bbe.Left.Type == LangDefaults.Types.Integer)
+        if (ues.Expression.Type == DefaultSymbols.Types.Integer)
         {
-            oper = bbe switch
+            op = ues.UnaryOp switch
             {
-                { BinaryOperator: BinaryOperator.LogicAnd } => (object? left, object? right) => (bool)left! && (bool)right!,
-                { BinaryOperator: BinaryOperator.LogicOr } => (object? left, object? right) => (bool)left! || (bool)right!,
-
-                { BinaryOperator: BinaryOperator.Add } => (object? left, object? right) => (long)left! + (long)right!,
-                { BinaryOperator: BinaryOperator.Sub } => (object? left, object? right) => (long)left! - (long)right!,
-                { BinaryOperator: BinaryOperator.Mul } => (object? left, object? right) => (long)left! * (long)right!,
-                { BinaryOperator: BinaryOperator.Div } => (object? left, object? right) => (long)left! / (long)right!,
-                { BinaryOperator: BinaryOperator.Mod } => (object? left, object? right) => (long)left! % (long)right!,
-                { BinaryOperator: BinaryOperator.Equality } => (object? left, object? right) => (long)left! == (long)right!,
-                { BinaryOperator: BinaryOperator.Inequality } => (object? left, object? right) => (long)left! != (long)right!,
-                { BinaryOperator: BinaryOperator.Greather } => (object? left, object? right) => (long)left! > (long)right!,
-                { BinaryOperator: BinaryOperator.Less } => (object? left, object? right) => (long)left! < (long)right!,
-                { BinaryOperator: BinaryOperator.GreatherEquals } => (object? left, object? right) => (long)left! >= (long)right!,
-                { BinaryOperator: BinaryOperator.LessEquals } => (object? left, object? right) => (long)left! <= (long)right!,
-                _ => throw new Exception("unable to evaluate expression")
+                UnaryOperatorKind.Identity => (object? obj) => obj,
+                UnaryOperatorKind.Inverse => (object? obj) => -(long)obj,
+                _ => (object? obj) => 0
+            };
+        }
+        else if (ues.Expression.Type == DefaultSymbols.Types.Decimal)
+        {
+            op = ues.UnaryOp switch
+            {
+                UnaryOperatorKind.Identity => (object? obj) => obj,
+                UnaryOperatorKind.Inverse => (object? obj) => -(decimal)obj,
+                _ => (object? obj) => 0
             };
         }
         else
         {
-            oper = bbe switch
+            op = ues.UnaryOp switch
             {
-                { BinaryOperator: BinaryOperator.LogicAnd } => (object? left, object? right) => (bool)left! && (bool)right!,
-                { BinaryOperator: BinaryOperator.LogicOr } => (object? left, object? right) => (bool)left! || (bool)right!,
-
-                { BinaryOperator: BinaryOperator.Add } => (object? left, object? right) => (decimal)left! + (decimal)right!,
-                { BinaryOperator: BinaryOperator.Sub } => (object? left, object? right) => (decimal)left! - (decimal)right!,
-                { BinaryOperator: BinaryOperator.Mul } => (object? left, object? right) => (decimal)left! * (decimal)right!,
-                { BinaryOperator: BinaryOperator.Div } => (object? left, object? right) => (decimal)left! / (decimal)right!,
-                { BinaryOperator: BinaryOperator.Mod } => (object? left, object? right) => (decimal)left! % (decimal)right!,
-                { BinaryOperator: BinaryOperator.Equality } => (object? left, object? right) => (decimal)left! == (decimal)right!,
-                { BinaryOperator: BinaryOperator.Inequality } => (object? left, object? right) => (decimal)left! != (decimal)right!,
-                { BinaryOperator: BinaryOperator.Greather } => (object? left, object? right) => (decimal)left! > (decimal)right!,
-                { BinaryOperator: BinaryOperator.Less } => (object? left, object? right) => (decimal)left! < (decimal)right!,
-                { BinaryOperator: BinaryOperator.GreatherEquals } => (object? left, object? right) => (decimal)left! >= (decimal)right!,
-                { BinaryOperator: BinaryOperator.LessEquals } => (object? left, object? right) => (decimal)left! <= (decimal)right!,
-                _ => throw new Exception("unable to evaluate expression")
+                UnaryOperatorKind.Negation => (object? obj) => !(bool)obj,
+                _ => (object? obj) => obj
             };
         }
 
-        return oper(left, right);
-
+        return op(value);
     }
 
-    private object? EvaluateLiteral(BoundLiteralExpression ble, EvaluationContext context)
+    private object? EvaluateBinarySymbol(BinaryExpressionSymbol bss, ScopeSymbol scope)
     {
-        return ble.Value;
+        var left = EvaluateExpressionSymbol(bss.Left, scope);
+        var right = EvaluateExpressionSymbol(bss.Right, scope);
+
+        Func<object?, object?, object?> op;
+        if (bss.Left.Type == DefaultSymbols.Types.Integer)
+        {
+            op = bss.BinaryOp switch
+            {
+                BinaryOperatorKind.Add => (object? left, object? right) => (long)left + (long)right,
+                BinaryOperatorKind.Sub => (object? left, object? right) => (long)left - (long)right,
+                BinaryOperatorKind.Mul => (object? left, object? right) => (long)left * (long)right,
+                BinaryOperatorKind.Div => (object? left, object? right) => (long)left / (long)right,
+                BinaryOperatorKind.Mod => (object? left, object? right) => (long)left % (long)right,
+                BinaryOperatorKind.Equality => (object? left, object? right) => (long)left == (long)right,
+                BinaryOperatorKind.Inequality => (object? left, object? right) => (long)left != (long)right,
+                BinaryOperatorKind.GreatherThan => (object? left, object? right) => (long)left > (long)right,
+                BinaryOperatorKind.GreatherOrEqual => (object? left, object? right) => (long)left >= (long)right,
+                BinaryOperatorKind.LessThan => (object? left, object? right) => (long)left < (long)right,
+                BinaryOperatorKind.LessOrEqual => (object? left, object? right) => (long)left <= (long)right,
+                _ => (object? left, object? right) => 0
+            };
+        }
+        else if (bss.Left.Type == DefaultSymbols.Types.Decimal)
+        {
+            op = bss.BinaryOp switch
+            {
+                BinaryOperatorKind.Add => (object? left, object? right) => (decimal)left + (decimal)right,
+                BinaryOperatorKind.Sub => (object? left, object? right) => (decimal)left - (decimal)right,
+                BinaryOperatorKind.Mul => (object? left, object? right) => (decimal)left * (decimal)right,
+                BinaryOperatorKind.Div => (object? left, object? right) => (decimal)left / (decimal)right,
+                BinaryOperatorKind.Mod => (object? left, object? right) => (decimal)left % (decimal)right,
+                BinaryOperatorKind.Equality => (object? left, object? right) => (decimal)left == (decimal)right,
+                BinaryOperatorKind.Inequality => (object? left, object? right) => (decimal)left != (decimal)right,
+                BinaryOperatorKind.GreatherThan => (object? left, object? right) => (decimal)left > (decimal)right,
+                BinaryOperatorKind.GreatherOrEqual => (object? left, object? right) => (decimal)left >= (decimal)right,
+                BinaryOperatorKind.LessThan => (object? left, object? right) => (decimal)left < (decimal)right,
+                BinaryOperatorKind.LessOrEqual => (object? left, object? right) => (decimal)left <= (decimal)right,
+                _ => (object? left, object? right) => 0
+            };
+        }
+        else
+        {
+            op = bss.BinaryOp switch
+            {
+                BinaryOperatorKind.LogicOr => (object? left, object? right) => (bool)left || (bool)right,
+                BinaryOperatorKind.LogicAnd => (object? left, object? right) => (bool)left && (bool)right,
+                BinaryOperatorKind.Equality => (object? left, object? right) => (bool)left == (bool)right,
+                BinaryOperatorKind.Inequality => (object? left, object? right) => (bool)left != (bool)right,
+                _ => (object? left, object? right) => 0
+            };
+        }
+
+
+        return op(left, right);
+    }
+
+    private object? EvaluateValueSymbol(ValueSymbol vs)
+    {
+        return vs.Value;
     }
 }

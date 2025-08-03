@@ -1,2 +1,0 @@
-
-namespace LapisLang.Core;

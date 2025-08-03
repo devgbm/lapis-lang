@@ -1,5 +1,6 @@
-namespace LapisLang.Core;
 
+
+namespace LapisLang.Core;
 
 public class LapisInterpreter
 {
@@ -9,10 +10,10 @@ public class LapisInterpreter
         var stream = lexer.TokenStream();
         var parser = new LapisParser(stream);
         var syntax = parser.Parse();
-        var binder = new BinderNew();
+        var binder = new Binder();
         var bindScope = scope ?? DefaultSymbols.CreateDefaultScope();
         var symbol = binder.Bind(syntax, bindScope);
-        var evaluator = new EvaluatorNew();
+        var evaluator = new Evaluator();
         return evaluator.Evaluate(symbol, bindScope);
     }
 }
