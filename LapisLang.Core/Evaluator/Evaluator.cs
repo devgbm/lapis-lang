@@ -51,11 +51,20 @@ public class Evaluator
 
     private void EvaluateVariableDeclaration(VariableDeclarationSymbol vds, ScopeSymbol scope)
     {
-        if (vds.Symbol is TypeSymbol typeSymbol) return;
+        if (vds.Symbol is TypeSymbol) return;
         if (vds.Symbol is FuncSymbol) return;
         var value = EvaluateExpressionSymbol(vds.Symbol, scope);
-        var valueSymbol = new ValueSymbol(value, vds.Symbol.Type);
-        scope.SetSymbol(vds.Name, valueSymbol);
+        Symbol symbol;
+        if (value is TypeSymbol typeSymbol)
+        {
+            typeSymbol.TypeName = vds.Name;
+            symbol = typeSymbol;
+        }
+        else
+        {
+            symbol = new ValueSymbol(value, vds.Symbol.Type);
+        }
+        scope.SetSymbol(vds.Name, symbol);
     }
 
     private object? EvaluateExpressionSymbol(ExpressionSymbol es, ScopeSymbol scope)
@@ -69,8 +78,32 @@ public class Evaluator
             case MemberExpressionSymbol mes: return EvaluateMemberExpression(mes, scope);
             case InstanceInitializeSymbol iis: return EvaluateInstaceInitializeSymbol(iis, scope);
             case CallSymbol cs: return EvaluateCallSymbol(cs, scope);
+            case TypeSymbol ts: return EvaluateTypeSymbol(ts, scope);
         }
         return null;
+    }
+
+    private TypeSymbol EvaluateTypeSymbol(TypeSymbol typeSymbol, ScopeSymbol scope)
+    {
+        if (!typeSymbol.IsGeneric) return typeSymbol;
+        var evaluatedType = new TypeSymbol(typeSymbol.TypeName);
+
+        foreach (var field in typeSymbol.GetSymbols().OfType<FieldSymbol>())
+        {
+            switch (field.Expression)
+            {
+                case TypeSymbol ts:
+                    var evaluatedTypeSymbol = EvaluateTypeSymbol(ts, scope);
+                    evaluatedType.DefineSymbol(field.Name, new FieldSymbol(evaluatedType, field.Name, evaluatedTypeSymbol));
+                    break;
+                case NameExpressionSymbol nes:
+                    var evaluatedName = EvaluateExpressionSymbol(nes, scope);
+                    evaluatedType.DefineSymbol(field.Name, new FieldSymbol(evaluatedType, field.Name, evaluatedName is TypeSymbol s ? s : new ValueSymbol(evaluatedName, nes.Type) ));
+                    break;
+            }
+        }
+
+        return evaluatedType;
     }
 
     private object? EvaluateCallSymbol(CallSymbol cs, ScopeSymbol scope)
@@ -79,7 +112,7 @@ public class Evaluator
         foreach (var arg in cs.Arguments)
         {
             var argumentValue = EvaluateExpressionSymbol(arg.Expression, derived);
-            derived.DefineSymbol(arg.Name, argumentValue is  Symbol argSymbol ? argSymbol : new ValueSymbol(argumentValue, arg.Expression.Type));
+            derived.DefineSymbol(arg.Name, argumentValue is Symbol argSymbol ? argSymbol : new ValueSymbol(argumentValue, arg.Expression.Type));
         }
 
         return EvaluateStatementSymbol(cs.Function.Statement, derived);
@@ -88,6 +121,8 @@ public class Evaluator
     private object? EvaluateMemberExpression(MemberExpressionSymbol mes, ScopeSymbol scope)
     {
         var value = EvaluateExpressionSymbol(mes.Expression, scope);
+        if (value is ValueSymbol s) value = s.Value;
+
         if (value is not Dictionary<string, object?> instance)
         {
             throw new Exception("value should be a instance");
@@ -107,7 +142,7 @@ public class Evaluator
         if (nes.Symbol is NameSymbol ns)
         {
             scope.GetSymbol(ns.Name, out var symbol);
-            symbolToEvaluate = symbol;
+            return symbol;
         }
         return symbolToEvaluate switch
             {
@@ -155,6 +190,10 @@ public class Evaluator
     {
         var left = EvaluateExpressionSymbol(bss.Left, scope);
         var right = EvaluateExpressionSymbol(bss.Right, scope);
+
+        if (left is ValueSymbol ls) left = ls.Value;
+        if (right is ValueSymbol rs) right = rs.Value;
+
 
         Func<object?, object?, object?> op;
         if (bss.Left.Type == DefaultSymbols.Types.Integer)

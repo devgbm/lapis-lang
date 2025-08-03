@@ -89,6 +89,7 @@ public class TypeSymbol : ExpressionSymbol, IScopeSymbol
     {
         TypeName = typeName;
     }
+    public bool IsGeneric { get; set; }
     public string TypeName { get; set; }
 
 

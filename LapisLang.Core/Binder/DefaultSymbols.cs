@@ -5,7 +5,7 @@ public class DefaultSymbols
 {
     public static class Types
     {
-        public static TypeSymbol Type = new TypeSymbol("type");
+        public static TypeSymbol Type = new TypeSymbol("Type");
         public static TypeSymbol Scope = new TypeSymbol("scope");
         public static TypeSymbol Unkown = new TypeSymbol("unkown");
         public static TypeSymbol Void = new TypeSymbol("void");
@@ -86,7 +86,7 @@ public class DefaultSymbols
         root.DefineSymbol("boolean", Types.Boolean);
         root.DefineSymbol("decimal", Types.Decimal);
         root.DefineSymbol("string", Types.String);
-        root.DefineSymbol("type", Types.Type);
+        root.DefineSymbol("Type", Types.Type);
         root.DefineSymbol("scope", Types.Scope);
         root.DefineSymbol("unkown", Types.Unkown);
         root.DefineSymbol("function", Types.Function);

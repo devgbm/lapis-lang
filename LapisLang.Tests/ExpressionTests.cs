@@ -128,7 +128,7 @@ public class ExpressionTests
         result = LapisInterpreter.Evaluate("line.a.x + line.a.y + line.b.x + line.b.y", scope);
         Assert.Equivalent(10.0, result.value);
     }
-    
+
     [Fact]
     public void DeclareAndRunFunctions()
     {
@@ -155,5 +155,27 @@ public class ExpressionTests
         result = LapisInterpreter.Evaluate("pointAdd.x + pointAdd.y", scope);
         var resultValue = Assert.IsType<decimal>(result.value);
         Assert.Equal(7, resultValue);
+    }
+
+    [Fact]
+    public void TypeFieldsAsValues()
+    {
+        var scope = DefaultSymbols.CreateDefaultScope();
+        EvaluationResult result;
+
+        result = LapisInterpreter.Evaluate("def aliasToInt = integer;", scope);
+        result = LapisInterpreter.Evaluate("def IntegerWrapper = type { value: aliasToInt; };", scope);
+        result = LapisInterpreter.Evaluate("def instance = IntegerWrapper { value: 1 };", scope);
+    }
+
+    [Fact]
+    public void FunctionsCanReturnTypes()
+    {
+        var scope = DefaultSymbols.CreateDefaultScope();
+        EvaluationResult result;
+
+        result = LapisInterpreter.Evaluate("def Generic = func(Type t) Type { return type { value: t; }; };", scope);
+        result = LapisInterpreter.Evaluate("def GenericOfInt = Generic(integer);", scope);
+        result = LapisInterpreter.Evaluate("def instance = GenericOfInt { value: 1 };", scope);
     }
 }

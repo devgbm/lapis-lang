@@ -43,10 +43,17 @@ public class MemberExpressionSymbol : ExpressionSymbol
 {
     public MemberExpressionSymbol(
         ExpressionSymbol expression,
-        FieldSymbol fieldSymbol) : base(fieldSymbol.Expression is TypeSymbol ts? ts : fieldSymbol.Expression.Type)
+        FieldSymbol fieldSymbol) : base(GetType(fieldSymbol))
     {
         Expression = expression;
         FieldSymbol = fieldSymbol;
+    }
+
+    public static TypeSymbol GetType(FieldSymbol field)
+    {
+        if (field.Expression is TypeSymbol ts) return ts;
+        if (field.Expression is NameExpressionSymbol nes && nes.Symbol is TypeSymbol tsn) return tsn;
+        return field.Expression.Type;
     }
 
     public ExpressionSymbol Expression { get; }

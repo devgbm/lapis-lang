@@ -194,22 +194,18 @@ public class Binder
                 Diagnostics.Report("unkwon field", initializer.Identifier);
                 continue;
             }
-
+            var fieldKey = fieldInitializers.Keys.First(e => e.Name == initializer.Identifier.String);
             var expression = BindExpression(initializer.Expression, context);
 
-            if (foundInitializer.Expression is not TypeSymbol ts)
+            if (foundInitializer.Expression is NameExpressionSymbol nes && nes.Symbol is TypeSymbol nameTypeSymbol)
             {
-                Diagnostics.Report("unsuported initializer value type", initializer.Expression);
-                continue;
+                if (nameTypeSymbol != expression.Type)
+                {
+                    Diagnostics.Report("field have mismatched types", initializer.Expression);
+                    continue;
+                }
+                fieldInitializers[fieldKey] = expression;
             }
-            else if(ts != expression.Type)
-            {
-                Diagnostics.Report("field have mismatched types", initializer.Expression);
-                continue;
-            }
-
-            var fieldKey = fieldInitializers.Keys.First(e => e.Name == initializer.Identifier.String);
-            fieldInitializers[fieldKey] = expression;
         }
 
         if (fieldInitializers.Any(e => e.Value == null))
@@ -228,16 +224,21 @@ public class Binder
         foreach (var field in tes.Fields)
         {
             var expression = BindExpression(field.Expression, context);
-            var evaluator = new Evaluator();
-            var result = evaluator.Evaluate(expression, context).value;
 
-            if (result is not TypeSymbol typeSymbol)
+            if (expression is TypeSymbol typeSymbol)
             {
-                Diagnostics.Report("Symbol is not a type", field.Expression);
-                typeSymbol = DefaultSymbols.Types.Unkown;
+                type.DefineSymbol(field.Identifier.String, new FieldSymbol(type, field.Identifier.String, typeSymbol));
             }
-
-            type.DefineSymbol(field.Identifier.String, new FieldSymbol(type, field.Identifier.String, typeSymbol));
+            else if (expression is NameExpressionSymbol nameSymbol)
+            {
+                type.IsGeneric = true;
+                type.DefineSymbol(field.Identifier.String, new FieldSymbol(type, field.Identifier.String, nameSymbol));
+            }
+            else
+            {
+                Diagnostics.Report("Unkown symbol", field.Expression);
+                type.DefineSymbol(field.Identifier.String, new FieldSymbol(type, field.Identifier.String, DefaultSymbols.Types.Unkown));
+            }
         }
 
         return type;
