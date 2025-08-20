@@ -10,7 +10,7 @@ public abstract class TypeSymbol : ExprSymbol
         DebugName = debugName;
     }
 
-    public string? DebugName { get; }
+    public string? DebugName { get; set;  }
     public override TypeSymbol Type { get => LangDefaults.Types.Type; }
     public abstract bool IsEquivalent(ExprSymbol symbol);
 }

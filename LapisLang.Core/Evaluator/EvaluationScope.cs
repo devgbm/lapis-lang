@@ -7,13 +7,13 @@ namespace LapisLang.Core;
 public class EvaluationScope
 {
     public BoundScope BoundScope { get; }
-    public EvaluationScope()
+    public EvaluationScope(BoundScope? scope = null)
     {
-        BoundScope = LangDefaults.CreateDefaultScope();
+        BoundScope = scope ?? LangDefaults.CreateDefaultScope();
     }
-    public static EvaluationScope CreateScope()
+    public static EvaluationScope CreateScope(BoundScope? scope = null)
     {
-        return new EvaluationScope();
+        return new EvaluationScope(scope);
     }
 
     internal Func<ExprSymbol, ExprSymbol, ExprSymbol> GetOperatorFn(TypeSymbol type1, TypeSymbol type2, BinaryOperator binaryOperator)

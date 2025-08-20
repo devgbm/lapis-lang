@@ -11,6 +11,13 @@ public abstract class Symbol
     public static Symbol Unkown = new UnkownSymbol();
 }
 
+public class VoidSymbol : ExprSymbol
+{
+    public static VoidSymbol Instance = new();
+    private VoidSymbol(){}
+    public override bool IsConstant => true;
+    public override TypeSymbol Type => LangDefaults.Types.Void;
+}
 public class UnkownSymbol : Symbol
 {
 }
@@ -20,6 +27,7 @@ public static class LangDefaults
     public static class Types
     {
         public static TypeSymbol Unkown = new PrimitiveTypeSymbol("unkown");
+        public static TypeSymbol Void = new PrimitiveTypeSymbol("void");
         public static TypeSymbol Type = CreateType();
         public static TypeSymbol Integer = CreateInteger();
         public static TypeSymbol Boolean = CreateBoolean();

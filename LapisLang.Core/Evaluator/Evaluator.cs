@@ -1,6 +1,7 @@
 
 
 
+
 namespace LapisLang.Core;
 
 
@@ -25,8 +26,27 @@ public class LapisEvaluator
         switch (symbol)
         {
             case ExprSymbol es: return EvaluateExpression(es, evaluationScope);
+            case StatementSymbol ss: return EvaluateStatement(ss, evaluationScope);
             default: return Symbol.Unkown;
         }
+    }
+
+    private Symbol EvaluateStatement(StatementSymbol syntax, EvaluationScope evaluationScope)
+    {
+        switch (syntax)
+        {
+            case DefineSymbol ds: return EvaluateDefineSymbol(ds, evaluationScope);
+            default:
+                throw new Exception("Unkown or unsuported statement.");
+        }
+        
+    }
+
+    private Symbol EvaluateDefineSymbol(DefineSymbol ds, EvaluationScope evaluationScope)
+    {
+        if (ds.Expression.IsConstant) return VoidSymbol.Instance;
+        
+        return VoidSymbol.Instance;
     }
 
     private ExprSymbol EvaluateExpression(ExprSymbol expr, EvaluationScope scope)

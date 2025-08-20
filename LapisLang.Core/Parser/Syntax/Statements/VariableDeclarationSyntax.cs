@@ -1,7 +1,7 @@
 namespace LapisLang.Core;
-public class VariableDeclarationSyntax : StatementSyntax
+public class DefineStatementSyntax : StatementSyntax
 {
-    public VariableDeclarationSyntax(
+    public DefineStatementSyntax(
         SourceSpan sourceSpan,
         Token identifier,
         ExpressionSyntax expression

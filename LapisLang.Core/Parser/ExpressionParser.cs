@@ -365,7 +365,7 @@ public class LapisParser : ParserBase
         var expression = ParseExpression();
         var semi = Match(TokenKind.SemiCollon);
         SourceSpan sourceSpan = SourceSpan.Between(keyword, semi);
-        return new VariableDeclarationSyntax(sourceSpan, identifier, expression);
+        return new DefineStatementSyntax(sourceSpan, identifier, expression);
     }
     #endregion
 }

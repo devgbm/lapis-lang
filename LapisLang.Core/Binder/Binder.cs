@@ -14,10 +14,43 @@ public class Binder
         switch (syntax)
         {
             case ExpressionSyntax es: return BindExpressionSyntax(es, scope);
+            case StatementSyntax ss: return BindStatementSyntax(ss, scope);
             default:
                 Diagnostics.Report("Unkown expression", syntax);
                 return Symbol.Unkown;
         }
+    }
+
+    private StatementSymbol BindStatementSyntax(StatementSyntax syntax, BoundScope scope)
+    {
+        switch (syntax)
+        {
+            case DefineStatementSyntax dss: return BindDefineStatementSyntax(dss, scope);
+            default:
+                Diagnostics.Report("unkown statement", syntax);
+                return StatementSymbol.UnkownStatement;
+        }
+        throw new NotImplementedException();
+    }
+
+    private StatementSymbol BindDefineStatementSyntax(DefineStatementSyntax dss, BoundScope scope)
+    {
+        var name = dss.Identifier.String;
+        var expression = BindExpressionSyntax(dss.Expression, scope);
+
+        if (expression.IsConstant)
+        {
+            expression = (ExprSymbol)LapisEvaluator.Instance.Evaluate(expression, EvaluationScope.CreateScope(scope));
+            if (expression is TypeSymbol ts) ts.DebugName = name;
+        }
+
+        if (!scope.Define(name, expression))
+        {
+            Diagnostics.Report("Symbol canot be redeclared", dss);
+            return StatementSymbol.UnkownStatement;
+        }
+
+        return new DefineSymbol(name, expression);
     }
 
     private ExprSymbol BindExpressionSyntax(ExpressionSyntax syntax, BoundScope scope)
