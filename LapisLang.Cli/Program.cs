@@ -27,22 +27,29 @@ internal class Program
         }
         else
         {
-            string stringifiedSymbol = StringifySymbol(result);
+            string stringifiedSymbol = StringifySymbol(result.result);
             Console.WriteLine(stringifiedSymbol);
         }
     }
 
-    private static string StringifySymbol(EvaluationResult result)
+    private static string StringifySymbol(Symbol result)
     {
-        return result.result switch
+        return result switch
         {
             IntegerSymbol integerSymbol => integerSymbol.Value.ToString(),
             BooleanSymbol booleanSymbol => booleanSymbol.Value.ToString(),
             StringSymbol stringSymbol => stringSymbol.Value,
             DecimalSymbol decimalSymbol => decimalSymbol.Value.ToString(),
             TypeSymbol typeSymbol => StringifyType(typeSymbol),
-            _ => result.result.ToString()!
+            InstanceSymbol instanceSymbol => StringifyInstance(instanceSymbol),
+            _ => result.ToString()!
         };
+    }
+
+    private static string StringifyInstance(InstanceSymbol instanceSymbol)
+    {
+        return $"{instanceSymbol.Type.DebugName} {{ {string.Join(", ", instanceSymbol.Atributes.Select(e => $"{e.Key}: {StringifySymbol(e.Value)}"))} }}";
+
     }
 
     private static string StringifyType(TypeSymbol typeSymbol)

@@ -56,7 +56,7 @@ public class BoundScope
                 _ => (BinaryOperator.Unkown, LangDefaults.Types.Unkown)
             };
         }
-        if (left.Type == LangDefaults.Types.Type && right.Type == LangDefaults.Types.Type && left is StructTypeSymbol && right is StructTypeSymbol)
+        if (left.Type == LangDefaults.Types.Type && right.Type == LangDefaults.Types.Type)
         {
             return operatorToken.Kind switch
             {
@@ -85,6 +85,19 @@ public class BoundScope
         }
 
         exprSymbol = ExprSymbol.Unkown;
+        return false;
+    }
+
+    public bool TryGetTypeSymbol(string name, out TypeSymbol exprSymbol)
+    {
+        var foundSymbol = TryGetSymbol(name, out var symbol);
+        if (foundSymbol && symbol is TypeSymbol expr)
+        {
+            exprSymbol = expr;
+            return true;
+        }
+
+        exprSymbol = LangDefaults.Types.Unkown;
         return false;
     }
 

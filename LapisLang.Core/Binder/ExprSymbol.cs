@@ -8,7 +8,6 @@ public abstract class ExprSymbol : Symbol
     public abstract bool IsConstant { get; }
     public abstract TypeSymbol Type { get; }
 }
-
 public class NameSymbol : ExprSymbol
 {
     public NameSymbol(string name, TypeSymbol type, ExprSymbol? contantSymbol = null)

@@ -61,10 +61,61 @@ public class Binder
             case TypeExpressionSyntax tes: return BindTypeExpressionSyntax(tes, scope);
             case BinaryExpressionSyntax bes: return BindBinaryExpressionSyntax(bes, scope);
             case NameExpressionSyntax nes: return BindNameExpressionSyntax(nes, scope);
+            case InstanceInitializationExpression iie: return BindInstanceInitializationSyntax(iie, scope);
             default:
                 Diagnostics.Report("Unkown expression", syntax);
                 return ExprSymbol.Unkown;
         }
+    }
+
+    private ExprSymbol BindInstanceInitializationSyntax(InstanceInitializationExpression syntax, BoundScope scope)
+    {
+        TypeSymbol type;
+        var atributes = ImmutableDictionary.CreateBuilder<string, ExprSymbol>();
+        if (syntax.IsAnonimous)
+        {
+            var typeArray = ImmutableArray.CreateBuilder<FieldSymbol>();
+
+            foreach (var initializer in syntax.Initializers)
+            {
+                var expression = BindExpressionSyntax(initializer.Expression, scope);
+                var initializerName = initializer.Identifier.String;
+                typeArray.Add(new FieldSymbol(initializerName, expression.Type, expression.IsConstant));
+                if (atributes.ContainsKey(initializerName))
+                {
+                    Diagnostics.Report("duplicate identifier", initializer.Identifier);
+                }
+                else atributes.Add(initializerName, expression);
+            }
+
+            type = new StructTypeSymbol(typeArray.ToImmutableArray(), "anonimous-type");
+        }
+        else
+        {
+            if (!scope.TryGetTypeSymbol(syntax.TypeName.SourceSpan.AsText.ToString(), out type)) Diagnostics.Report("unkown type", syntax.TypeName);
+            if (type is not StructTypeSymbol sts)
+            {
+                Diagnostics.Report("type is a struct type", syntax);
+                return ExprSymbol.Unkown;
+            }
+
+            foreach (var initializer in syntax.Initializers)
+            {
+                var expression = BindExpressionSyntax(initializer.Expression, scope);
+                var initializerName = initializer.Identifier.String;
+
+                if (!sts.Fields.Any(e => e.Name == initializerName && e.Type == expression.Type))
+                {
+                    Diagnostics.Report("property does not exist on type", initializer);
+                }
+                if (atributes.ContainsKey(initializerName))
+                {
+                    Diagnostics.Report("duplicate identifier", initializer.Identifier);
+                }
+                else atributes.Add(initializerName, expression);
+            }
+        }
+        return new InstanceSymbol(atributes.ToImmutableDictionary(), type);
     }
 
     private ExprSymbol BindNameExpressionSyntax(NameExpressionSyntax nes, BoundScope scope)
@@ -95,22 +146,17 @@ public class Binder
             var fieldName = fieldSyntax.Identifier.String;
             var expression = BindExpressionSyntax(fieldSyntax.Expression, scope);
 
-
             TypeSymbol fieldType;
             
-            switch (expression)
+            var evaluated = LapisEvaluator.Instance.Evaluate(expression, EvaluationScope.CreateScope(scope)) as TypeSymbol;
+            if (evaluated is not TypeSymbol ets)
             {
-                case TypeSymbol ts:
-                    fieldType = ts;
-                    break;
-                
-                case NameSymbol ns:
-                    if (ns.IsConstant && ns.ContantSymbol is TypeSymbol nts) fieldType = nts;
-                    else fieldType = LangDefaults.Types.Unkown;
-                    break;
-                default:
-                    fieldType = LangDefaults.Types.Unkown;
-                    break;
+                Diagnostics.Report("Expression should evatuale to a type symbol", fieldSyntax.Expression);
+                fieldType = LangDefaults.Types.Unkown;
+            }
+            else
+            {
+                fieldType = ets;
             }
 
             fieldsArr.Add(new FieldSymbol(fieldName, fieldType, expression.IsConstant));

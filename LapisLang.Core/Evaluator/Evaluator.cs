@@ -45,7 +45,7 @@ public class LapisEvaluator
     private Symbol EvaluateDefineSymbol(DefineSymbol ds, EvaluationScope evaluationScope)
     {
         if (ds.Expression.IsConstant) return VoidSymbol.Instance;
-        
+
         return VoidSymbol.Instance;
     }
 
@@ -58,6 +58,7 @@ public class LapisEvaluator
             case DecimalSymbol:
             case StringSymbol:
             case TypeSymbol:
+            case InstanceSymbol:
                 return expr;
 
             case NameSymbol ns:
@@ -71,9 +72,8 @@ public class LapisEvaluator
 
     private ExprSymbol EvaluateNameSymbol(NameSymbol ns, EvaluationScope scope)
     {
-        if (ns.IsConstant) return ns.ContantSymbol!;
-
-        return ExprSymbol.Unkown;
+        scope.BoundScope.TryGetSymbol(ns.Name, out var symbol);
+        return symbol as ExprSymbol ?? ExprSymbol.Unkown;
     }
 
     private ExprSymbol EvaluateBinaryExpr(BinaryExprSymbol bes, EvaluationScope scope)

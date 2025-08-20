@@ -117,6 +117,10 @@ public class LapisParser : ParserBase
                 expression = ParseInstanceInitializationExpression();
                 break;
 
+            case TokenKind.Dot when Peek(1).Kind == TokenKind.OpenCurlyBrace:
+                expression = ParseAnonimousInstanceInitializationExpression();
+                break;
+
             case TokenKind.Identifier:
                 expression = ParseNameExpression();
                 break;
@@ -208,6 +212,22 @@ public class LapisParser : ParserBase
         var close = Match(TokenKind.CloseCurlyBrace);
         return new InstanceInitializationExpression(SourceSpan.Between(typename, close), typename, initializers);
     }
+
+    private ExpressionSyntax ParseAnonimousInstanceInitializationExpression()
+    {
+        var dot = Match(TokenKind.Dot);
+        Match(TokenKind.OpenCurlyBrace);
+        var initializers = MatchUntil(TokenKind.CloseCurlyBrace, () =>
+        {
+            var propertyInitialization = ParsePropertyInitialization();
+            if (Current.Kind == TokenKind.CloseCurlyBrace) MatchOptional(TokenKind.SemiCollon);
+            else Match(TokenKind.SemiCollon);
+            return propertyInitialization;
+        });
+        var close = Match(TokenKind.CloseCurlyBrace);
+        return new InstanceInitializationExpression(SourceSpan.Between(dot, close), initializers);
+    }
+
 
     private FieldInitilizationSyntax ParsePropertyInitialization()
     {
