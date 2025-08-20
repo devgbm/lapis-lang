@@ -1,314 +1,110 @@
 
 
-
-
 using System.Collections.Immutable;
+
 
 namespace LapisLang.Core;
 
+
 public class Binder
 {
-    public DiagnosticsBag Diagnostics { get; }
-
-    public Binder()
+    public DiagnosticsBag Diagnostics { get; } = new();
+    public Symbol Bind(Syntax syntax, BoundScope scope)
     {
-        Diagnostics = new DiagnosticsBag();
-    }
-    public Symbol Bind(Syntax syntax, ScopeSymbol? bindingContext = null)
-    {
-        var context = bindingContext ?? DefaultSymbols.CreateDefaultScope();
-        if(typeof(ExpressionSyntax).IsAssignableFrom(syntax.GetType())) return BindExpression(((ExpressionSyntax)syntax), context);
-        if(typeof(StatementSyntax).IsAssignableFrom(syntax.GetType())) return BindStatement(((StatementSyntax)syntax), context);
-
-        return Symbol.Unkown;
-    }
-
-    private StatementSymbol BindStatement(StatementSyntax ss, ScopeSymbol context)
-    {
-        switch (ss)
+        switch (syntax)
         {
-            case VariableDeclarationSyntax vds: return BindVariableDeclaration(vds, context);
-            case ScopeStatementSyntax sss: return BindScopeStatement(sss, context);
-            case ReturnStatementSyntax rss: return BindReturnStatementSyntax(rss, context);
-            default: return StatementSymbol.Unknown;
+            case ExpressionSyntax es: return BindExpressionSyntax(es, scope);
+            default:
+                Diagnostics.Report("Unkown expression", syntax);
+                return Symbol.Unkown;
         }
     }
 
-    private StatementSymbol BindReturnStatementSyntax(ReturnStatementSyntax rss, ScopeSymbol context)
+    private ExprSymbol BindExpressionSyntax(ExpressionSyntax syntax, BoundScope scope)
     {
-        var expression =  rss.Expression is null ? ExpressionSymbol.Void : BindExpression(rss.Expression, context);
-
-        if (context.ExpectedReturn != expression.Type)
+        switch (syntax)
         {
-            Diagnostics.Report("wrong return type", rss);
-        }
-
-        return new ReturnStatementSymbol(expression);
-    }
-
-    private StatementSymbol BindScopeStatement(ScopeStatementSyntax sss, ScopeSymbol context)
-    {
-        var statements = ImmutableArray.CreateBuilder<StatementSymbol>();
-        TypeSymbol? foundReturn = null;
-        foreach (var statement in sss.Statements)
-        {
-            var boundStatement = BindStatement(statement, context);
-            statements.Add(boundStatement);
-            if (boundStatement is ReturnStatementSymbol rss) foundReturn = rss.Expression.Type;
-        }
-
-        if (context.ExpectedReturn is not null && context.ExpectedReturn != DefaultSymbols.Types.Void && foundReturn is null)
-        {
-            Diagnostics.Report("function must return a value", sss);
-        }
-
-        return new ScopeStatementSymbol(statements.ToImmutableArray(), foundReturn ?? DefaultSymbols.Types.Unkown);
-    }
-
-    private StatementSymbol BindVariableDeclaration(VariableDeclarationSyntax vds, ScopeSymbol context)
-    {
-        var expression = BindExpression(vds.Expression, context);
-
-        var name = vds.Identifier.String;
-        if (expression is TypeSymbol typeSymbol && typeSymbol.TypeName == "<anonimous-type>")
-        {
-            typeSymbol.TypeName = vds.Identifier.String;
-        }
-        context.DefineSymbol(name, expression);
-
-
-        return new VariableDeclarationSymbol(name, expression, expression.Type);
-    }
-
-    private TypeSymbol PromoteToType(TypeSymbol typeSymbol, string name)
-    {
-        // [TODO] clone value
-        typeSymbol.TypeName = name;
-        return typeSymbol;
-    }
-
-
-    private ExpressionSymbol BindExpression(ExpressionSyntax es, ScopeSymbol context)
-    {
-        switch (es)
-        {
-            case LiteralExpressionSyntax les: return BindLiteralExpression(les, context);
-            case BinaryExpressionSyntax bes: return BindBinaryExpression(bes, context);
-            case UnaryExpressionSyntax ues: return BindUnaryExpression(ues, context);
-            case ParenthesizedExpression pe: return BindExpression(pe.Expression, context);
-            case NameExpressionSyntax ne: return BindNameExpression(ne, context);
-            case TypeExpressionSyntax tes: return BindTypeExpression(tes, context);
-            case MemberExpressionSyntax mes: return BindMemberExpression(mes, context);
-            case InstanceInitializationExpression iie: return BindInstanceInitializationExpression(iie, context);
-            case FuncExpression fe: return BindFuncExpression(fe, context);
-            case CallExpressionSyntax ces: return BindCallExpressionSyntax(ces, context);
-            default: return ExpressionSymbol.Unknown;
+            case LiteralExpressionSyntax les: return BindLiteralExpression(les, scope);
+            case TypeExpressionSyntax tes: return BindTypeExpressionSyntax(tes, scope);
+            case BinaryExpressionSyntax bes: return BindBinaryExpressionSyntax(bes, scope);
+            case NameExpressionSyntax nes: return BindNameExpressionSyntax(nes, scope);
+            default:
+                Diagnostics.Report("Unkown expression", syntax);
+                return ExprSymbol.Unkown;
         }
     }
 
-    private ExpressionSymbol BindCallExpressionSyntax(CallExpressionSyntax ces, ScopeSymbol context)
+    private ExprSymbol BindNameExpressionSyntax(NameExpressionSyntax nes, BoundScope scope)
     {
-        var expression = BindExpression(ces.Expression, context);
-        if (expression.Type != DefaultSymbols.Types.Function || !(expression is NameExpressionSymbol nes && nes.Symbol is FuncSymbol functionSymbol))
+        if (!scope.TryGetExprSymbol(nes.Name.String, out var symbol))
         {
-            Diagnostics.Report("expression is not callable", ces);
-            return ExpressionSymbol.Unknown;
+            Diagnostics.Report("Undefined name", nes);
         }
+        var constantSymbol = symbol == ExprSymbol.Unkown ? null : symbol;
+        return new NameSymbol(nes.Name.String, symbol.Type, constantSymbol);
+    }
 
-        var parameterPairs = functionSymbol.Parameters.Zip(ces.Parameters);
-        var parameterExpressions = ImmutableArray.CreateBuilder<CallArgument>();
+    private ExprSymbol BindBinaryExpressionSyntax(BinaryExpressionSyntax bes, BoundScope scope)
+    {
+        var leftExpr = BindExpressionSyntax(bes.Left, scope);
+        var rightExpr = BindExpressionSyntax(bes.Right, scope);
 
-        foreach (var pair in parameterPairs)
+        var (binaryOp, resultType) = scope.ResolveBinaryExpression(bes.OperatorToken, leftExpr, rightExpr);
+
+        return new BinaryExprSymbol(leftExpr, rightExpr, binaryOp, resultType);
+    }
+    private ExprSymbol BindTypeExpressionSyntax(TypeExpressionSyntax tes, BoundScope scope)
+    {
+        var fieldsArr = ImmutableArray.CreateBuilder<FieldSymbol>();
+
+        foreach (var fieldSyntax in tes.Fields)
         {
-            var parameterExpression = BindExpression(pair.Second, context);
-            if (pair.First.Type != parameterExpression.Type)
+            var fieldName = fieldSyntax.Identifier.String;
+            var expression = BindExpressionSyntax(fieldSyntax.Expression, scope);
+
+
+            TypeSymbol fieldType;
+            
+            switch (expression)
             {
-                Diagnostics.Report("wrong parameter type", pair.Second);
+                case TypeSymbol ts:
+                    fieldType = ts;
+                    break;
+                
+                case NameSymbol ns:
+                    if (ns.IsConstant && ns.ContantSymbol is TypeSymbol nts) fieldType = nts;
+                    else fieldType = LangDefaults.Types.Unkown;
+                    break;
+                default:
+                    fieldType = LangDefaults.Types.Unkown;
+                    break;
             }
-            parameterExpressions.Add(new CallArgument(pair.First.Name, parameterExpression));
-        }
-        if (functionSymbol.Parameters.Count() != ces.Parameters.Count())
-        {
-            Diagnostics.Report("wrong parameter count", ces);
+
+            fieldsArr.Add(new FieldSymbol(fieldName, fieldType, expression.IsConstant));
         }
 
-        return new CallSymbol(functionSymbol, parameterExpressions.ToImmutableArray());
+        return new StructTypeSymbol(fieldsArr.ToImmutableArray(), "anonimous-type");
     }
 
-    private ExpressionSymbol BindFuncExpression(FuncExpression fe, ScopeSymbol context)
+    private ExprSymbol BindLiteralExpression(LiteralExpressionSyntax les, BoundScope scope)
     {
-        var returnType = BindTypeName(fe.ReturnType, context);
-        var parameters = fe.Arguments.Select(e => new FunctionParameter(e.Name.String, BindTypeName(e.TypeName, context))).ToImmutableArray();
-
-        var derived = context.Derive();
-        derived.ExpectedReturn = returnType;
-
-        foreach (var param in parameters) derived.DefineSymbol(param.Name, new NameSymbol(param.Name, param.Type));
-        
-        var statement = BindStatement(fe.Statement, derived);
-
-        return new FuncSymbol(fe.SourceSpan, parameters, returnType, statement);
-    }
-
-    private ExpressionSymbol BindMemberExpression(MemberExpressionSyntax mes, ScopeSymbol context)
-    {
-        var expression = BindExpression(mes.Expresison, context);
-        var foundFieldMember = expression.Type.GetSymbols().OfType<FieldSymbol>().FirstOrDefault(e => e.Name == mes.Member.Name.String);
-        if (foundFieldMember is null)
-        {
-            Diagnostics.Report("Unkown member", mes.Member);
-            return ExpressionSymbol.Unknown;
-        }
-
-
-        return new MemberExpressionSymbol(expression, foundFieldMember);
-    }
-
-    private TypeSymbol BindTypeName(TypeNameSyntax typeName, ScopeSymbol context)
-    {
-        if (!context.GetSymbol(typeName.Identifier.String, out var found))
-        {
-            Diagnostics.Report("Unkow type simbol", typeName);
-            found = DefaultSymbols.Types.Unkown;
-        }
-
-        if (found is not TypeSymbol typeSymbol)
-        {
-            Diagnostics.Report("symbol is not a type", typeName);
-            typeSymbol = DefaultSymbols.Types.Unkown;
-        }
-
-        return typeSymbol;
-    }
-    private ExpressionSymbol BindInstanceInitializationExpression(InstanceInitializationExpression iie, ScopeSymbol context)
-    {
-        var typesymbol = BindTypeName(iie.TypeName, context);
-
-        Dictionary<FieldSymbol, ExpressionSymbol?> fieldInitializers = typesymbol.GetSymbols().OfType<FieldSymbol>().ToDictionary(e => e, e => null as ExpressionSymbol);
-
-        foreach (var initializer in iie.Initializers)
-        {
-            var foundInitializer = fieldInitializers.Keys.FirstOrDefault(e => e.Name == initializer.Identifier.String);
-            if (foundInitializer is null)
-            {
-                Diagnostics.Report("unkwon field", initializer.Identifier);
-                continue;
-            }
-            var fieldKey = fieldInitializers.Keys.First(e => e.Name == initializer.Identifier.String);
-            var expression = BindExpression(initializer.Expression, context);
-
-            if (foundInitializer.Expression is NameExpressionSymbol nes && nes.Symbol is TypeSymbol nameTypeSymbol)
-            {
-                if (nameTypeSymbol != expression.Type)
-                {
-                    Diagnostics.Report("field have mismatched types", initializer.Expression);
-                    continue;
-                }
-                fieldInitializers[fieldKey] = expression;
-            }
-        }
-
-        if (fieldInitializers.Any(e => e.Value == null))
-        {
-            var field = fieldInitializers.Where(e => e.Value == null).First();
-            Diagnostics.Report("uninitialized field", iie.TypeName);
-        }
-
-        return new InstanceInitializeSymbol(typesymbol, fieldInitializers);
-    }
-
-    private ExpressionSymbol BindTypeExpression(TypeExpressionSyntax tes, ScopeSymbol context)
-    {
-        var type = new TypeSymbol("<anonimous-type>");
-
-        foreach (var field in tes.Fields)
-        {
-            var expression = BindExpression(field.Expression, context);
-
-            if (expression is TypeSymbol typeSymbol)
-            {
-                type.DefineSymbol(field.Identifier.String, new FieldSymbol(type, field.Identifier.String, typeSymbol));
-            }
-            else if (expression is NameExpressionSymbol nameSymbol)
-            {
-                type.IsGeneric = true;
-                type.DefineSymbol(field.Identifier.String, new FieldSymbol(type, field.Identifier.String, nameSymbol));
-            }
-            else
-            {
-                Diagnostics.Report("Unkown symbol", field.Expression);
-                type.DefineSymbol(field.Identifier.String, new FieldSymbol(type, field.Identifier.String, DefaultSymbols.Types.Unkown));
-            }
-        }
-
-        return type;
-    }
-
-    private ExpressionSymbol BindNameExpression(NameExpressionSyntax ne, ScopeSymbol context)
-    {
-        if (!context.GetSymbol(ne.Name.String, out var symbol))
-        {
-            Diagnostics.Report("unkown symbol", ne);
-            return ExpressionSymbol.Unknown;
-        }
-
-        var type = symbol switch
-        {
-            ExpressionSymbol es => es.Type,
-            ScopeSymbol => DefaultSymbols.Types.Scope,
-            _ => DefaultSymbols.Types.Unkown
-        };
-
-        return new NameExpressionSymbol(symbol, type);
-    }
-
-    private ExpressionSymbol BindUnaryExpression(UnaryExpressionSyntax ues, ScopeSymbol context)
-    {
-        var operand = BindExpression(ues.Expression, context);
-        var oper = operand.Type.GetUnaryOperatorFor(ues.TokenOperator.Kind);
-
-        return new UnaryExpressionSymbol(operand, oper.Kind, oper.Result);
-    }
-
-    private BinaryExpressionSymbol BindBinaryExpression(BinaryExpressionSyntax bes, ScopeSymbol context)
-    {
-        var left = BindExpression(bes.Left, context);
-        var right = BindExpression(bes.Right, context);
-        var oper = left.Type.GetBinaryOperatorFor(bes.OperatorToken.Kind);
-
-        if (oper.With != right.Type)
-        {
-            Diagnostics.Report("Operator type mismatch", bes.OperatorToken);
-        }
-
-        return new BinaryExpressionSymbol(left, right, oper.Kind, oper.Result);
-    }
-
-    private ExpressionSymbol BindLiteralExpression(LiteralExpressionSyntax es, ScopeSymbol context)
-    {
-        switch (es.LiteralType)
+        switch (les.LiteralType)
         {
             case LiteralType.Integer:
-            {
-                var value = long.Parse(es.SourceSpan.AsText);
-                return new ValueSymbol(value, DefaultSymbols.Types.Integer);
-            }
-            case LiteralType.String:
-            {
-                var value = new String(es.SourceSpan.AsText);
-                return new ValueSymbol(value, DefaultSymbols.Types.String);
-            }
-            case LiteralType.Decimal:
-            {
-                var value = decimal.Parse(es.SourceSpan.AsText);
-                return new ValueSymbol(value, DefaultSymbols.Types.Decimal);
-            }
+                return new IntegerSymbol(long.Parse(les.SourceSpan.AsText));
+
             case LiteralType.Boolean:
-            {
-                var value = bool.Parse(es.SourceSpan.AsText);
-                return new ValueSymbol(value, DefaultSymbols.Types.Boolean);
-            }
-            default: return ExpressionSymbol.Unknown;
+                return new BooleanSymbol(bool.Parse(les.SourceSpan.AsText));
+
+            case LiteralType.String:
+                return new StringSymbol(les.SourceSpan.AsText.ToString());
+
+            case LiteralType.Decimal:
+                return new DecimalSymbol(decimal.Parse(les.SourceSpan.AsText));
+
+            default:
+                Diagnostics.Report("Unkown expression", les);
+                return ExprSymbol.Unkown;
         }
     }
 }

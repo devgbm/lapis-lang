@@ -1,135 +1,55 @@
 
-
-
-
-
-
-using System.Collections.Immutable;
-using System.Reflection.Metadata;
-
 namespace LapisLang.Core;
 
-
-public enum UnaryOperatorKind { Unknown = -1, Identity, Inverse, Negation };
-public class UnaryOperatorSymbol : Symbol
+public abstract class TypeSymbol : ExprSymbol
 {
-    public UnaryOperatorSymbol(UnaryOperatorKind kind, TypeSymbol result)
+    public TypeSymbol()
+    { }
+    public TypeSymbol(string? debugName)
     {
-        Kind = kind;
-        Result = result;
+        DebugName = debugName;
     }
-    public UnaryOperatorKind Kind { get; set; }
-    public TypeSymbol Result { get; set; }
 
-    public static UnaryOperatorSymbol Unknown = new UnaryOperatorSymbol(UnaryOperatorKind.Unknown, DefaultSymbols.Types.Unkown);
-
-}
-public class BinaryOperatorSymbol : Symbol
-{
-    public BinaryOperatorSymbol(BinaryOperatorKind kind, TypeSymbol with, TypeSymbol result)
-    {
-        Kind = kind;
-        With = with;
-        Result = result;
-    }
-    public BinaryOperatorKind Kind { get; set; }
-    public TypeSymbol With { get; set; }
-    public TypeSymbol Result { get; set; }
-
-    public static BinaryOperatorSymbol Unknown = new BinaryOperatorSymbol(BinaryOperatorKind.Unknown, DefaultSymbols.Types.Unkown, DefaultSymbols.Types.Unkown);
-
+    public string? DebugName { get; }
+    public override TypeSymbol Type { get => LangDefaults.Types.Type; }
+    public abstract bool IsEquivalent(ExprSymbol symbol);
 }
 
-public class FieldSymbol : Symbol
+public enum BinaryOperator
 {
-    public FieldSymbol(TypeSymbol owner, string name, ExpressionSymbol expression)
-    {
-        Owner = owner;
-        Name = name;
-        Expression = expression;
-    }
-
-    public TypeSymbol Owner { get; }
-    public string Name { get; }
-    public ExpressionSymbol Expression { get; }
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    GreatherThan,
+    LessThan,
+    GreatherEqualThan,
+    LessEqualThan,
+    Equality,
+    Inequality,
+    TypeWith,
+    TypeWithout,
+    TypeContains,
+    Unkown,
+    LogicalAnd,
+    LogicalOr
 }
-public class TypeSymbol : ExpressionSymbol, IScopeSymbol
+public class BinaryExprSymbol : ExprSymbol
 {
-    private static Dictionary<TokenKind, string> _uops = new()
+    public ExprSymbol Left { get; }
+    public ExprSymbol Right { get; }
+    public BinaryOperator BinaryOperator { get; }
+
+    public BinaryExprSymbol(ExprSymbol left, ExprSymbol right, BinaryOperator binaryOperator, TypeSymbol type)
     {
-        [TokenKind.Minus] = "@uop_-",
-        [TokenKind.Plus] = "@uop_+",
-        [TokenKind.Bang] = "@uop_!",
-        [TokenKind.NotKeyword] = "@uop_not"
-    };
-
-    private static Dictionary<TokenKind, string> _bops = new()
-    {
-        [TokenKind.Plus] = "@bop_+",
-        [TokenKind.Minus] = "@bop_-",
-        [TokenKind.Slash] = "@bop_/",
-        [TokenKind.Star] = "@bop_*",
-        [TokenKind.Percent] = "@bop_%",
-        [TokenKind.Minus] = "@bop_-",
-        [TokenKind.Minus] = "@bop_-",
-
-        [TokenKind.DoubleEquals] = "@bop_eq",
-        [TokenKind.BangEquals] = "@bop_neq",
-        [TokenKind.LeftArrow] = "@bop_lt",
-        [TokenKind.LeftArrowEquals] = "@bop_lteq",
-        [TokenKind.RightArrow] = "@bop_gt",
-        [TokenKind.RightArrowEquals] = "@bop_gteq",
-
-        [TokenKind.AndKeyword] = "@bop_and",
-        [TokenKind.OrKeyword] = "@bop_or",
-    };
-
-    private ScopeSymbol _scope = new ScopeSymbol();
-    public TypeSymbol(string typeName) : base(DefaultSymbols.Types.Type)
-    {
-        TypeName = typeName;
-    }
-    public bool IsGeneric { get; set; }
-    public string TypeName { get; set; }
-
-
-    public bool DefineSymbol(object? key, Symbol value)
-    {
-        return _scope.DefineSymbol(key, value);
+        Left = left;
+        Right = right;
+        BinaryOperator = binaryOperator;
+        Type = type;
     }
 
-    public bool GetSymbol(object? key, out Symbol? symbol)
-    {
-        return _scope.GetSymbol(key, out symbol);
-    }
+    public override bool IsConstant => Left.IsConstant && Right.IsConstant;
 
-    public IEnumerable<Symbol> GetSymbols()
-    {
-        return _scope.GetSymbols();
-    }
-
-    public void SetSymbol(object? key, Symbol value)
-    {
-        _scope.SetSymbol(key, value);
-    }
-
-    internal BinaryOperatorSymbol GetBinaryOperatorFor(TokenKind kind)
-    {
-        var mapped = _bops[kind];
-        if (!GetSymbol(mapped, out var symbol))
-        {
-            return BinaryOperatorSymbol.Unknown;
-        }
-        return symbol as BinaryOperatorSymbol ?? BinaryOperatorSymbol.Unknown;
-    }
-
-    internal UnaryOperatorSymbol GetUnaryOperatorFor(TokenKind kind)
-    {
-        var mapped = _uops[kind];
-        if (!GetSymbol(mapped, out var symbol))
-        {
-            return UnaryOperatorSymbol.Unknown;
-        }
-        return symbol as UnaryOperatorSymbol ?? UnaryOperatorSymbol.Unknown;
-    }
+    public override TypeSymbol Type { get; }
 }

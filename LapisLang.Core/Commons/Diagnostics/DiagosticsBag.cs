@@ -20,4 +20,9 @@ public class DiagnosticsBag
     {
         bag._dianostics.AddRange(_dianostics);
     }
+
+    public string GetMessages()
+    {
+        return string.Join("\n\n", Errors.Select(e => e.GenerateMessage()));
+    }
 }

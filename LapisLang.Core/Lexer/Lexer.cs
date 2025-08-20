@@ -149,9 +149,16 @@ public class Lexer
                 Next();
                 Next();
                 return new Token(TokenKind.BangEquals, source.CreateSpan(position - 2, 2));
+            case '!' when Peek(1) == '&':
+                Next();
+                Next();
+                return new Token(TokenKind.BangAnd, source.CreateSpan(position - 2, 2));
             case '!':
                 Next();
                 return new Token(TokenKind.Bang, source.CreateSpan(position - 1, 1));
+            case '&':
+                Next();
+                return new Token(TokenKind.And, source.CreateSpan(position - 1, 1));
             case '<' when Peek(1) == '=':
                 Next();
                 Next();
@@ -219,6 +226,7 @@ public class Lexer
             "type" => TokenKind.TypeKeyword,
             "func" => TokenKind.FuncKeyword,
             "return" => TokenKind.ReturnKeyword,
+            "match" => TokenKind.MatchKeyword,
             _ => TokenKind.Identifier
         };
     }

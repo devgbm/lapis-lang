@@ -27,7 +27,7 @@ public class SourceText
     }
     public string GetLine(int lineNumber)
     {
-        var count = 1;
+        var count = 0;
         var index = -1;
         var nextIndex = -1;
         while(lineNumber >= count)
@@ -36,7 +36,7 @@ public class SourceText
             nextIndex = Text.IndexOf('\n', index);
             if(nextIndex < 0)
             {
-                if(lineNumber == count) return Text.Substring(index, Text.Length - index - 1).Trim();
+                if(lineNumber == count) return Text.Substring(index, Text.Length - index).Trim();
                 return "";
             }
             count++;

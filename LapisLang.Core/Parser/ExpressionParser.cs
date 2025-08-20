@@ -79,10 +79,13 @@ public class LapisParser : ParserBase
             case TokenKind.Star:
             case TokenKind.Slash:
             case TokenKind.Percent:
+            case TokenKind.BangAnd:
+            case TokenKind.And:
                 return 5;
 
             case TokenKind.Minus:
             case TokenKind.Plus:
+            case TokenKind.MatchKeyword:
                 return 4;
 
             case TokenKind.DoubleEquals:
@@ -94,6 +97,7 @@ public class LapisParser : ParserBase
                 return 3;
 
             case TokenKind.AndKeyword:
+            case TokenKind.NotKeyword:
                 return 2;
 
             case TokenKind.OrKeyword:
