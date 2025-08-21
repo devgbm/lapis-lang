@@ -63,11 +63,25 @@ public class LapisEvaluator
 
             case NameSymbol ns:
                 return EvaluateNameSymbol(ns, scope);
+
+            case MemberSymbol ms:
+                return EvaluateMemberSymbol(ms, scope);
+
             case BinaryExprSymbol bes:
                 return EvaluateBinaryExpr(bes, scope);
 
             default: return ExprSymbol.Unkown;
         }
+    }
+
+    private ExprSymbol EvaluateMemberSymbol(MemberSymbol ms, EvaluationScope scope)
+    {
+        var expression = EvaluateExpression(ms.Expression, scope);
+        if (expression is InstanceSymbol instance)
+        {
+            return instance.Atributes.GetValueOrDefault(ms.Name, ExprSymbol.Unkown);
+        }
+        return ExprSymbol.Unkown;
     }
 
     private ExprSymbol EvaluateNameSymbol(NameSymbol ns, EvaluationScope scope)

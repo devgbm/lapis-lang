@@ -62,10 +62,25 @@ public class Binder
             case BinaryExpressionSyntax bes: return BindBinaryExpressionSyntax(bes, scope);
             case NameExpressionSyntax nes: return BindNameExpressionSyntax(nes, scope);
             case InstanceInitializationExpression iie: return BindInstanceInitializationSyntax(iie, scope);
+            case MemberExpressionSyntax mes: return BindMemberExpressionSyntax(mes, scope);
             default:
                 Diagnostics.Report("Unkown expression", syntax);
                 return ExprSymbol.Unkown;
         }
+    }
+
+    private ExprSymbol BindMemberExpressionSyntax(MemberExpressionSyntax mes, BoundScope scope)
+    {
+        var expression = BindExpressionSyntax(mes.Expresison, scope);
+
+        var memberExpression = expression.Type.GetMember(mes.Member.Name.String);
+        if (memberExpression == ExprSymbol.Unkown)
+        {
+            Diagnostics.Report("unkown member", mes.Member);
+            return ExprSymbol.Unkown;
+        }
+
+        return new MemberSymbol(expression, memberExpression.Type, mes.Member.Name.String);
     }
 
     private ExprSymbol BindInstanceInitializationSyntax(InstanceInitializationExpression syntax, BoundScope scope)
@@ -85,7 +100,11 @@ public class Binder
                 {
                     Diagnostics.Report("duplicate identifier", initializer.Identifier);
                 }
-                else atributes.Add(initializerName, expression);
+                else
+                {
+                    var initializerValue = LapisEvaluator.Instance.Evaluate(expression, EvaluationScope.CreateScope(scope)) as ExprSymbol ?? ExprSymbol.Unkown;
+                    atributes.Add(initializerName, initializerValue);
+                }
             }
 
             type = new StructTypeSymbol(typeArray.ToImmutableArray(), "anonimous-type");
@@ -112,7 +131,11 @@ public class Binder
                 {
                     Diagnostics.Report("duplicate identifier", initializer.Identifier);
                 }
-                else atributes.Add(initializerName, expression);
+                else
+                {
+                    var initializerValue = LapisEvaluator.Instance.Evaluate(expression, EvaluationScope.CreateScope(scope)) as ExprSymbol ?? ExprSymbol.Unkown;
+                    atributes.Add(initializerName, initializerValue);
+                }
             }
         }
         return new InstanceSymbol(atributes.ToImmutableDictionary(), type);
@@ -124,7 +147,7 @@ public class Binder
         {
             Diagnostics.Report("Undefined name", nes);
         }
-        var constantSymbol = symbol == ExprSymbol.Unkown ? null : symbol;
+        var constantSymbol = symbol == ExprSymbol.Unkown ? false : true;
         return new NameSymbol(nes.Name.String, symbol.Type, constantSymbol);
     }
 

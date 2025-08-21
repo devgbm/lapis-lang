@@ -10,6 +10,7 @@ public class StructTypeSymbol : TypeSymbol
     {
         Fields = fields;
         IsConstant = fields.All(e => e.IsConstant);
+        foreach (var field in fields) DefineMember(field.Name, field.Type);
     }
 
     public ImmutableArray<FieldSymbol> Fields { get; }

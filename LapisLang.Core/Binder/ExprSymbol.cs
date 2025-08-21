@@ -8,21 +8,39 @@ public abstract class ExprSymbol : Symbol
     public abstract bool IsConstant { get; }
     public abstract TypeSymbol Type { get; }
 }
-public class NameSymbol : ExprSymbol
+
+public class MemberSymbol : ExprSymbol
 {
-    public NameSymbol(string name, TypeSymbol type, ExprSymbol? contantSymbol = null)
+    public MemberSymbol(
+        ExprSymbol expression,
+        TypeSymbol type,
+        string name
+    )
     {
+        Expression = expression;
+        IsConstant = expression.IsConstant;
         Name = name;
-        ContantSymbol = contantSymbol;
-        IsConstant = contantSymbol is not null;
         Type = type;
     }
     public override bool IsConstant { get; }
 
     public override TypeSymbol Type { get; }
 
+    public ExprSymbol Expression { get; }
     public string Name { get; }
-    public ExprSymbol? ContantSymbol { get; }
+}
+public class NameSymbol : ExprSymbol
+{
+    public NameSymbol(string name, TypeSymbol type, bool isConstant)
+    {
+        Name = name;
+        IsConstant = isConstant;
+        Type = type;
+    }
+    public override bool IsConstant { get; }
+
+    public override TypeSymbol Type { get; }
+    public string Name { get; }
 }
 public class UnkownExprSymbol : ExprSymbol
 {
