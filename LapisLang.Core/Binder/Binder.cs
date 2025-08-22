@@ -94,6 +94,7 @@ public class Binder
             case LiteralExpressionSyntax les: return BindLiteralExpression(les, scope);
             case TypeExpressionSyntax tes: return BindTypeExpressionSyntax(tes, scope);
             case BinaryExpressionSyntax bes: return BindBinaryExpressionSyntax(bes, scope);
+            case UnaryExpressionSyntax ues: return BindUnaryExpressionSyntax(ues, scope);
             case NameExpressionSyntax nes: return BindNameExpressionSyntax(nes, scope);
             case InstanceInitializationExpression iie: return BindInstanceInitializationSyntax(iie, scope);
             case MemberExpressionSyntax mes: return BindMemberExpressionSyntax(mes, scope);
@@ -105,6 +106,15 @@ public class Binder
                 Diagnostics.Report("Unkown expression", syntax);
                 return ExprSymbol.Unkown;
         }
+    }
+
+    private ExprSymbol BindUnaryExpressionSyntax(UnaryExpressionSyntax syntax, BoundScope scope)
+    {
+        var operand = BindExpressionSyntax(syntax.Expression, scope);
+
+        var (unaryOp, resultType) = scope.ResolveUnaryExpression(syntax.TokenOperator, operand);
+
+        return new UnaryExprSymbol(operand, unaryOp, resultType);
     }
 
     private ExprSymbol BindCallExpressionSyntax(CallExpressionSyntax ces, BoundScope scope)
@@ -232,14 +242,14 @@ public class Binder
     {
         var expression = BindExpressionSyntax(mes.Expresison, scope);
 
-        var memberExpression = expression.Type.GetMember(mes.Member.Name.String);
+        var memberExpression = expression.Type.GetMember(mes.Member.Name.String) as TypeSymbol ?? LangDefaults.Types.Unkown;
         if (memberExpression == ExprSymbol.Unkown)
         {
             Diagnostics.Report("unkown member", mes.Member);
             return ExprSymbol.Unkown;
         }
 
-        return new MemberSymbol(expression, memberExpression.Type, mes.Member.Name.String);
+        return new MemberSymbol(expression, memberExpression, mes.Member.Name.String);
     }
 
     private ExprSymbol BindInstanceInitializationSyntax(InstanceInitializationExpression syntax, BoundScope scope)

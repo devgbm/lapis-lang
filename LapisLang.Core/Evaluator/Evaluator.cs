@@ -98,9 +98,19 @@ public class LapisEvaluator
 
             case BinaryExprSymbol bes:
                 return EvaluateBinaryExpr(bes, scope);
+            
+            case UnaryExprSymbol ues:
+                return EvaluateUnaryExpr(ues, scope);
 
             default: return ExprSymbol.Unkown;
         }
+    }
+
+    private ExprSymbol EvaluateUnaryExpr(UnaryExprSymbol ues, EvaluationScope scope)
+    {
+        var expression = EvaluateExpression(ues.Operand, scope);
+        var operFn = scope.GetOperatorFn(expression.Type, ues.UnaryOperator);
+        return operFn(expression);
     }
 
     private ExprSymbol EvaluateTypeSymbol(TypeSymbol ts, EvaluationScope scope)

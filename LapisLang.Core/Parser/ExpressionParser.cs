@@ -67,6 +67,8 @@ public class LapisParser : ParserBase
             case TokenKind.Minus:
             case TokenKind.Plus:
                 return 5;
+            case TokenKind.TypeofKeyword:
+                return 4;
 
             default: return 0;
         }

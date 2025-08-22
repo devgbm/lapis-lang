@@ -31,7 +31,14 @@ public abstract class TypeSymbol : ExprSymbol
     public override TypeSymbol Type { get => LangDefaults.Types.Type; }
     public abstract bool IsEquivalent(ExprSymbol symbol);
 }
-
+public enum UnaryOperator
+{
+    Inverse,
+    Identity,
+    Unkown,
+    LogicalNegation,
+    TypeOf
+}
 public enum BinaryOperator
 {
     Add,
@@ -67,6 +74,22 @@ public class BinaryExprSymbol : ExprSymbol
     }
 
     public override bool IsCompileTime => Left.IsCompileTime && Right.IsCompileTime;
+
+    public override TypeSymbol Type { get; }
+}
+public class UnaryExprSymbol : ExprSymbol
+{
+    public ExprSymbol Operand { get; }
+    public UnaryOperator UnaryOperator { get; }
+
+    public UnaryExprSymbol(ExprSymbol left, UnaryOperator unaryOperator, TypeSymbol type)
+    {
+        Operand = left;
+        UnaryOperator = unaryOperator;
+        Type = type;
+    }
+
+    public override bool IsCompileTime => Operand.IsCompileTime;
 
     public override TypeSymbol Type { get; }
 }

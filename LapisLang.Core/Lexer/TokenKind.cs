@@ -71,4 +71,5 @@ public enum TokenKind {
     MatchKeyword,
     BangAnd,
     And,
+    TypeofKeyword,
 }

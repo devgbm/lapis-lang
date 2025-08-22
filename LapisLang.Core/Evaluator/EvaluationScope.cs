@@ -15,6 +15,38 @@ public class EvaluationScope
     {
         return new EvaluationScope(scope);
     }
+    internal Func<ExprSymbol, ExprSymbol> GetOperatorFn(TypeSymbol operand, UnaryOperator unaryOperator)
+    {
+        if (unaryOperator == UnaryOperator.TypeOf) return (expr) => expr.Type;
+        if (operand == LangDefaults.Types.Integer)
+        {
+            return unaryOperator switch
+            {
+                UnaryOperator.Inverse => (operand) => new IntegerSymbol(-((IntegerSymbol)operand).Value),
+                UnaryOperator.Identity => (operand) => new IntegerSymbol(((IntegerSymbol)operand).Value),
+                _ => throw new Exception()
+            };
+        }
+        if (operand == LangDefaults.Types.Decimal)
+        {
+            return unaryOperator switch
+            {
+                UnaryOperator.Inverse => (operand) => new DecimalSymbol(-((DecimalSymbol)operand).Value),
+                UnaryOperator.Identity => (operand) => new DecimalSymbol(((DecimalSymbol)operand).Value),
+                _ => throw new Exception()
+            };
+        }
+
+        if (operand == LangDefaults.Types.Boolean)
+        {
+            return unaryOperator switch
+            {
+                UnaryOperator.LogicalNegation => (ExprSymbol) => new BooleanSymbol(!((BooleanSymbol)ExprSymbol).Value),
+                _ => throw new Exception()
+            };
+        }
+        throw new Exception();
+    }
 
     internal Func<ExprSymbol, ExprSymbol, ExprSymbol> GetOperatorFn(TypeSymbol type1, TypeSymbol type2, BinaryOperator binaryOperator)
     {

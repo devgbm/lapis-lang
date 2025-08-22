@@ -12,6 +12,50 @@ public class BoundScope
         this._parent = parent;
     }
 
+    public (UnaryOperator, TypeSymbol) ResolveUnaryExpression(Token operatorToken, ExprSymbol operand)
+    {
+        if (operatorToken.Kind == TokenKind.TypeofKeyword) return (UnaryOperator.TypeOf, LangDefaults.Types.Type);
+        if (operand.Type == LangDefaults.Types.Integer)
+        {
+            return operatorToken.Kind switch
+            {
+                TokenKind.Minus => (UnaryOperator.Inverse, LangDefaults.Types.Integer),
+                TokenKind.Plus => (UnaryOperator.Identity, LangDefaults.Types.Integer),
+                TokenKind.TypeofKeyword => (UnaryOperator.TypeOf, LangDefaults.Types.Type),
+                _ => (UnaryOperator.Unkown, LangDefaults.Types.Unkown)
+            };
+        }
+        if (operand.Type == LangDefaults.Types.Boolean)
+        {
+            return operatorToken.Kind switch
+            {
+                TokenKind.NotKeyword => (UnaryOperator.LogicalNegation, LangDefaults.Types.Boolean),
+                TokenKind.TypeofKeyword => (UnaryOperator.TypeOf, LangDefaults.Types.Type),
+                _ => (UnaryOperator.Unkown, LangDefaults.Types.Unkown)
+            };
+        }
+        if (operand.Type == LangDefaults.Types.Decimal)
+        {
+            return operatorToken.Kind switch
+            {
+                TokenKind.Minus => (UnaryOperator.Inverse, LangDefaults.Types.Decimal),
+                TokenKind.Plus => (UnaryOperator.Identity, LangDefaults.Types.Decimal),
+                TokenKind.TypeofKeyword => (UnaryOperator.TypeOf, LangDefaults.Types.Type),
+                _ => (UnaryOperator.Unkown, LangDefaults.Types.Unkown)
+            };
+        }        
+
+        if (operand.Type == LangDefaults.Types.Type)
+        {
+            return operatorToken.Kind switch
+            {
+                TokenKind.TypeofKeyword => (UnaryOperator.TypeOf, LangDefaults.Types.Type),
+                _ => (UnaryOperator.Unkown, LangDefaults.Types.Unkown)
+            };
+        }
+
+        return (UnaryOperator.Unkown, LangDefaults.Types.Unkown);
+    }
     public (BinaryOperator, TypeSymbol) ResolveBinaryExpression(Token operatorToken, ExprSymbol left, ExprSymbol right)
     {
         if (left.Type == LangDefaults.Types.Integer && right.Type == LangDefaults.Types.Integer)
