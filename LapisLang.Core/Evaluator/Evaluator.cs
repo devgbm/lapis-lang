@@ -10,6 +10,8 @@ namespace LapisLang.Core;
 public class LapisEvaluator
 {
     private static LapisEvaluator? _instnce;
+    private bool _returnRequest = false;
+
     public static LapisEvaluator Instance
     {
         get
@@ -44,7 +46,9 @@ public class LapisEvaluator
         {
             case DefineSymbol ds: return EvaluateDefineSymbol(ds, evaluationScope);
             case ScopeSymbol ss: return EvaluateScopeSymbol(ss, evaluationScope);
-            case ReturnSymbol rs: return EvaluateExpression(rs.Expression, evaluationScope);
+            case ReturnSymbol rs: return EvaluateReturnSymbol(rs, evaluationScope); 
+            case IfSymbol ifs: return EvaluateIfSymbol(ifs, evaluationScope);
+            case VoidStatement vs: return vs;
 
             default:
                 throw new Exception("Unkown or unsuported statement.");
@@ -52,12 +56,34 @@ public class LapisEvaluator
         
     }
 
+    private Symbol EvaluateReturnSymbol(ReturnSymbol symbol, EvaluationScope evaluationScope)
+    {
+        _returnRequest = true;
+        return EvaluateExpression(symbol.Expression, evaluationScope);
+    }
+
+    private Symbol EvaluateIfSymbol(IfSymbol symbol, EvaluationScope evaluationScope)
+    {
+        var result = EvaluateExpression(symbol.ConditionExpression, evaluationScope);
+        if (result is not BooleanSymbol bs) throw new Exception("If condition must be a boolean symbol");
+
+        var derivedScope = evaluationScope.Derive();
+        if (bs.Value == true) return EvaluateStatement(symbol.Statements, evaluationScope);
+        else if(symbol.ElseStatements is not null) return EvaluateStatement(symbol.ElseStatements, evaluationScope);
+
+        return VoidSymbol.Instance;   
+    }
+
     private Symbol EvaluateScopeSymbol(ScopeSymbol ss, EvaluationScope evaluationScope)
     {
         foreach (var statement in ss.StatementSymbols)
         {
             var returnSymbol = EvaluateStatement(statement, evaluationScope);
-            if (statement is ReturnSymbol) return returnSymbol;
+            if (_returnRequest)
+            {
+                _returnRequest = false;
+                return returnSymbol;
+            }
         }
         return VoidSymbol.Instance;
     }

@@ -227,6 +227,8 @@ public class Lexer
             "func" => TokenKind.FuncKeyword,
             "return" => TokenKind.ReturnKeyword,
             "match" => TokenKind.MatchKeyword,
+            "if" => TokenKind.IfKeyword,
+            "else" => TokenKind.ElseKeyword,
             "typeof" => TokenKind.TypeofKeyword,
             _ => TokenKind.Identifier
         };

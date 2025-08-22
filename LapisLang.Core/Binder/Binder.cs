@@ -30,12 +30,26 @@ public class Binder
         {
             case DefineStatementSyntax dss: return BindDefineStatementSyntax(dss, scope);
             case ScopeStatementSyntax sss: return BindScopeStatementSyntax(sss, scope);
+            case IfStatementSyntax iss: return BindIfStatementSyntax(iss, scope);
             case ReturnStatementSyntax rss: return BindReturnStatementSyntax(rss, scope);
             default:
                 Diagnostics.Report("unkown statement", syntax);
                 return StatementSymbol.UnkownStatement;
         }
         throw new NotImplementedException();
+    }
+
+    private StatementSymbol BindIfStatementSyntax(IfStatementSyntax iss, BoundScope scope)
+    {
+        var expression = BindExpressionSyntax(iss.Conditional, scope);
+        
+        if (expression.Type != LangDefaults.Types.Boolean)
+        {
+            Diagnostics.Report("if conditional must evaluate to a boolean type", iss.Conditional);
+        }
+        var statements = BindStatementSyntax(iss.Statement, scope.Derive());
+        var elseStatements = iss.ElseStatement is not null ? BindStatementSyntax(iss.ElseStatement, scope.Derive()) : null;
+        return new IfSymbol(expression, statements, elseStatements);
     }
 
     private StatementSymbol BindReturnStatementSyntax(ReturnStatementSyntax rss, BoundScope scope)

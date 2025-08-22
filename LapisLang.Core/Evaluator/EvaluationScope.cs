@@ -64,8 +64,8 @@ public class EvaluationScope
                 BinaryOperator.Inequality => (ExprSymbol left, ExprSymbol right) => new BooleanSymbol(((IntegerSymbol)left).Value != ((IntegerSymbol)right).Value),
                 BinaryOperator.GreatherThan => (ExprSymbol left, ExprSymbol right) => new BooleanSymbol(((IntegerSymbol)left).Value > ((IntegerSymbol)right).Value),
                 BinaryOperator.LessThan => (ExprSymbol left, ExprSymbol right) => new BooleanSymbol(((IntegerSymbol)left).Value < ((IntegerSymbol)right).Value),
-                BinaryOperator.LessEqualThan => (ExprSymbol left, ExprSymbol right) => new BooleanSymbol(((IntegerSymbol)left).Value >= ((IntegerSymbol)right).Value),
-                BinaryOperator.GreatherEqualThan => (ExprSymbol left, ExprSymbol right) => new BooleanSymbol(((IntegerSymbol)left).Value <= ((IntegerSymbol)right).Value),
+                BinaryOperator.LessEqualThan => (ExprSymbol left, ExprSymbol right) => new BooleanSymbol(((IntegerSymbol)left).Value <= ((IntegerSymbol)right).Value),
+                BinaryOperator.GreatherEqualThan => (ExprSymbol left, ExprSymbol right) => new BooleanSymbol(((IntegerSymbol)left).Value >= ((IntegerSymbol)right).Value),
                 _ => throw new Exception()
             };
         }

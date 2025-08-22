@@ -22,6 +22,7 @@ public class LapisParser : ParserBase
         {
             case TokenKind.DefineKeyword:
             case TokenKind.OpenCurlyBrace:
+            case TokenKind.IfKeyword:
             case TokenKind.ReturnKeyword:
                 return ParseStatement();
             
@@ -355,12 +356,28 @@ public class LapisParser : ParserBase
             case TokenKind.DefineKeyword: return ParseVariableDeclaration();
             case TokenKind.OpenCurlyBrace: return ParseScopeStatement();
             case TokenKind.ReturnKeyword: return ParseReturnStatement();
+            case TokenKind.IfKeyword: return ParseIfStatement();
             default:
                 {
                     var expression = ParseExpression();
                     return new ExpressionStatementSyntax(expression, expression);
                 }
         }
+    }
+
+    private StatementSyntax ParseIfStatement()
+    {
+        var keyword = Match(TokenKind.IfKeyword);
+        var conditional = ParseExpression();
+        var statement = ParseStatement();
+        if (Current.Kind != TokenKind.ElseKeyword)
+        {
+            return new IfStatementSyntax(SourceSpan.Between(keyword, statement), conditional, statement, null);
+        }
+        Match(TokenKind.ElseKeyword);
+
+        var elseStatement = ParseStatement();
+        return new IfStatementSyntax(SourceSpan.Between(keyword, statement), conditional, statement, elseStatement);
     }
 
     private ScopeStatementSyntax ParseScopeStatement()
