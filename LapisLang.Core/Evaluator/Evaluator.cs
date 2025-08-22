@@ -2,6 +2,8 @@
 
 
 
+using System.Collections.Immutable;
+
 namespace LapisLang.Core;
 
 
@@ -41,15 +43,28 @@ public class LapisEvaluator
         switch (syntax)
         {
             case DefineSymbol ds: return EvaluateDefineSymbol(ds, evaluationScope);
+            case ScopeSymbol ss: return EvaluateScopeSymbol(ss, evaluationScope);
+            case ReturnSymbol rs: return EvaluateExpression(rs.Expression, evaluationScope);
+
             default:
                 throw new Exception("Unkown or unsuported statement.");
         }
         
     }
 
+    private Symbol EvaluateScopeSymbol(ScopeSymbol ss, EvaluationScope evaluationScope)
+    {
+        foreach (var statement in ss.StatementSymbols)
+        {
+            var returnSymbol = EvaluateStatement(statement, evaluationScope);
+            if (statement is ReturnSymbol) return returnSymbol;
+        }
+        return VoidSymbol.Instance;
+    }
+
     private Symbol EvaluateDefineSymbol(DefineSymbol ds, EvaluationScope evaluationScope)
     {
-        if (ds.Expression.IsConstant) return VoidSymbol.Instance;
+        if (ds.Expression.IsCompileTime) return VoidSymbol.Instance;
 
         return VoidSymbol.Instance;
     }
@@ -63,22 +78,70 @@ public class LapisEvaluator
             case BooleanSymbol:
             case DecimalSymbol:
             case StringSymbol:
-            case TypeSymbol:
             case FuncSymbol:
-            case InstanceSymbol:
                 return expr;
 
+            case TypeSymbol ts:
+                return EvaluateTypeSymbol(ts, scope);
+
+            case InstanceSymbol ins:
+                return EvaluateInstanceSymbol(ins, scope);
+                
             case NameSymbol ns:
                 return EvaluateNameSymbol(ns, scope);
 
             case MemberSymbol ms:
                 return EvaluateMemberSymbol(ms, scope);
 
+            case CallSymbol cs:
+                return EvaluateCallSymbol(cs, scope);
+
             case BinaryExprSymbol bes:
                 return EvaluateBinaryExpr(bes, scope);
 
             default: return ExprSymbol.Unkown;
         }
+    }
+
+    private ExprSymbol EvaluateTypeSymbol(TypeSymbol ts, EvaluationScope scope)
+    {
+        if (ts is not StructTypeSymbol sts) return ts;
+
+        var fields = ImmutableArray.CreateBuilder<FieldSymbol>();
+
+        foreach (var field in sts.Fields)
+        {
+            var type = EvaluateExpression(field.TypeExpression, scope);
+            fields.Add(new FieldSymbol(field.Name, type, type.IsCompileTime));
+        }
+
+        return new StructTypeSymbol(fields.ToImmutableArray(),"anonimous-type");
+    }
+
+    private ExprSymbol EvaluateInstanceSymbol(InstanceSymbol ins, EvaluationScope scope)
+    {
+        var attributes = ImmutableDictionary.CreateBuilder<string, ExprSymbol>();
+        foreach (var attribute in ins.Atributes)
+        {
+            var evaluated = EvaluateExpression(attribute.Value, scope);
+            attributes.Add(attribute.Key, evaluated);
+        }
+        return new InstanceSymbol(attributes.ToImmutableDictionary(), ins.Type);
+    }
+
+    private ExprSymbol EvaluateCallSymbol(CallSymbol cs, EvaluationScope scope)
+    {
+        var derivedScope = scope.Derive();
+
+        foreach (var argument in cs.Arguments)
+        {
+            var argumentExpr = EvaluateExpression(argument.Expression, derivedScope);
+            derivedScope.Define(argument.Name, argumentExpr);
+        }
+
+        var returnedSymbol = EvaluateStatement(cs.Function.Statement, derivedScope);
+        if (returnedSymbol is not ExprSymbol expr) throw new Exception("Call should return a expression");
+        return expr;
     }
 
     private ExprSymbol EvaluateMemberSymbol(MemberSymbol ms, EvaluationScope scope)

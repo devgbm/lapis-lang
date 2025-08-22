@@ -9,13 +9,13 @@ public class StructTypeSymbol : TypeSymbol
     public StructTypeSymbol(ImmutableArray<FieldSymbol> fields, string? debugName) : base(debugName)
     {
         Fields = fields;
-        IsConstant = fields.All(e => e.IsConstant);
+        IsCompileTime = fields.All(e => e.IsConstant);
         foreach (var field in fields) DefineMember(field.Name, field.Type);
     }
 
     public ImmutableArray<FieldSymbol> Fields { get; }
 
-    public override bool IsConstant { get; }
+    public override bool IsCompileTime { get; }
 
     public override bool IsEquivalent(ExprSymbol symbol)
     {

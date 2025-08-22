@@ -146,7 +146,9 @@ public class LapisParser : ParserBase
                 expression = ParseFuncExpression();
                 break;
 
-            default: return null!;
+            default:
+                expression = new UnkownExpressionSyntax(NextToken().SourceSpan);
+                break;
         }
 
         while (Current.Kind == TokenKind.Dot || Current.Kind == TokenKind.OpenParenthesis)

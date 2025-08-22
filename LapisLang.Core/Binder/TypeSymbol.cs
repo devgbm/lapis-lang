@@ -66,7 +66,7 @@ public class BinaryExprSymbol : ExprSymbol
         Type = type;
     }
 
-    public override bool IsConstant => Left.IsConstant && Right.IsConstant;
+    public override bool IsCompileTime => Left.IsCompileTime && Right.IsCompileTime;
 
     public override TypeSymbol Type { get; }
 }

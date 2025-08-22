@@ -15,7 +15,7 @@ public class VoidSymbol : ExprSymbol
 {
     public static VoidSymbol Instance = new();
     private VoidSymbol(){}
-    public override bool IsConstant => true;
+    public override bool IsCompileTime => true;
     public override TypeSymbol Type => LangDefaults.Types.Void;
 }
 public class UnkownSymbol : Symbol

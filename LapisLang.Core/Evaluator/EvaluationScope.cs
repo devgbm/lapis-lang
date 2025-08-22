@@ -83,4 +83,19 @@ public class EvaluationScope
 
         throw new Exception();
     }
+
+    internal bool Define(string name, Symbol symbol)
+    {
+        if (symbol is ExprSymbol es && es.IsCompileTime)
+        {
+            return BoundScope.Define(name, es);
+        }
+        throw new Exception("Runtime not suported");
+    }
+
+
+    public EvaluationScope Derive()
+    {
+        return new EvaluationScope(BoundScope.Derive());
+    }
 }

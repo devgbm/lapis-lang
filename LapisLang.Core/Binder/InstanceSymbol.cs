@@ -12,11 +12,11 @@ public class InstanceSymbol : ExprSymbol
     )
     {
         Atributes = atributes;
-        IsConstant = atributes.Values.All(e => e.IsConstant);
+        IsCompileTime = atributes.Values.All(e => e.IsCompileTime);
         Type = type;
 
     }
-    public override bool IsConstant { get; }
+    public override bool IsCompileTime { get; }
     public override TypeSymbol Type { get; }
     public ImmutableDictionary<string, ExprSymbol> Atributes { get; }
 } 
