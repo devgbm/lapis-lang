@@ -20,6 +20,11 @@ public class LapisEvaluator
     {
     }
 
+    public Symbol Evaluate(Symbol symbol, BoundScope? scope = null)
+    {
+        return Evaluate(symbol, EvaluationScope.CreateScope(scope));
+    }
+
     public Symbol Evaluate(Symbol symbol, EvaluationScope? scope = null)
     {
         var evaluationScope = scope ?? EvaluationScope.CreateScope();
@@ -31,7 +36,7 @@ public class LapisEvaluator
         }
     }
 
-    private Symbol EvaluateStatement(StatementSymbol syntax, EvaluationScope evaluationScope)
+    public Symbol EvaluateStatement(StatementSymbol syntax, EvaluationScope evaluationScope)
     {
         switch (syntax)
         {
@@ -48,8 +53,9 @@ public class LapisEvaluator
 
         return VoidSymbol.Instance;
     }
+    public ExprSymbol EvaluateExpression(ExprSymbol expr, BoundScope scope) => EvaluateExpression(expr, EvaluationScope.CreateScope(scope));
 
-    private ExprSymbol EvaluateExpression(ExprSymbol expr, EvaluationScope scope)
+    public ExprSymbol EvaluateExpression(ExprSymbol expr, EvaluationScope scope)
     {
         switch (expr)
         {
@@ -58,6 +64,7 @@ public class LapisEvaluator
             case DecimalSymbol:
             case StringSymbol:
             case TypeSymbol:
+            case FuncSymbol:
             case InstanceSymbol:
                 return expr;
 

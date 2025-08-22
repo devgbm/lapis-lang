@@ -1,9 +1,17 @@
 
+
 namespace LapisLang.Core;
 
 public class BoundScope
 {
     private Dictionary<string, Symbol> _scope = new();
+    private BoundScope? _parent;
+
+    public BoundScope(BoundScope? parent = null)
+    {
+        this._parent = parent;
+    }
+
     public (BinaryOperator, TypeSymbol) ResolveBinaryExpression(Token operatorToken, ExprSymbol left, ExprSymbol right)
     {
         if (left.Type == LangDefaults.Types.Integer && right.Type == LangDefaults.Types.Integer)
@@ -72,6 +80,7 @@ public class BoundScope
     public bool TryGetSymbol(string name, out Symbol symbol)
     {
         if (_scope.TryGetValue(name, out symbol)) return true;
+        if (_parent is not null && _parent.TryGetSymbol(name, out symbol)) return true;
         symbol = Symbol.Unkown;
         return false;
     }
@@ -83,6 +92,8 @@ public class BoundScope
             exprSymbol = expr;
             return true;
         }
+
+        if (_parent is not null && _parent.TryGetExprSymbol(name, out exprSymbol)) return true;
 
         exprSymbol = ExprSymbol.Unkown;
         return false;
@@ -106,5 +117,10 @@ public class BoundScope
         if (_scope.ContainsKey(name)) return false;
         _scope.Add(name, symbol);
         return true;
+    }
+
+    internal BoundScope Derive()
+    {
+        return new BoundScope(this);
     }
 }

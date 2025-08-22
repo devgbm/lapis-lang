@@ -2,22 +2,22 @@ using System.Collections.Immutable;
 
 namespace LapisLang.Core;
 
-public class FuncExpression : ExpressionSyntax
+public class FuncExpressionSyntax : ExpressionSyntax
 {
-    public FuncExpression(
+    public FuncExpressionSyntax(
         SourceSpan sourceSpan,
         ImmutableArray<ArgumentSyntax> arguments,
-        TypeNameSyntax returnType,
+        ExpressionSyntax returnType,
         StatementSyntax statement)
     {
         SourceSpan = sourceSpan;
-        Arguments = arguments;
+        Parameters = arguments;
         ReturnType = returnType;
         Statement = statement;
     }
 
     public override SourceSpan SourceSpan { get; }
-    public ImmutableArray<ArgumentSyntax> Arguments { get; }
-    public TypeNameSyntax ReturnType { get; }
+    public ImmutableArray<ArgumentSyntax> Parameters { get; }
+    public ExpressionSyntax ReturnType { get; }
     public StatementSyntax Statement { get; }
 }

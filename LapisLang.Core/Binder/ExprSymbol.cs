@@ -1,5 +1,7 @@
 
 
+using System.Collections.Immutable;
+
 namespace LapisLang.Core;
 
 public abstract class ExprSymbol : Symbol
@@ -7,6 +9,42 @@ public abstract class ExprSymbol : Symbol
     public static ExprSymbol Unkown = new UnkownExprSymbol();
     public abstract bool IsConstant { get; }
     public abstract TypeSymbol Type { get; }
+}
+
+public class ArgumentSymbol : Symbol
+{
+    public ArgumentSymbol(
+        string name,
+        ExprSymbol expression
+    )
+    {
+        Name = name;
+        Expression = expression;
+    }
+
+    public string Name { get; }
+    public ExprSymbol Expression { get; }
+}
+
+public class FuncSymbol : ExprSymbol
+{
+    public FuncSymbol(
+        StatementSymbol statement,
+        ImmutableArray<ArgumentSymbol> parameters,
+        ExprSymbol ReturnType
+    )
+    {
+        Statement = statement;
+        Parameters = parameters;
+        this.ReturnType = ReturnType;
+    }
+    public override bool IsConstant => true;
+
+    public override TypeSymbol Type => LangDefaults.Types.Function;
+
+    public StatementSymbol Statement { get; }
+    public ImmutableArray<ArgumentSymbol> Parameters { get; }
+    public ExprSymbol ReturnType { get; }
 }
 
 public class MemberSymbol : ExprSymbol

@@ -4,7 +4,7 @@ namespace LapisLang.Core;
 
 public class ArgumentSyntax : Syntax
 {
-    public ArgumentSyntax(SourceSpan sourceSpan, TypeNameSyntax typeName, Token name)
+    public ArgumentSyntax(SourceSpan sourceSpan, ExpressionSyntax typeName, NameExpressionSyntax name)
     {
         SourceSpan = sourceSpan;
         TypeName = typeName;
@@ -12,6 +12,6 @@ public class ArgumentSyntax : Syntax
     }
 
     public override SourceSpan SourceSpan { get;  }
-    public TypeNameSyntax TypeName { get; }
-    public Token Name { get; }
+    public ExpressionSyntax TypeName { get; }
+    public NameExpressionSyntax Name { get; }
 } 

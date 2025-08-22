@@ -184,17 +184,17 @@ public class LapisParser : ParserBase
         });
         var closeParams = Match(TokenKind.CloseParenthesis);
 
-        var returnType = ParseTypename();
-
+        var returnType = ParseExpression();
+        Match(TokenKind.Collon);
 
         var statement = ParseStatement();
-        return new FuncExpression(keyword, arguments, returnType, statement);
+        return new FuncExpressionSyntax(keyword, arguments, returnType, statement);
     }
 
     private ArgumentSyntax ParseArgumentSyntax()
     {
-        var typename = ParseTypename();
-        var identifier = Match(TokenKind.Identifier);
+        var typename = ParseExpression();
+        var identifier = ParseNameExpression();
         return new ArgumentSyntax(SourceSpan.Between(typename, identifier), typename, identifier);
     }
 

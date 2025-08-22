@@ -24,12 +24,11 @@ public class Diagnostic
             var sourceIndex = Span.Start - Span.Source.Text.IndexOf(line);
             var padLenght = lineNumber.ToString().Length + sourceIndex + 5;
             var path = Span.Source.Name is not null ? $"{Span.Source.Name}\n" : string.Empty;
-            return $"{path}{lineNumber} |  {line}\n{"ʌ".PadLeft(padLenght,' ')}\n\n{Message}";
+            return $"{path}{lineNumber} |  {line}\n{"".PadLeft(padLenght - 1,' ')}{"ʌ".PadRight(Span.Length,'ʌ')}\n\n{Message}";
         }
         else
         {
             return Message;
         }
-
     }
 }

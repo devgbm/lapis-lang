@@ -42,8 +42,14 @@ internal class Program
             DecimalSymbol decimalSymbol => decimalSymbol.Value.ToString(),
             TypeSymbol typeSymbol => StringifyType(typeSymbol),
             InstanceSymbol instanceSymbol => StringifyInstance(instanceSymbol),
+            FuncSymbol funcSymbol => StringifyFunc(funcSymbol),
             _ => result.ToString()!
         };
+    }
+
+    private static string StringifyFunc(FuncSymbol funcSymbol)
+    {
+        return $"func ({string.Join(", ", funcSymbol.Parameters.Select(e => $"{StringifySymbol(e.Expression)} {e.Name}"))}) {StringifySymbol(funcSymbol.ReturnType)}";   
     }
 
     private static string StringifyInstance(InstanceSymbol instanceSymbol)

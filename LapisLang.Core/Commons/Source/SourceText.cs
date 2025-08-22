@@ -27,16 +27,17 @@ public class SourceText
     }
     public string GetLine(int lineNumber)
     {
+        var offsetline = lineNumber - 1;
         var count = 0;
         var index = -1;
         var nextIndex = -1;
-        while(lineNumber >= count)
+        while(offsetline >= count)
         {
             index = nextIndex + 1;
             nextIndex = Text.IndexOf('\n', index);
             if(nextIndex < 0)
             {
-                if(lineNumber == count) return Text.Substring(index, Text.Length - index).Trim();
+                if(offsetline == count) return Text.Substring(index, Text.Length - index).Trim();
                 return "";
             }
             count++;
