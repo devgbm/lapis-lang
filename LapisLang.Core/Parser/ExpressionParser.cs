@@ -24,6 +24,8 @@ public class LapisParser : ParserBase
             case TokenKind.OpenCurlyBrace:
             case TokenKind.IfKeyword:
             case TokenKind.ReturnKeyword:
+            case TokenKind.VarKeyword:
+            case TokenKind.Identifier when Peek(1).Kind == TokenKind.Equal:
                 return ParseStatement();
             
             default: return ParseExpression();
@@ -353,16 +355,38 @@ public class LapisParser : ParserBase
     {
         switch (Current.Kind)
         {
-            case TokenKind.DefineKeyword: return ParseVariableDeclaration();
+            case TokenKind.DefineKeyword: return ParseDefinition();
             case TokenKind.OpenCurlyBrace: return ParseScopeStatement();
             case TokenKind.ReturnKeyword: return ParseReturnStatement();
+            case TokenKind.VarKeyword: return ParseVariableDeclaration();
             case TokenKind.IfKeyword: return ParseIfStatement();
+            case TokenKind.Identifier when Peek(1).Kind == TokenKind.Equal: return ParseAssingStatement(); 
             default:
                 {
                     var expression = ParseExpression();
                     return new ExpressionStatementSyntax(expression, expression);
                 }
         }
+    }
+
+    private StatementSyntax ParseAssingStatement()
+    {
+        var identifier = Match(TokenKind.Identifier);
+        Match(TokenKind.Equal);
+        var expression = ParseExpression();
+        var semi = Match(TokenKind.SemiCollon);
+        return new AssingStatementSyntax(SourceSpan.Between(identifier, semi), identifier, expression);
+        throw new NotImplementedException();
+    }
+
+    private StatementSyntax ParseVariableDeclaration()
+    {
+        var keyword = Match(TokenKind.VarKeyword);
+        var identifier = Match(TokenKind.Identifier);
+        Match(TokenKind.Equal);
+        var expression = ParseExpression();
+        var semi = Match(TokenKind.SemiCollon);
+        return new VarStatementSyntax(SourceSpan.Between(keyword, semi), identifier, expression);
     }
 
     private StatementSyntax ParseIfStatement()
@@ -398,7 +422,7 @@ public class LapisParser : ParserBase
         return new ReturnStatementSyntax(SourceSpan.Between(keyword, semi), expression);
     }
 
-    private StatementSyntax ParseVariableDeclaration()
+    private StatementSyntax ParseDefinition()
     {
         var keyword = Match(TokenKind.DefineKeyword);
         var identifier = Match(TokenKind.Identifier);

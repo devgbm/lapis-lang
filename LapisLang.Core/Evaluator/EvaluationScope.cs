@@ -7,6 +7,8 @@ namespace LapisLang.Core;
 public class EvaluationScope
 {
     public BoundScope BoundScope { get; }
+    private Dictionary<string, ExprSymbol> _variables = new();
+    private EvaluationScope? _parent = null;
     public EvaluationScope(BoundScope? scope = null)
     {
         BoundScope = scope ?? LangDefaults.CreateDefaultScope();
@@ -125,9 +127,25 @@ public class EvaluationScope
         throw new Exception("Runtime not suported");
     }
 
+    public void SetVariable(string name, ExprSymbol value)
+    {
+        if (value.IsCompileTime) Define(name, value);
+        _variables[name] = value;
+    }
+
+    public ExprSymbol GetVariable(string name)
+    {
+        if (_variables.ContainsKey(name)) return _variables[name];
+        if (BoundScope.TryGetExprSymbol(name, out var symbol)) return symbol;
+        if (_parent is not null) return _parent.GetVariable(name);
+        return ExprSymbol.Unkown;        
+    }
+
 
     public EvaluationScope Derive()
     {
-        return new EvaluationScope(BoundScope.Derive());
+        var evaluationScope = new EvaluationScope(BoundScope.Derive());
+        evaluationScope._parent = this;
+        return evaluationScope;
     }
 }

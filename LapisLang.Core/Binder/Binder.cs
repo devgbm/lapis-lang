@@ -32,11 +32,52 @@ public class Binder
             case ScopeStatementSyntax sss: return BindScopeStatementSyntax(sss, scope);
             case IfStatementSyntax iss: return BindIfStatementSyntax(iss, scope);
             case ReturnStatementSyntax rss: return BindReturnStatementSyntax(rss, scope);
+            case VarStatementSyntax vss: return BindVariableDeclaration(vss, scope);
+            case AssingStatementSyntax ass: return BindAssignSyntax(ass, scope);
             default:
                 Diagnostics.Report("unkown statement", syntax);
                 return StatementSymbol.UnkownStatement;
         }
         throw new NotImplementedException();
+    }
+
+    private StatementSymbol BindAssignSyntax(AssingStatementSyntax ass, BoundScope scope)
+    {
+        if (!scope.TryGetSymbol(ass.Identifier.String, out var symbol) || symbol is not NameSymbol ns)
+        {
+            Diagnostics.Report("unkown name", ass.Identifier);
+            return StatementSymbol.UnkownStatement;
+        }
+        var boundExpression = BindExpressionSyntax(ass.Expression, scope);
+
+        if (ns.Type != boundExpression.Type)
+        {
+            Diagnostics.Report("expression is not assignable to variable type", ass.Expression);
+            return StatementSymbol.UnkownStatement;
+        }
+
+        return new AssingSymbol(ass.Identifier.String, boundExpression);
+    }
+
+    private StatementSymbol BindVariableDeclaration(VarStatementSyntax vss, BoundScope scope)
+    {
+        var expression = BindExpressionSyntax(vss.Expression, scope);
+
+        if (expression.Type == LangDefaults.Types.Type)
+        {
+            Diagnostics.Report("variable cannot reference types", vss.Expression);
+            expression = UnkownExprSymbol.Unkown;
+        }
+
+        var nameSymbol = new NameSymbol(vss.Identifier.String, expression.Type, expression.IsCompileTime);
+
+        if (!scope.Define(vss.Identifier.String, nameSymbol))
+        {
+            Diagnostics.Report("variable already exists in current scope", vss.Identifier);
+            expression = UnkownExprSymbol.Unkown;
+        }
+
+        return new VarSymbol(vss.Identifier.String, expression);
     }
 
     private StatementSymbol BindIfStatementSyntax(IfStatementSyntax iss, BoundScope scope)

@@ -9,6 +9,28 @@ public abstract class StatementSymbol : Symbol
     public static StatementSymbol UnkownStatement = new UnkownStatement();
 }
 
+public class AssingSymbol : StatementSymbol
+{
+    public AssingSymbol(string name, ExprSymbol expression)
+    {
+        Name = name;
+        Expression = expression;
+    }
+
+    public string Name { get; }
+    public ExprSymbol Expression { get; }
+}
+public class VarSymbol : StatementSymbol
+{
+    public VarSymbol(string name, ExprSymbol expression)
+    {
+        Name = name;
+        Expression = expression;
+    }
+
+    public string Name { get; }
+    public ExprSymbol Expression { get; }
+}
 public class UnkownStatement : StatementSymbol;
 
 public class VoidStatement : StatementSymbol

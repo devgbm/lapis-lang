@@ -48,12 +48,28 @@ public class LapisEvaluator
             case ScopeSymbol ss: return EvaluateScopeSymbol(ss, evaluationScope);
             case ReturnSymbol rs: return EvaluateReturnSymbol(rs, evaluationScope); 
             case IfSymbol ifs: return EvaluateIfSymbol(ifs, evaluationScope);
+            case VarSymbol vs: return EvaluateVarSymbol(vs, evaluationScope);
+            case AssingSymbol ass: return EvaluateAssignSymbol(ass, evaluationScope); 
             case VoidStatement vs: return vs;
 
             default:
                 throw new Exception("Unkown or unsuported statement.");
         }
         
+    }
+
+    private Symbol EvaluateAssignSymbol(AssingSymbol ass, EvaluationScope evaluationScope)
+    {
+        var evaluated = EvaluateExpression(ass.Expression, evaluationScope);
+        evaluationScope.SetVariable(ass.Name, evaluated);
+        return VoidSymbol.Instance;
+    }
+
+    private Symbol EvaluateVarSymbol(VarSymbol vs, EvaluationScope evaluationScope)
+    {
+        var evaluated = EvaluateExpression(vs.Expression, evaluationScope);
+        evaluationScope.SetVariable(vs.Name, evaluated);
+        return VoidSymbol.Instance;
     }
 
     private Symbol EvaluateReturnSymbol(ReturnSymbol symbol, EvaluationScope evaluationScope)
@@ -90,8 +106,8 @@ public class LapisEvaluator
 
     private Symbol EvaluateDefineSymbol(DefineSymbol ds, EvaluationScope evaluationScope)
     {
-        if (ds.Expression.IsCompileTime) return VoidSymbol.Instance;
-
+        var evaluated = EvaluateExpression(ds.Expression, evaluationScope);
+        evaluationScope.SetVariable(ds.Name, evaluated);
         return VoidSymbol.Instance;
     }
     public ExprSymbol EvaluateExpression(ExprSymbol expr, BoundScope scope) => EvaluateExpression(expr, EvaluationScope.CreateScope(scope));
@@ -192,8 +208,7 @@ public class LapisEvaluator
 
     private ExprSymbol EvaluateNameSymbol(NameSymbol ns, EvaluationScope scope)
     {
-        scope.BoundScope.TryGetSymbol(ns.Name, out var symbol);
-        return symbol as ExprSymbol ?? ExprSymbol.Unkown;
+        return scope.GetVariable(ns.Name);
     }
 
     private ExprSymbol EvaluateBinaryExpr(BinaryExprSymbol bes, EvaluationScope scope)

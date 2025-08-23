@@ -5,7 +5,30 @@ namespace LapisLang.Core;
 
 public abstract class StatementSyntax : Syntax;
 
-
+public class AssingStatementSyntax : StatementSyntax
+{
+    public AssingStatementSyntax(SourceSpan sourceSpan, Token identifier, ExpressionSyntax expression)
+    {
+        SourceSpan = sourceSpan;
+        Identifier = identifier;
+        Expression = expression;
+    }
+    public override SourceSpan SourceSpan { get; }
+    public Token Identifier { get; }
+    public ExpressionSyntax Expression { get; }
+}
+public class VarStatementSyntax : StatementSyntax
+{
+    public VarStatementSyntax(SourceSpan sourceSpan, Token identifier, ExpressionSyntax expression)
+    {
+        SourceSpan = sourceSpan;
+        Identifier = identifier;
+        Expression = expression;
+    }
+    public override SourceSpan SourceSpan { get; }
+    public Token Identifier { get; }
+    public ExpressionSyntax Expression { get; }
+}
 public class IfStatementSyntax : StatementSyntax
 {
 
