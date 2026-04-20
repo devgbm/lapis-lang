@@ -52,6 +52,7 @@ public class LapisEvaluator
             case AssingSymbol ass: return EvaluateAssignSymbol(ass, evaluationScope); 
             case ExpressionStatementSymbol ess: return EvaluateExpression(ess.Expression, evaluationScope);
             case VoidStatement vs: return vs;
+            case MemberDefineSymbol mds: return EvaluateMemberDefineSymbol(mds, evaluationScope);
 
             default:
                 throw new Exception("Unkown or unsuported statement.");
@@ -108,6 +109,17 @@ public class LapisEvaluator
     {
         var evaluated = EvaluateExpression(ds.Expression, evaluationScope);
         evaluationScope.SetVariable(ds.Name, evaluated);
+        return VoidSymbol.Instance;
+    }
+
+    private Symbol EvaluateMemberDefineSymbol(MemberDefineSymbol mds, EvaluationScope evaluationScope)
+    {
+        // The binder already called DefineMember on the BoundScope's type object.
+        // Here we also call DefineMember on the runtime type (which may be a different object
+        // for user-defined struct types due to EvaluateTypeSymbol creating new instances).
+        var runtimeType = evaluationScope.GetVariable(mds.TypeName);
+        if (runtimeType is TypeSymbol ts)
+            ts.DefineMember(mds.MemberName, mds.Expression);
         return VoidSymbol.Instance;
     }
     public ExprSymbol EvaluateExpression(ExprSymbol expr, BoundScope scope) => EvaluateExpression(expr, EvaluationScope.CreateScope(scope));
@@ -184,24 +196,40 @@ public class LapisEvaluator
 
     private ExprSymbol EvaluateCallSymbol(CallSymbol cs, EvaluationScope scope)
     {
-        var funcSymbol = EvaluateExpression(cs.CallableExpression, scope);
+        ExprSymbol? receiver = null;
+        ExprSymbol funcSymbol;
 
+        if (cs.CallableExpression is MemberSymbol callMs)
+        {
+            var target = EvaluateExpression(callMs.Expression, scope);
+            if (target is TypeSymbol ts)
+                funcSymbol = ts.GetMember(callMs.Name) as ExprSymbol ?? ExprSymbol.Unkown;
+            else
+            {
+                receiver = target;
+                funcSymbol = target.Type.GetMember(callMs.Name) as ExprSymbol ?? ExprSymbol.Unkown;
+            }
+        }
+        else
+        {
+            funcSymbol = EvaluateExpression(cs.CallableExpression, scope);
+        }
 
-        if(funcSymbol is NativeFuncSymbol nfs)
+        if (funcSymbol is NativeFuncSymbol nfs)
         {
             var args = cs.Arguments.Select(e => EvaluateExpression(e.Expression, scope)).Select(ClrHelper.ToClr).ToArray();
             var result = ClrHelper.ToSymbol(nfs.Delegate.DynamicInvoke(args));
 
-            if(result is UnkownExprSymbol && nfs.FuncType.ReturnType == LangDefaults.Types.Void)
-                return LangDefaults.Types.Void; 
-            
+            if (result is UnkownExprSymbol && nfs.FuncType.ReturnType == LangDefaults.Types.Void)
+                return LangDefaults.Types.Void;
+
             return result;
         }
 
-        if (funcSymbol is not FuncSymbol fs) throw new Exception();
+        if (funcSymbol is not FuncSymbol fs) throw new Exception("Call target is not a function");
         var derivedScope = scope.Derive();
 
-        derivedScope.SetVariable("self", fs);
+        derivedScope.SetVariable("self", receiver ?? fs);
 
         foreach (var argument in cs.Arguments)
         {
@@ -210,18 +238,25 @@ public class LapisEvaluator
         }
 
         var returnedSymbol = EvaluateStatement(fs.Statement, derivedScope);
-        if (returnedSymbol is not ExprSymbol expr) throw new Exception("Call should return a expression");
+        if (returnedSymbol is not ExprSymbol expr) throw new Exception("Call should return an expression");
         return expr;
     }
 
     private ExprSymbol EvaluateMemberSymbol(MemberSymbol ms, EvaluationScope scope)
     {
         var expression = EvaluateExpression(ms.Expression, scope);
+
         if (expression is InstanceSymbol instance)
         {
-            return instance.Atributes.GetValueOrDefault(ms.Name, ExprSymbol.Unkown);
+            if (instance.Atributes.TryGetValue(ms.Name, out var attr)) return attr;
+            var structMethod = instance.Type.GetMember(ms.Name);
+            return structMethod != ExprSymbol.Unkown ? structMethod : ExprSymbol.Unkown;
         }
-        return ExprSymbol.Unkown;
+
+        if (expression is TypeSymbol ts)
+            return ts.GetMember(ms.Name) as ExprSymbol ?? ExprSymbol.Unkown;
+
+        return expression.Type.GetMember(ms.Name) as ExprSymbol ?? ExprSymbol.Unkown;
     }
 
     private ExprSymbol EvaluateNameSymbol(NameSymbol ns, EvaluationScope scope)

@@ -127,6 +127,7 @@ public class LapisParser : ParserBase
                 break;
 
             case TokenKind.Identifier:
+            case TokenKind.SelfKeyword:
                 expression = ParseNameExpression();
                 break;
 
@@ -200,6 +201,11 @@ public class LapisParser : ParserBase
 
     private ArgumentSyntax ParseArgumentSyntax()
     {
+        if (Current.Kind == TokenKind.SelfKeyword)
+        {
+            var selfToken = NextToken();
+            return new SelfArgumentSyntax(selfToken.SourceSpan);
+        }
         var typename = ParseExpression();
         var identifier = ParseNameExpression();
         return new ArgumentSyntax(SourceSpan.Between(typename, identifier), typename, identifier);
@@ -369,7 +375,9 @@ public class LapisParser : ParserBase
 
     private NameExpressionSyntax ParseNameExpression()
     {
-        var identifier = Match(TokenKind.Identifier);
+        var identifier = Current.Kind == TokenKind.SelfKeyword
+            ? NextToken()
+            : Match(TokenKind.Identifier);
         return new NameExpressionSyntax(identifier, identifier);
     }
 
@@ -450,6 +458,17 @@ public class LapisParser : ParserBase
     {
         var keyword = Match(TokenKind.DefineKeyword);
         var identifier = Match(TokenKind.Identifier);
+
+        if (Current.Kind == TokenKind.Dot)
+        {
+            NextToken();
+            var memberName = Match(TokenKind.Identifier);
+            MatchOptional(TokenKind.Equal);
+            var memberExpr = ParseExpression();
+            var memberSemi = Match(TokenKind.SemiCollon);
+            return new MemberDefineStatementSyntax(SourceSpan.Between(keyword, memberSemi), identifier, memberName, memberExpr);
+        }
+
         Match(TokenKind.Equal);
         var expression = ParseExpression();
         var semi = Match(TokenKind.SemiCollon);

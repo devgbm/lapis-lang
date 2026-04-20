@@ -13,4 +13,9 @@ public class ArgumentSyntax : Syntax
     public override SourceSpan SourceSpan { get; }
     public ExpressionSyntax TypeName { get; }
     public NameExpressionSyntax Name { get; }
-} 
+}
+
+public class SelfArgumentSyntax : ArgumentSyntax
+{
+    public SelfArgumentSyntax(SourceSpan sourceSpan) : base(sourceSpan, null!, null!) { }
+}

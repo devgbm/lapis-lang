@@ -56,7 +56,7 @@ public class Lexer
             var start = position;
             while(char.IsDigit(Current)) Next();
 
-            if(Current == '.')
+            if(Current == '.' && position + 1 < text.Length && char.IsDigit(text[position + 1]))
             {
                 Next();
                 while(char.IsDigit(Current)) Next();
@@ -231,6 +231,7 @@ public class Lexer
             "else" => TokenKind.ElseKeyword,
             "var" => TokenKind.VarKeyword,
             "typeof" => TokenKind.TypeofKeyword,
+            "self" => TokenKind.SelfKeyword,
             _ => TokenKind.Identifier
         };
     }

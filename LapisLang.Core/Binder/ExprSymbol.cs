@@ -88,13 +88,15 @@ public class FuncSymbol : ExprSymbol
         ImmutableArray<ParameterSymbol> parameters,
         ExprSymbol ReturnType,
         FuncTypeSymbol type,
-        bool isComptimeFn
+        bool isComptimeFn,
+        bool isInstanceMethod = false
     )
     {
         Statement = statement;
         Parameters = parameters;
         this.ReturnType = ReturnType;
         IsComptimeFn = isComptimeFn;
+        IsInstanceMethod = isInstanceMethod;
         Type = type;
     }
     public override bool IsCompileTime => true;
@@ -105,6 +107,7 @@ public class FuncSymbol : ExprSymbol
     public ImmutableArray<ParameterSymbol> Parameters { get; }
     public ExprSymbol ReturnType { get; }
     public bool IsComptimeFn { get; }
+    public bool IsInstanceMethod { get; }
 }
 
 public class MemberSymbol : ExprSymbol

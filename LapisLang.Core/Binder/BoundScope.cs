@@ -14,6 +14,7 @@ public class BoundScope : ExprSymbol
     public override TypeSymbol Type { get => LangDefaults.Types.Namespace;}
 
     public string? _selfName;
+    public TypeSymbol? _selfType;
     public string Name { get; set; }
 
     public BoundScope(string name, BoundScope? parent = null)

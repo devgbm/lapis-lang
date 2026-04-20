@@ -26,6 +26,7 @@ public class Binder
     {
         switch (syntax)
         {
+            case MemberDefineStatementSyntax mdss: return BindMemberDefineStatement(mdss, scope);
             case DefineStatementSyntax dss: return BindDefineStatementSyntax(dss, scope);
             case ScopeStatementSyntax sss: return BindScopeStatementSyntax(sss, scope);
             case IfStatementSyntax iss: return BindIfStatementSyntax(iss, scope);
@@ -123,6 +124,34 @@ public class Binder
         return new ScopeSymbol(statements.ToImmutableArray(), returnType);
     }
 
+    private StatementSymbol BindMemberDefineStatement(MemberDefineStatementSyntax mdss, BoundScope scope)
+    {
+        if (!scope.TryGetExprSymbol(mdss.TypeName.String, out var typeExpr) || typeExpr is not TypeSymbol targetType)
+        {
+            Diagnostics.Report("Unknown type for method definition", mdss.TypeName);
+            return StatementSymbol.UnkownStatement;
+        }
+
+        scope._selfName = mdss.MemberName.String;
+        scope._selfType = targetType;
+
+        var expression = BindExpressionSyntax(mdss.Expression, scope);
+
+        if (expression.IsCompileTime)
+            expression = (ExprSymbol)LapisEvaluator.Instance.Evaluate(expression, EvaluationScope.CreateScope(scope));
+
+        scope._selfName = null;
+        scope._selfType = null;
+
+        if (!targetType.DefineMember(mdss.MemberName.String, expression))
+        {
+            Diagnostics.Report("Member already defined", mdss.MemberName);
+            return StatementSymbol.UnkownStatement;
+        }
+
+        return new MemberDefineSymbol(mdss.TypeName.String, targetType, mdss.MemberName.String, expression);
+    }
+
     private StatementSymbol BindDefineStatementSyntax(DefineStatementSyntax dss, BoundScope scope)
     {
         var name = dss.Identifier.String;
@@ -215,9 +244,18 @@ public class Binder
         var derivedScope = scope.Derive();
         var parameters = ImmutableArray.CreateBuilder<ParameterSymbol>();
         var isComptimeFn = false;
+        var isInstanceMethod = false;
 
         foreach (var parameter in fes.Parameters)
         {
+            if (parameter is SelfArgumentSyntax)
+            {
+                isInstanceMethod = true;
+                var selfType = scope._selfType ?? LangDefaults.Types.Unkown;
+                derivedScope.Define("self", new NameSymbol("self", selfType, false));
+                continue;
+            }
+
             var typeSymbol = BindExpressionSyntax(parameter.TypeName, scope);
             if (typeSymbol is not ExprSymbol es)
             {
@@ -293,7 +331,7 @@ public class Binder
         derivedScope._expectedReturn = LangDefaults.Types.Void;
 
         _allowTypeReference = false;
-        return new FuncSymbol(statement, parameters.ToImmutableArray(), returnType,funcType, isComptimeFn);
+        return new FuncSymbol(statement, parameters.ToImmutableArray(), returnType, funcType, isComptimeFn, isInstanceMethod);
     }
 
     private ExprSymbol BindMemberExpressionSyntax(MemberExpressionSyntax mes, BoundScope scope)
@@ -317,14 +355,37 @@ public class Binder
             return result;
         }
 
-        var memberExpression = expression.Type.GetMember(mes.Member.Name.String) as TypeSymbol ?? LangDefaults.Types.Unkown;
-        if (memberExpression == ExprSymbol.Unkown)
+        var memberName = mes.Member.Name.String;
+
+        // Static method: TypeName.method — expression is a NameSymbol with meta-type Type
+        if (expression is NameSymbol nameRef && nameRef.Type == LangDefaults.Types.Type)
+        {
+            if (!scope.TryGetExprSymbol(nameRef.Name, out var actualTypeExpr) || actualTypeExpr is not TypeSymbol ts)
+            {
+                Diagnostics.Report("unkown type", mes.Expresison);
+                return ExprSymbol.Unkown;
+            }
+            var staticMember = ts.GetMember(memberName);
+            if (staticMember == ExprSymbol.Unkown)
+            {
+                Diagnostics.Report("unkown member", mes.Member);
+                return ExprSymbol.Unkown;
+            }
+            var staticMemberType = staticMember is TypeSymbol sft ? sft : staticMember.Type;
+            return new MemberSymbol(expression, staticMemberType, memberName);
+        }
+
+        // Instance member (struct field or instance method)
+        var member = expression.Type.GetMember(memberName);
+        if (member == ExprSymbol.Unkown)
         {
             Diagnostics.Report("unkown member", mes.Member);
             return ExprSymbol.Unkown;
         }
-
-        return new MemberSymbol(expression, memberExpression, mes.Member.Name.String);
+        // Struct fields are stored as TypeSymbol (the field's type); methods are stored as FuncSymbol.
+        // For TypeSymbol members use it directly; for FuncSymbol use its FuncTypeSymbol.
+        var memberType = member is TypeSymbol fieldType ? fieldType : member.Type;
+        return new MemberSymbol(expression, memberType, memberName);
     }
 
     private ExprSymbol BindInstanceInitializationSyntax(InstanceInitializationExpression syntax, BoundScope scope)
