@@ -43,6 +43,8 @@ internal class Program
             TypeSymbol typeSymbol => StringifyType(typeSymbol),
             InstanceSymbol instanceSymbol => StringifyInstance(instanceSymbol),
             FuncSymbol funcSymbol => StringifyFunc(funcSymbol),
+            BoundScope bs => "Namespace " + bs.Name,
+            NativeFuncSymbol nfs => "native-code",
             _ => result.ToString()!
         };
     }

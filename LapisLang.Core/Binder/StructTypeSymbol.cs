@@ -4,6 +4,25 @@ using System.Collections.Immutable;
 
 namespace LapisLang.Core;
 
+
+public class FuncTypeSymbol : TypeSymbol
+{
+    public FuncTypeSymbol(ImmutableArray<ParameterSymbol> arguments, TypeSymbol returnType) : base($"({string.Join(", ",arguments.Select(e => e.Expression))}):{returnType}")
+    {
+        Parameters = arguments;
+        ReturnType = returnType;
+    }
+    public override bool IsCompileTime => throw new NotImplementedException();
+
+    public ImmutableArray<ParameterSymbol> Parameters { get; }
+    public TypeSymbol ReturnType { get; }
+    public override TypeSymbol Type => LangDefaults.Types.Function;
+
+    public override bool IsEquivalent(ExprSymbol symbol)
+    {
+        return symbol is FuncTypeSymbol s;
+    }
+}
 public class StructTypeSymbol : TypeSymbol
 {
     public StructTypeSymbol(ImmutableArray<FieldSymbol> fields, string? debugName) : base(debugName)

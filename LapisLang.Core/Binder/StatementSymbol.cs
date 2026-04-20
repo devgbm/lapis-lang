@@ -63,6 +63,19 @@ public class ReturnSymbol : StatementSymbol
 
     public ExprSymbol Expression { get; }
 }
+
+
+public class ExpressionStatementSymbol : StatementSymbol
+{
+    public ExpressionStatementSymbol(
+        ExprSymbol expression
+    )
+    {
+        Expression = expression;
+    }
+
+    public ExprSymbol Expression { get; }
+}
 public class DefineSymbol : StatementSymbol
 {
     public DefineSymbol(string name, ExprSymbol exprSymbol)
@@ -73,6 +86,12 @@ public class DefineSymbol : StatementSymbol
 
     public string Name { get; }
     public ExprSymbol Expression { get; }
+}
+
+public class NamespaceSymbol : Symbol
+{
+    public NamespaceSymbol()
+    {}
 }
 
 public class ScopeSymbol : StatementSymbol

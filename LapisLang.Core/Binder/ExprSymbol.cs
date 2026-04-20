@@ -13,20 +13,21 @@ public abstract class ExprSymbol : Symbol
 public class CallSymbol : ExprSymbol
 {
     public CallSymbol(
-        FuncSymbol function,
-        ImmutableArray<ArgumentSymbol> arguments
+        ExprSymbol callableExpression,
+        ImmutableArray<ArgumentSymbol> arguments,
+        TypeSymbol returnType
     )
     {
-        Function = function;
+        CallableExpression = callableExpression;
         Arguments = arguments;
-        IsCompileTime = function.IsCompileTime;
-        Type = function.ReturnType as TypeSymbol ?? LangDefaults.Types.Unkown;
+        IsCompileTime = true;
+        Type = returnType;
     }
     public override bool IsCompileTime { get; }
 
     public override TypeSymbol Type { get; }
 
-    public FuncSymbol Function { get; }
+    public ExprSymbol CallableExpression { get; }
     public ImmutableArray<ArgumentSymbol> Arguments { get; }
 }
 public class ArgumentSymbol : Symbol
@@ -61,12 +62,32 @@ public class ParameterSymbol : Symbol
     public bool IsComptime { get; }
 }
 
+
+public class NativeFuncSymbol : ExprSymbol
+{
+    public NativeFuncSymbol(
+        bool isCompileTime,
+        FuncTypeSymbol type,
+        Delegate @delegate
+    )
+    {
+        IsCompileTime = isCompileTime;
+        FuncType = type;
+        Delegate = @delegate;
+    }
+    public override bool IsCompileTime { get; }
+
+    public override TypeSymbol Type { get => FuncType; }
+    public FuncTypeSymbol FuncType { get; }
+    public Delegate Delegate { get; }
+}
 public class FuncSymbol : ExprSymbol
 {
     public FuncSymbol(
         StatementSymbol statement,
         ImmutableArray<ParameterSymbol> parameters,
         ExprSymbol ReturnType,
+        FuncTypeSymbol type,
         bool isComptimeFn
     )
     {
@@ -74,10 +95,11 @@ public class FuncSymbol : ExprSymbol
         Parameters = parameters;
         this.ReturnType = ReturnType;
         IsComptimeFn = isComptimeFn;
+        Type = type;
     }
     public override bool IsCompileTime => true;
 
-    public override TypeSymbol Type => LangDefaults.Types.Function;
+    public override TypeSymbol Type { get; }
 
     public StatementSymbol Statement { get; }
     public ImmutableArray<ParameterSymbol> Parameters { get; }

@@ -2,14 +2,24 @@
 
 namespace LapisLang.Core;
 
-public class BoundScope
+public class BoundScope : ExprSymbol
 {
     private Dictionary<string, Symbol> _scope = new();
     private BoundScope? _parent;
+    public TypeSymbol? _expectedReturn;
+    public BoundScope? Parent { get => _parent; }
 
-    public BoundScope(BoundScope? parent = null)
+    public override bool IsCompileTime { get => true;}
+
+    public override TypeSymbol Type { get => LangDefaults.Types.Namespace;}
+
+    public string? _selfName;
+    public string Name { get; set; }
+
+    public BoundScope(string name, BoundScope? parent = null)
     {
         this._parent = parent;
+        Name = name;
     }
 
     public (UnaryOperator, TypeSymbol) ResolveUnaryExpression(Token operatorToken, ExprSymbol operand)
@@ -160,11 +170,16 @@ public class BoundScope
     {
         if (_scope.ContainsKey(name)) return false;
         _scope.Add(name, symbol);
+
+        if(symbol is BoundScope bs) bs._parent = this;
         return true;
     }
 
     internal BoundScope Derive()
     {
-        return new BoundScope(this);
+        return new BoundScope(Name + "_local" ,this)
+        {
+            _expectedReturn = this._expectedReturn
+        };
     }
 }

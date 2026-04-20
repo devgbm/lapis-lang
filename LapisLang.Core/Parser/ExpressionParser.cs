@@ -205,6 +205,29 @@ public class LapisParser : ParserBase
         return new ArgumentSyntax(SourceSpan.Between(typename, identifier), typename, identifier);
     }
 
+    private TypeNameSyntax ParseTypenameNew()
+    {
+        var identifier = Match(TokenKind.Identifier);
+        
+        if (identifier.String == "Func")
+        {
+            var parameters = MatchUntil(TokenKind.CloseBracket, () =>
+            {
+                var typename = ParseTypenameNew();
+                if (Current.Kind != TokenKind.CloseBracket) Match(TokenKind.Comma);
+                return typename;
+            });
+
+            var collon = Match(TokenKind.Collon);
+
+            var returnTypename = ParseTypenameNew();
+            return new FuncTypenameSyntax(SourceSpan.Between(identifier, returnTypename.SourceSpan), parameters, returnTypename);
+        }
+
+        return new TypeNameSyntax(identifier, identifier);
+
+    }
+
     private ExpressionSyntax ParseInstanceInitializationExpression()
     {
         var typename = ParseTypename();
@@ -364,6 +387,7 @@ public class LapisParser : ParserBase
             default:
                 {
                     var expression = ParseExpression();
+                    var collon = Match(TokenKind.SemiCollon);
                     return new ExpressionStatementSyntax(expression, expression);
                 }
         }

@@ -50,6 +50,7 @@ public class LapisEvaluator
             case IfSymbol ifs: return EvaluateIfSymbol(ifs, evaluationScope);
             case VarSymbol vs: return EvaluateVarSymbol(vs, evaluationScope);
             case AssingSymbol ass: return EvaluateAssignSymbol(ass, evaluationScope); 
+            case ExpressionStatementSymbol ess: return EvaluateExpression(ess.Expression, evaluationScope);
             case VoidStatement vs: return vs;
 
             default:
@@ -74,8 +75,8 @@ public class LapisEvaluator
 
     private Symbol EvaluateReturnSymbol(ReturnSymbol symbol, EvaluationScope evaluationScope)
     {
-        _returnRequest = true;
-        return EvaluateExpression(symbol.Expression, evaluationScope);
+        evaluationScope.ReturnRequest = EvaluateExpression(symbol.Expression, evaluationScope);
+        return evaluationScope.ReturnRequest;
     }
 
     private Symbol EvaluateIfSymbol(IfSymbol symbol, EvaluationScope evaluationScope)
@@ -95,10 +96,9 @@ public class LapisEvaluator
         foreach (var statement in ss.StatementSymbols)
         {
             var returnSymbol = EvaluateStatement(statement, evaluationScope);
-            if (_returnRequest)
+            if (evaluationScope.ReturnRequest is not null)
             {
-                _returnRequest = false;
-                return returnSymbol;
+                return evaluationScope.ReturnRequest;
             }
         }
         return VoidSymbol.Instance;
@@ -121,6 +121,7 @@ public class LapisEvaluator
             case DecimalSymbol:
             case StringSymbol:
             case FuncSymbol:
+            case NativeFuncSymbol:
                 return expr;
 
             case TypeSymbol ts:
@@ -183,15 +184,32 @@ public class LapisEvaluator
 
     private ExprSymbol EvaluateCallSymbol(CallSymbol cs, EvaluationScope scope)
     {
+        var funcSymbol = EvaluateExpression(cs.CallableExpression, scope);
+
+
+        if(funcSymbol is NativeFuncSymbol nfs)
+        {
+            var args = cs.Arguments.Select(e => EvaluateExpression(e.Expression, scope)).Select(ClrHelper.ToClr).ToArray();
+            var result = ClrHelper.ToSymbol(nfs.Delegate.DynamicInvoke(args));
+
+            if(result is UnkownExprSymbol && nfs.FuncType.ReturnType == LangDefaults.Types.Void)
+                return LangDefaults.Types.Void; 
+            
+            return result;
+        }
+
+        if (funcSymbol is not FuncSymbol fs) throw new Exception();
         var derivedScope = scope.Derive();
+
+        derivedScope.SetVariable("self", fs);
 
         foreach (var argument in cs.Arguments)
         {
             var argumentExpr = EvaluateExpression(argument.Expression, derivedScope);
-            derivedScope.Define(argument.Name, argumentExpr);
+            derivedScope.SetVariable(argument.Name, argumentExpr);
         }
 
-        var returnedSymbol = EvaluateStatement(cs.Function.Statement, derivedScope);
+        var returnedSymbol = EvaluateStatement(fs.Statement, derivedScope);
         if (returnedSymbol is not ExprSymbol expr) throw new Exception("Call should return a expression");
         return expr;
     }

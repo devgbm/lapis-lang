@@ -1,0 +1,8 @@
+project:
+  - name: Hello World
+  - type: executable ## could be library
+  - version: 1.0.0
+  - source: ./src/*
+  - dependencies:
+    - lapis.std
+    - etc

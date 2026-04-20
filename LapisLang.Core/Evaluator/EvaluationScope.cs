@@ -9,6 +9,7 @@ public class EvaluationScope
     public BoundScope BoundScope { get; }
     private Dictionary<string, ExprSymbol> _variables = new();
     private EvaluationScope? _parent = null;
+    public ExprSymbol? ReturnRequest { get; set; }
     public EvaluationScope(BoundScope? scope = null)
     {
         BoundScope = scope ?? LangDefaults.CreateDefaultScope();
@@ -59,7 +60,8 @@ public class EvaluationScope
                 BinaryOperator.Add => (ExprSymbol left, ExprSymbol right) => new IntegerSymbol(((IntegerSymbol)left).Value + ((IntegerSymbol)right).Value),
                 BinaryOperator.Sub => (ExprSymbol left, ExprSymbol right) => new IntegerSymbol(((IntegerSymbol)left).Value - ((IntegerSymbol)right).Value),
                 BinaryOperator.Mul => (ExprSymbol left, ExprSymbol right) => new IntegerSymbol(((IntegerSymbol)left).Value * ((IntegerSymbol)right).Value),
-                BinaryOperator.Div => (ExprSymbol left, ExprSymbol right) => new IntegerSymbol(((IntegerSymbol)left).Value / ((IntegerSymbol)right).Value),
+                BinaryOperator.Div => (ExprSymbol left, ExprSymbol right) => new IntegerSymbol(((IntegerSymbol)right).Value == 0 ?
+                ((IntegerSymbol)left).Value > 0 ? long.MaxValue: - long.MaxValue : ((IntegerSymbol)left).Value / ((IntegerSymbol)right).Value),
                 BinaryOperator.Mod => (ExprSymbol left, ExprSymbol right) => new IntegerSymbol(((IntegerSymbol)left).Value % ((IntegerSymbol)right).Value),
 
                 BinaryOperator.Equality => (ExprSymbol left, ExprSymbol right) => new BooleanSymbol(((IntegerSymbol)left).Value == ((IntegerSymbol)right).Value),
