@@ -384,7 +384,11 @@ public class Binder
         }
         // Struct fields are stored as TypeSymbol (the field's type); methods are stored as FuncSymbol.
         // For TypeSymbol members use it directly; for FuncSymbol use its FuncTypeSymbol.
-        var memberType = member is TypeSymbol fieldType ? fieldType : member.Type;
+        var memberType = member is TypeSymbol fieldType ?
+            fieldType :
+            member is  MemberSymbol ms
+            ? ms.Expression.Type
+            : member.Type;
         return new MemberSymbol(expression, memberType, memberName);
     }
 

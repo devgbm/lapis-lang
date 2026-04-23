@@ -24,7 +24,11 @@ public class Lexer
 
     public IEnumerable<Token> Lex()
     {
-        while(position < text.Length) yield return NextToken();
+        while(position < text.Length)
+        {
+            while(position < text.Length && char.IsWhiteSpace(text[position])) position++;
+            if(position < text.Length) yield return NextToken();
+        }
         yield return new Token(TokenKind.EoFToken, source.CreateSpan(position, 0));
     }
 

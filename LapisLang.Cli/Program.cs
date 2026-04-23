@@ -5,6 +5,44 @@ internal class Program
     private static void Main(string[] args)
     {
         if (args.Length == 0) RunREPL();
+        if(args.Length == 1) RunScript(args[0]);
+    }
+
+    private static void RunScript(string arg)
+    {
+        if(arg.StartsWith('-'))
+        {
+            throw new Exception("unknown argument " + arg);
+        }
+
+        var path = ResolvePath(arg);
+
+        if(!File.Exists(path))
+        {
+            Console.Error.WriteLine($"lapis: cannot find file '{path}'");
+            Environment.Exit(1);
+        }
+
+        var script = File.ReadAllText(path);
+
+        var scope = EvaluationScope.CreateScope();
+        var result = LapisInterpreter.EvaluateScript(script, scope);
+
+        if(result.Diagnostics.Errors.Any())
+        {
+            Console.Error.WriteLine("Lapis Error:\n" + result.Diagnostics.GetMessages());
+            Environment.Exit(1);
+        }
+    }
+
+    private static string ResolvePath(string arg)
+    {
+        var withExtension = arg.EndsWith(".ls") ? arg : $"{arg}.ls";
+
+        if (Path.IsPathRooted(arg))
+            return withExtension;
+
+        return Path.GetFullPath(withExtension, Directory.GetCurrentDirectory());
     }
 
     private static void RunREPL()

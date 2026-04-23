@@ -6,7 +6,7 @@ def decimal 1.23;
 def Person = type { age: integer; name: string; };
 def func = func (integer a, integer b) { return 1 + 1; };
 def Person.create = func(string name, integer age) Person { return Person { name: name, age: age } };
-def Person.talk = func(self, string words) Void { Console.log(self.name + ' says: ' + words) }
+def Person.talk = func(self, string words) Void { Console.write(self.name + ' says: ' + words) }
 def dict = .{ a: 1, b: 'hello' };
 def array = .[ 1, 2, 3 ];
 ```

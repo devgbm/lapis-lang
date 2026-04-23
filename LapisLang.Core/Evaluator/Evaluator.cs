@@ -10,7 +10,7 @@ namespace LapisLang.Core;
 public class LapisEvaluator
 {
     private static LapisEvaluator? _instnce;
-    private bool _returnRequest = false;
+
 
     public static LapisEvaluator Instance
     {
@@ -137,7 +137,7 @@ public class LapisEvaluator
                 return expr;
 
             case TypeSymbol ts:
-                return EvaluateTypeSymbol(ts, scope);
+                return EvaluateTypeSymbol(ts);
 
             case InstanceSymbol ins:
                 return EvaluateInstanceSymbol(ins, scope);
@@ -168,20 +168,7 @@ public class LapisEvaluator
         return operFn(expression);
     }
 
-    private ExprSymbol EvaluateTypeSymbol(TypeSymbol ts, EvaluationScope scope)
-    {
-        if (ts is not StructTypeSymbol sts) return ts;
-
-        var fields = ImmutableArray.CreateBuilder<FieldSymbol>();
-
-        foreach (var field in sts.Fields)
-        {
-            var type = EvaluateExpression(field.TypeExpression, scope);
-            fields.Add(new FieldSymbol(field.Name, type, type.IsCompileTime));
-        }
-
-        return new StructTypeSymbol(fields.ToImmutableArray(),"anonimous-type");
-    }
+    private static TypeSymbol EvaluateTypeSymbol(TypeSymbol ts) => ts;
 
     private ExprSymbol EvaluateInstanceSymbol(InstanceSymbol ins, EvaluationScope scope)
     {
@@ -218,6 +205,8 @@ public class LapisEvaluator
         if (funcSymbol is NativeFuncSymbol nfs)
         {
             var args = cs.Arguments.Select(e => EvaluateExpression(e.Expression, scope)).Select(ClrHelper.ToClr).ToArray();
+            if (nfs.IsInstanceMethod && receiver is not null)
+                args = [receiver, .. args];
             var result = ClrHelper.ToSymbol(nfs.Delegate.DynamicInvoke(args));
 
             if (result is UnkownExprSymbol && nfs.FuncType.ReturnType == LangDefaults.Types.Void)

@@ -6,7 +6,7 @@ Lapis pode ser executado direto da linha de comando sem necessidade de compilar.
 ```
 import Console;
 
-Console.log('Hello World!');
+Console.write('Hello World!');
 ```
 
 ## Criando Projetos

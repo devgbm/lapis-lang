@@ -46,6 +46,20 @@ public class SourceText
         return Text.Substring(index, nextIndex - index).Trim();
     }
 
+    public int GetLineStartOffset(int lineNumber)
+    {
+        var count = 1;
+        var index = 0;
+        while(count < lineNumber && index < Text.Length)
+        {
+            var next = Text.IndexOf('\n', index);
+            if(next < 0) return Text.Length;
+            index = next + 1;
+            count++;
+        }
+        return index;
+    }
+
     public SourceSpan CreateSpan(int start, int length) => new SourceSpan(this, start, length);
 
 }

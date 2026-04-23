@@ -7,12 +7,13 @@ namespace LapisLang.Core;
 
 public class FuncTypeSymbol : TypeSymbol
 {
-    public FuncTypeSymbol(ImmutableArray<ParameterSymbol> arguments, TypeSymbol returnType) : base($"({string.Join(", ",arguments.Select(e => e.Expression))}):{returnType}")
+    public FuncTypeSymbol(ImmutableArray<ParameterSymbol> arguments, TypeSymbol returnType, bool isCompileTime = true) : base($"({string.Join(", ",arguments.Select(e => e.Expression))}):{returnType}")
     {
         Parameters = arguments;
         ReturnType = returnType;
+        IsCompileTime = isCompileTime;
     }
-    public override bool IsCompileTime => throw new NotImplementedException();
+    public override bool IsCompileTime { get; }
 
     public ImmutableArray<ParameterSymbol> Parameters { get; }
     public TypeSymbol ReturnType { get; }

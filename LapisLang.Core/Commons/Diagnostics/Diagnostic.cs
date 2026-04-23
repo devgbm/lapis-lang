@@ -21,10 +21,12 @@ public class Diagnostic
         {
             var lineNumber = Span.Source.GetLineNumberFromOffset(Span.Start);
             var line = Span.Source.GetLine(lineNumber);
-            var sourceIndex = Span.Start - Span.Source.Text.IndexOf(line);
+            var lineStart = Span.Source.GetLineStartOffset(lineNumber);
+            var sourceIndex = Span.Start - lineStart;
+            var caretLength = Math.Max(Span.Length, 1);
             var padLenght = lineNumber.ToString().Length + sourceIndex + 5;
             var path = Span.Source.Name is not null ? $"{Span.Source.Name}\n" : string.Empty;
-            return $"{path}{lineNumber} |  {line}\n{"".PadLeft(padLenght - 1,' ')}{"ʌ".PadRight(Span.Length,'ʌ')}\n\n{Message}";
+            return $"{path}{lineNumber} |  {line}\n{"".PadLeft(padLenght - 1,' ')}{"ʌ".PadRight(caretLength,'ʌ')}\n\n{Message}";
         }
         else
         {

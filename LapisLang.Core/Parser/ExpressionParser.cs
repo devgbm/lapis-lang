@@ -27,9 +27,17 @@ public class LapisParser : ParserBase
             case TokenKind.VarKeyword:
             case TokenKind.Identifier when Peek(1).Kind == TokenKind.Equal:
                 return ParseStatement();
-            
+
             default: return ParseExpression();
         }
+    }
+
+    public ScopeStatementSyntax ParseProgram()
+    {
+        var start = Current.SourceSpan;
+        var statements = MatchUntil(TokenKind.EoFToken, ParseStatement);
+        var end = Current.SourceSpan;
+        return new ScopeStatementSyntax(SourceSpan.Between(start, end), statements);
     }
 
     public ExpressionSyntax ParseExpression(int parentPrecedence = 0)

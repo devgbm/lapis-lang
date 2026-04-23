@@ -20,7 +20,7 @@ public class CallSymbol : ExprSymbol
     {
         CallableExpression = callableExpression;
         Arguments = arguments;
-        IsCompileTime = true;
+        IsCompileTime = callableExpression.IsCompileTime;
         Type = returnType;
     }
     public override bool IsCompileTime { get; }
@@ -68,18 +68,21 @@ public class NativeFuncSymbol : ExprSymbol
     public NativeFuncSymbol(
         bool isCompileTime,
         FuncTypeSymbol type,
-        Delegate @delegate
+        Delegate @delegate,
+        bool isInstanceMethod = false
     )
     {
         IsCompileTime = isCompileTime;
         FuncType = type;
         Delegate = @delegate;
+        IsInstanceMethod = isInstanceMethod;
     }
     public override bool IsCompileTime { get; }
 
     public override TypeSymbol Type { get => FuncType; }
     public FuncTypeSymbol FuncType { get; }
     public Delegate Delegate { get; }
+    public bool IsInstanceMethod { get; }
 }
 public class FuncSymbol : ExprSymbol
 {

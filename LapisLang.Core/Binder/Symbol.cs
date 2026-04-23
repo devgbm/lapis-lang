@@ -29,43 +29,68 @@ public static class LangDefaults
         public static TypeSymbol Unkown = new PrimitiveTypeSymbol("Unkown");
         public static TypeSymbol Void = new PrimitiveTypeSymbol("Void");
         public static TypeSymbol Namespace = new PrimitiveTypeSymbol("Namespace");
-        public static TypeSymbol Type = CreateType();
-        public static TypeSymbol Integer = CreateInteger();
-        public static TypeSymbol Boolean = CreateBoolean();
-        public static TypeSymbol String = CreateString();
-        public static TypeSymbol Decimal = CreateDecimal();
+        public static TypeSymbol Type = new PrimitiveTypeSymbol("Type");
+        public static TypeSymbol Integer = new PrimitiveTypeSymbol("Int");
+        public static TypeSymbol Boolean = new PrimitiveTypeSymbol("Bool");
+        public static TypeSymbol String = new PrimitiveTypeSymbol("Str");
+        public static TypeSymbol Decimal = new PrimitiveTypeSymbol("Dec");
         public static TypeSymbol Function = new PrimitiveTypeSymbol("Func");
 
-        private static TypeSymbol CreateDecimal()
+        static Types()
         {
-            var symbol = new PrimitiveTypeSymbol("Dec");
-            return symbol;
+            BuildIntegerType();
+            BuildDecimalType();
+            BuildBoolType();
+            BuildStrType();
+        }
+        private static void BuildStrType()
+        {
         }
 
-        private static TypeSymbol CreateString()
+        private static void BuildIntegerType()
         {
-            var symbol = new PrimitiveTypeSymbol("Str");
-            return symbol;
+            var toStringType = new FuncTypeSymbol([], String);
+            var toStringNative = new NativeFuncSymbol(true, toStringType,
+                (ExprSymbol self) => self is IntegerSymbol i ? i.Value.ToString() : "",
+                isInstanceMethod: true);
+            Integer.DefineMember("toString", toStringNative);
+
+
+            var parseType = new FuncTypeSymbol([new ParameterSymbol("value", String, true)], Integer, true);
+            var parseNative = new NativeFuncSymbol(false, parseType, (object? arg) =>
+            {
+                return  long.Parse(arg?.ToString() ?? "0");
+            });
+            Integer.DefineMember("parse", parseNative);
         }
 
-        private static TypeSymbol CreateBoolean()
+        public static void BuildDecimalType()
         {
-            var symbol = new PrimitiveTypeSymbol("Bool");
-            return symbol;
+            var toStringType = new FuncTypeSymbol([], String);
+            var toStringNative = new NativeFuncSymbol(true, toStringType,
+                (ExprSymbol self) => self is DecimalSymbol i ? i.Value.ToString() : "",
+                isInstanceMethod: true);
+            Decimal.DefineMember("toString", toStringNative);
+
+            var parseType = new FuncTypeSymbol([new ParameterSymbol("value", String, true)], Decimal, true);
+            var parseNative = new NativeFuncSymbol(false, parseType, (object? arg) =>
+            {
+                return  decimal.Parse(arg?.ToString() ?? "0");
+            });
+
+            Decimal.DefineMember("parse", parseNative);
         }
 
-        private static TypeSymbol CreateInteger()
+        public static void BuildBoolType()
         {
-            var symbol = new PrimitiveTypeSymbol("Int");
-            return symbol;
-        }
-
-        private static TypeSymbol CreateType()
-        {
-            var symbol = new PrimitiveTypeSymbol("Type");
-            return symbol;
+            var toStringType = new FuncTypeSymbol([], String);
+            var toStringNative = new NativeFuncSymbol(true, toStringType,
+                (ExprSymbol self) => self is BooleanSymbol i ? i.Value.ToString() : "",
+                isInstanceMethod: true);
+            Boolean.DefineMember("toString", toStringNative);
         }
     }
+
     public static BoundScope CreateDefaultScope()
     {
         var scope = new BoundScope("global");
@@ -94,11 +119,13 @@ public static partial class LangStd
         public static BoundScope CreateConsoleNs()
         {
             var ns = new BoundScope("Console");
-            ns.Define("log", Log());
+            ns.Define("write", Write());
+            ns.Define("read", Read());
+
             return ns;
         }
 
-        public static NativeFuncSymbol Log()
+        public static NativeFuncSymbol Write()
         {
             var type = new FuncTypeSymbol([new ParameterSymbol("str", LangDefaults.Types.String, true)], LangDefaults.Types.Void);
             var symbol = new NativeFuncSymbol(true, type, (object? arg) =>
@@ -106,6 +133,13 @@ public static partial class LangStd
                 System.Console.WriteLine(arg?.ToString());
             });
             return symbol;
+        }
+
+        public static NativeFuncSymbol Read()
+        {
+            var type = new FuncTypeSymbol([], LangDefaults.Types.String);
+            return new NativeFuncSymbol(false, type, () =>  System.Console.ReadLine());
+
         }
     }
 }
