@@ -71,7 +71,7 @@ public class Binder
             expression = UnkownExprSymbol.Unkown;
         }
 
-        var nameSymbol = new NameSymbol(vss.Identifier.String, expression.Type, expression.IsCompileTime);
+        var nameSymbol = new NameSymbol(vss.Identifier.String, expression.Type);
 
         if (!scope.Define(vss.Identifier.String, nameSymbol))
         {
@@ -137,9 +137,6 @@ public class Binder
 
         var expression = BindExpressionSyntax(mdss.Expression, scope);
 
-        if (expression.IsCompileTime)
-            expression = (ExprSymbol)LapisEvaluator.Instance.Evaluate(expression, EvaluationScope.CreateScope(scope));
-
         scope._selfName = null;
         scope._selfType = null;
 
@@ -158,11 +155,7 @@ public class Binder
         scope._selfName = name;
         var expression = BindExpressionSyntax(dss.Expression, scope);
 
-        if (expression.IsCompileTime)
-        {
-            expression = (ExprSymbol)LapisEvaluator.Instance.Evaluate(expression, EvaluationScope.CreateScope(scope));
-            if (expression is TypeSymbol ts && ts.DebugName == "anonimous-type") ts.DebugName = name;
-        }
+        if (expression is TypeSymbol ts && ts.DebugName == "anonimous-type") ts.DebugName = name;
 
         if (!scope.Define(name, expression))
         {
@@ -205,38 +198,95 @@ public class Binder
 
     private ExprSymbol BindCallExpressionSyntax(CallExpressionSyntax ces, BoundScope scope)
     {
+        if (ces.Expression is MemberExpressionSyntax memberExpr)
+            return BindMemberCallExpression(memberExpr, ces, scope);
+
         var expression = BindExpressionSyntax(ces.Expression, scope);
-        if (expression.Type is not  FuncTypeSymbol fts)
+        return BindCall(expression, ces, scope, receiver: null);
+    }
+
+    private ExprSymbol BindMemberCallExpression(MemberExpressionSyntax memberExpr, CallExpressionSyntax ces, BoundScope scope)
+    {
+        var baseExpr = BindExpressionSyntax(memberExpr.Expresison, scope);
+        var memberName = memberExpr.Member.Name.String;
+
+        ExprSymbol callable;
+        ExprSymbol? receiver = null;
+
+        if (baseExpr.Type == LangDefaults.Types.Namespace && baseExpr is NameSymbol nsRef)
+        {
+            if (!scope.TryGetExprSymbol(nsRef.Name, out var nsExpr) || nsExpr is not BoundScope bs)
+            {
+                Diagnostics.Report("unkown member", memberExpr.Expresison);
+                return ExprSymbol.Unkown;
+            }
+            if (!bs.TryGetExprSymbol(memberName, out callable))
+            {
+                Diagnostics.Report("unkown member", memberExpr.Member);
+                return ExprSymbol.Unkown;
+            }
+        }
+        else if (baseExpr is NameSymbol nameRef && nameRef.Type == LangDefaults.Types.Type)
+        {
+            if (!scope.TryGetExprSymbol(nameRef.Name, out var typeExpr) || typeExpr is not TypeSymbol ts)
+            {
+                Diagnostics.Report("unkown type", memberExpr.Expresison);
+                return ExprSymbol.Unkown;
+            }
+            callable = ts.GetMember(memberName);
+            if (callable == ExprSymbol.Unkown)
+            {
+                Diagnostics.Report("unkown member", memberExpr.Member);
+                return ExprSymbol.Unkown;
+            }
+        }
+        else
+        {
+            callable = baseExpr.Type.GetMember(memberName);
+            if (callable == ExprSymbol.Unkown)
+            {
+                Diagnostics.Report("unkown member", memberExpr.Member);
+                return ExprSymbol.Unkown;
+            }
+            receiver = baseExpr;
+        }
+
+        return BindCall(callable, ces, scope, receiver);
+    }
+
+    private ExprSymbol BindCall(ExprSymbol callable, CallExpressionSyntax ces, BoundScope scope, ExprSymbol? receiver)
+    {
+        if (callable.Type is not FuncTypeSymbol fts)
         {
             Diagnostics.Report("Expression is not callable.", ces.Expression);
             return ExprSymbol.Unkown;
         }
 
-        if (ces.Parameters.Length != fts.Parameters.Length)
+        // For instance calls, self is fts.Parameters[0] — not provided by the user
+        var selfOffset = receiver is not null ? 1 : 0;
+        if (ces.Parameters.Length != fts.Parameters.Length - selfOffset)
         {
             Diagnostics.Report("Function arguments does not match parameter count", ces.SourceSpan);
             return ExprSymbol.Unkown;
         }
 
-
         var boundArguments = ImmutableArray.CreateBuilder<ArgumentSymbol>();
 
-        foreach (var zip in fts.Parameters.Zip(ces.Parameters))
+        if (receiver is not null)
+            boundArguments.Add(new ArgumentSymbol("self", receiver));
+
+        foreach (var zip in fts.Parameters.Skip(selfOffset).Zip(ces.Parameters))
         {
             var boundArgument = BindExpressionSyntax(zip.Second, scope);
-
             if (zip.First.Expression != boundArgument.Type)
             {
                 Diagnostics.Report("wrong type", zip.Second.SourceSpan);
                 return ExprSymbol.Unkown;
             }
-            else
-            {
-                boundArguments.Add(new ArgumentSymbol(zip.First.Name, boundArgument));
-            }
+            boundArguments.Add(new ArgumentSymbol(zip.First.Name, boundArgument));
         }
 
-        return new CallSymbol(expression, boundArguments.ToImmutableArray(), fts.ReturnType == LangDefaults.Types.Function ? fts : fts.ReturnType);
+        return new CallSymbol(callable, boundArguments.ToImmutableArray(), fts.ReturnType == LangDefaults.Types.Function ? fts : fts.ReturnType);
     }
 
     private ExprSymbol BindFunctionExpressionSyntax(FuncExpressionSyntax fes, BoundScope scope)
@@ -252,7 +302,8 @@ public class Binder
             {
                 isInstanceMethod = true;
                 var selfType = scope._selfType ?? LangDefaults.Types.Unkown;
-                derivedScope.Define("self", new NameSymbol("self", selfType, false));
+                parameters.Add(new ParameterSymbol("self", selfType, false));
+                derivedScope.Define("self", new NameSymbol("self", selfType));
                 continue;
             }
 
@@ -260,12 +311,6 @@ public class Binder
             if (typeSymbol is not ExprSymbol es)
             {
                 Diagnostics.Report("Symbol should evaluate to expression", parameter.TypeName);
-                es = ExprSymbol.Unkown;
-            }
-
-            if (!es.IsCompileTime)
-            {
-                Diagnostics.Report("Parameter type should be a constant value", parameter.TypeName);
                 es = ExprSymbol.Unkown;
             }
 
@@ -286,7 +331,7 @@ public class Binder
             parameters.Add(new ParameterSymbol(parameter.Name.Name.String, evaluatedType, isComptimeArg));
 
 
-            var nameSymbol = new NameSymbol(parameter.Name.Name.String, evaluatedType, true);
+            var nameSymbol = new NameSymbol(parameter.Name.Name.String, evaluatedType);
             if (!derivedScope.Define(parameter.Name.Name.String, nameSymbol))
             {
                 Diagnostics.Report("Duplicate parameter name", parameter);
@@ -296,25 +341,17 @@ public class Binder
         var returnSymbol = BindExpressionSyntax(fes.ReturnType, derivedScope);
         TypeSymbol returnType;
 
-        if (!returnSymbol.IsCompileTime)
+        if (returnSymbol.Type != LangDefaults.Types.Type)
         {
-            Diagnostics.Report("return type should be a compile time constant", fes.ReturnType);
+            Diagnostics.Report("return type should evaluate to a type", fes.ReturnType);
             returnType = LangDefaults.Types.Unkown;
         }
         else
         {
-            if (returnSymbol.Type != LangDefaults.Types.Type)
-            {
-                Diagnostics.Report("return type should evaluate to a type", fes.ReturnType);
-                returnType = LangDefaults.Types.Unkown;
-            }
-            else
-            {
-                var concreteType = LapisEvaluator.Instance.EvaluateExpression(returnSymbol, derivedScope) as TypeSymbol;
-                derivedScope._expectedReturn = concreteType ?? LangDefaults.Types.Unkown;
-                returnSymbol = derivedScope._expectedReturn;
-                returnType = returnSymbol.Type;
-            }
+            var concreteType = LapisEvaluator.Instance.EvaluateExpression(returnSymbol, derivedScope) as TypeSymbol;
+            derivedScope._expectedReturn = concreteType ?? LangDefaults.Types.Unkown;
+            returnSymbol = derivedScope._expectedReturn;
+            returnType = returnSymbol.Type;
         }
 
         var funcType = new FuncTypeSymbol(parameters.ToImmutableArray(), derivedScope._expectedReturn);
@@ -323,9 +360,6 @@ public class Binder
         {
             derivedScope.Define(scope._selfName, funcType);
         }
-
-        derivedScope.Define("self", funcType);
-
 
         var statement = BindStatementSyntax(fes.Statement, derivedScope);
         derivedScope._expectedReturn = LangDefaults.Types.Void;
@@ -372,7 +406,7 @@ public class Binder
                 return ExprSymbol.Unkown;
             }
             var staticMemberType = staticMember is TypeSymbol sft ? sft : staticMember.Type;
-            return new MemberSymbol(expression, staticMemberType, memberName, staticMember.IsCompileTime);
+            return new MemberSymbol(expression, staticMemberType, memberName);
         }
 
         // Instance member (struct field or instance method)
@@ -389,7 +423,7 @@ public class Binder
             member is  MemberSymbol ms
             ? ms.Expression.Type
             : member.Type;
-        return new MemberSymbol(expression, memberType, memberName, member.IsCompileTime);
+        return new MemberSymbol(expression, memberType, memberName);
     }
 
     private ExprSymbol BindInstanceInitializationSyntax(InstanceInitializationExpression syntax, BoundScope scope)
@@ -404,15 +438,14 @@ public class Binder
             {
                 var expression = BindExpressionSyntax(initializer.Expression, scope);
                 var initializerName = initializer.Identifier.String;
-                typeArray.Add(new FieldSymbol(initializerName, expression.Type, expression.IsCompileTime));
+                typeArray.Add(new FieldSymbol(initializerName, expression.Type));
                 if (atributes.ContainsKey(initializerName))
                 {
                     Diagnostics.Report("duplicate identifier", initializer.Identifier);
                 }
                 else
                 {
-                    var initializerValue = LapisEvaluator.Instance.Evaluate(expression, EvaluationScope.CreateScope(scope)) as ExprSymbol ?? ExprSymbol.Unkown;
-                    atributes.Add(initializerName, initializerValue);
+                    atributes.Add(initializerName, expression);
                 }
             }
 
@@ -442,8 +475,7 @@ public class Binder
                 }
                 else
                 {
-                    var initializerValue = LapisEvaluator.Instance.Evaluate(expression, EvaluationScope.CreateScope(scope)) as ExprSymbol ?? ExprSymbol.Unkown;
-                    atributes.Add(initializerName, initializerValue);
+                    atributes.Add(initializerName, expression);
                 }
             }
         }
@@ -456,8 +488,7 @@ public class Binder
         {
             Diagnostics.Report("Undefined name", nes);
         }
-        var constantSymbol = symbol == ExprSymbol.Unkown ? false : true;
-        return new NameSymbol(nes.Name.String, symbol is FuncTypeSymbol fts? fts : symbol.Type, constantSymbol);
+        return new NameSymbol(nes.Name.String, symbol is FuncTypeSymbol fts ? fts : symbol.Type);
     }
 
     private ExprSymbol BindBinaryExpressionSyntax(BinaryExpressionSyntax bes, BoundScope scope)
@@ -496,7 +527,7 @@ public class Binder
                 typeExpression = ets;
             }
 
-            fieldsArr.Add(new FieldSymbol(fieldName, typeExpression, typeExpression.IsCompileTime));
+            fieldsArr.Add(new FieldSymbol(fieldName, typeExpression));
         }
 
         return new StructTypeSymbol(fieldsArr.ToImmutableArray(), "anonimous-type");

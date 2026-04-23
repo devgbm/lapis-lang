@@ -9,7 +9,6 @@ public class BoundScope : ExprSymbol
     public TypeSymbol? _expectedReturn;
     public BoundScope? Parent { get => _parent; }
 
-    public override bool IsCompileTime { get => true;}
 
     public override TypeSymbol Type { get => LangDefaults.Types.Namespace;}
 

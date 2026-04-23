@@ -42,16 +42,18 @@ public class NativeFuncTests
         var scope = new EvaluationScope();
         H.Eval("def Vec = type { x: Int; y: Int; };", scope);
 
-        var funcType = new FuncTypeSymbol([], LangDefaults.Types.Integer);
-        var native = new NativeFuncSymbol(true, funcType,
+        var vecType = (TypeSymbol)scope.GetVariable("Vec");
+        var funcType = new FuncTypeSymbol(
+            [new ParameterSymbol("self", vecType, false)],
+            LangDefaults.Types.Integer);
+        var native = new NativeFuncSymbol(funcType,
             (ExprSymbol self) =>
             {
                 var inst = (InstanceSymbol)self;
                 var x = ((IntegerSymbol)inst.Atributes["x"]).Value;
                 var y = ((IntegerSymbol)inst.Atributes["y"]).Value;
                 return x + y;
-            },
-            isInstanceMethod: true);
+            });
         RegisterNativeOnStructType(scope, "Vec", "manhattanLen", native);
 
         var result = H.EvalAs<IntegerSymbol>("Vec{ x: 3; y: 4; }.manhattanLen()", scope);
@@ -64,18 +66,18 @@ public class NativeFuncTests
         var scope = new EvaluationScope();
         H.Eval("def Box = type { w: Int; h: Int; };", scope);
 
+        var boxType = (TypeSymbol)scope.GetVariable("Box");
         var funcType = new FuncTypeSymbol(
-            [new ParameterSymbol("scale", LangDefaults.Types.Integer, true)],
+            [new ParameterSymbol("self", boxType, false), new ParameterSymbol("scale", LangDefaults.Types.Integer, true)],
             LangDefaults.Types.Integer);
-        var native = new NativeFuncSymbol(true, funcType,
+        var native = new NativeFuncSymbol(funcType,
             (ExprSymbol self, object? scale) =>
             {
                 var inst = (InstanceSymbol)self;
                 var w = ((IntegerSymbol)inst.Atributes["w"]).Value;
                 var h = ((IntegerSymbol)inst.Atributes["h"]).Value;
                 return w * h * (long)scale!;
-            },
-            isInstanceMethod: true);
+            });
         RegisterNativeOnStructType(scope, "Box", "scaledArea", native);
 
         var result = H.EvalAs<IntegerSymbol>("Box{ w: 3; h: 4; }.scaledArea(2)", scope);
@@ -100,7 +102,7 @@ public class NativeFuncTests
         H.Eval("def Color = type { r: Int; g: Int; b: Int; };", scope);
 
         var funcType = new FuncTypeSymbol([], LangDefaults.Types.Integer);
-        var native = new NativeFuncSymbol(true, funcType,
+        var native = new NativeFuncSymbol(funcType,
             () => 0xFF000000L);
         RegisterNativeOnStructType(scope, "Color", "Black", native);
 

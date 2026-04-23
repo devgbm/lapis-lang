@@ -7,13 +7,11 @@ namespace LapisLang.Core;
 
 public class FuncTypeSymbol : TypeSymbol
 {
-    public FuncTypeSymbol(ImmutableArray<ParameterSymbol> arguments, TypeSymbol returnType, bool isCompileTime = true) : base($"({string.Join(", ",arguments.Select(e => e.Expression))}):{returnType}")
+    public FuncTypeSymbol(ImmutableArray<ParameterSymbol> arguments, TypeSymbol returnType) : base($"({string.Join(", ",arguments.Select(e => e.Expression))}):{returnType}")
     {
         Parameters = arguments;
         ReturnType = returnType;
-        IsCompileTime = isCompileTime;
     }
-    public override bool IsCompileTime { get; }
 
     public ImmutableArray<ParameterSymbol> Parameters { get; }
     public TypeSymbol ReturnType { get; }
@@ -29,13 +27,10 @@ public class StructTypeSymbol : TypeSymbol
     public StructTypeSymbol(ImmutableArray<FieldSymbol> fields, string? debugName) : base(debugName)
     {
         Fields = fields;
-        IsCompileTime = fields.All(e => e.IsConstant);
         foreach (var field in fields) DefineMember(field.Name, field.Type);
     }
 
     public ImmutableArray<FieldSymbol> Fields { get; }
-
-    public override bool IsCompileTime { get; }
 
     public override bool IsEquivalent(ExprSymbol symbol)
     {

@@ -81,12 +81,4 @@ public class LiteralTests
         Assert.Equal(LangDefaults.Types.Decimal, result.Type);
     }
 
-    [Fact]
-    public void All_Literals_Are_CompileTime()
-    {
-        Assert.True(H.EvalAs<IntegerSymbol>("1").IsCompileTime);
-        Assert.True(H.EvalAs<BooleanSymbol>("true").IsCompileTime);
-        Assert.True(H.EvalAs<StringSymbol>("'x'").IsCompileTime);
-        Assert.True(H.EvalAs<DecimalSymbol>("1.0").IsCompileTime);
-    }
 }

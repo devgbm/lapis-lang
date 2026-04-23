@@ -12,11 +12,8 @@ public class InstanceSymbol : ExprSymbol
     )
     {
         Atributes = atributes;
-        IsCompileTime = atributes.Values.All(e => e.IsCompileTime);
         Type = type;
-
     }
-    public override bool IsCompileTime { get; }
     public override TypeSymbol Type { get; }
     public ImmutableDictionary<string, ExprSymbol> Atributes { get; }
-} 
+}

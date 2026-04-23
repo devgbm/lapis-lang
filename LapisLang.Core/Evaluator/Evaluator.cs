@@ -187,30 +187,11 @@ public class LapisEvaluator
 
     private ExprSymbol EvaluateCallSymbol(CallSymbol cs, EvaluationScope scope)
     {
-        ExprSymbol? receiver = null;
-        ExprSymbol funcSymbol;
-
-        if (cs.CallableExpression is MemberSymbol callMs)
-        {
-            var target = EvaluateExpression(callMs.Expression, scope);
-            if (target is TypeSymbol ts)
-                funcSymbol = ts.GetMember(callMs.Name) as ExprSymbol ?? ExprSymbol.Unkown;
-            else
-            {
-                receiver = target;
-                funcSymbol = target.Type.GetMember(callMs.Name) as ExprSymbol ?? ExprSymbol.Unkown;
-            }
-        }
-        else
-        {
-            funcSymbol = EvaluateExpression(cs.CallableExpression, scope);
-        }
+        var funcSymbol = EvaluateExpression(cs.CallableExpression, scope);
 
         if (funcSymbol is NativeFuncSymbol nfs)
         {
             var args = cs.Arguments.Select(e => EvaluateExpression(e.Expression, scope)).Select(ClrHelper.ToClr).ToArray();
-            if (nfs.IsInstanceMethod && receiver is not null)
-                args = [receiver, .. args];
             var result = ClrHelper.ToSymbol(nfs.Delegate.DynamicInvoke(args));
 
             if (result is UnkownExprSymbol && nfs.FuncType.ReturnType == LangDefaults.Types.Void)
@@ -222,7 +203,6 @@ public class LapisEvaluator
         if (funcSymbol is not FuncSymbol fs) throw new Exception("Call target is not a function");
         var derivedScope = scope.Derive();
 
-        derivedScope.SetVariable("self", receiver ?? fs);
         derivedScope.ExpectReturn = true;
         foreach (var argument in cs.Arguments)
         {

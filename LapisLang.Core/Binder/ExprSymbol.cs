@@ -7,7 +7,6 @@ namespace LapisLang.Core;
 public abstract class ExprSymbol : Symbol
 {
     public static ExprSymbol Unkown = new UnkownExprSymbol();
-    public abstract bool IsCompileTime { get; }
     public abstract TypeSymbol Type { get; }
 }
 public class CallSymbol : ExprSymbol
@@ -20,10 +19,8 @@ public class CallSymbol : ExprSymbol
     {
         CallableExpression = callableExpression;
         Arguments = arguments;
-        IsCompileTime = callableExpression.IsCompileTime && arguments.All(a => a.Expression.IsCompileTime);
         Type = returnType;
     }
-    public override bool IsCompileTime { get; }
 
     public override TypeSymbol Type { get; }
 
@@ -66,18 +63,15 @@ public class ParameterSymbol : Symbol
 public class NativeFuncSymbol : ExprSymbol
 {
     public NativeFuncSymbol(
-        bool isCompileTime,
         FuncTypeSymbol type,
         Delegate @delegate,
         bool isInstanceMethod = false
     )
     {
-        IsCompileTime = isCompileTime;
         FuncType = type;
         Delegate = @delegate;
         IsInstanceMethod = isInstanceMethod;
     }
-    public override bool IsCompileTime { get; }
 
     public override TypeSymbol Type { get => FuncType; }
     public FuncTypeSymbol FuncType { get; }
@@ -102,7 +96,6 @@ public class FuncSymbol : ExprSymbol
         IsInstanceMethod = isInstanceMethod;
         Type = type;
     }
-    public override bool IsCompileTime => true;
 
     public override TypeSymbol Type { get; }
 
@@ -118,16 +111,13 @@ public class MemberSymbol : ExprSymbol
     public MemberSymbol(
         ExprSymbol expression,
         TypeSymbol type,
-        string name,
-        bool memberIsCompileTime
+        string name
     )
     {
         Expression = expression;
-        IsCompileTime = memberIsCompileTime;
         Name = name;
         Type = type;
     }
-    public override bool IsCompileTime { get; }
 
     public override TypeSymbol Type { get; }
 
@@ -136,21 +126,17 @@ public class MemberSymbol : ExprSymbol
 }
 public class NameSymbol : ExprSymbol
 {
-    public NameSymbol(string name, TypeSymbol type, bool isConstant)
+    public NameSymbol(string name, TypeSymbol type)
     {
         Name = name;
-        IsCompileTime = isConstant;
         Type = type;
     }
-    public override bool IsCompileTime { get; }
 
     public override TypeSymbol Type { get; }
     public string Name { get; }
 }
 public class UnkownExprSymbol : ExprSymbol
 {
-    public override bool IsCompileTime => false;
-
     public override TypeSymbol Type => LangDefaults.Types.Unkown;
 }
 
@@ -161,7 +147,6 @@ public class IntegerSymbol : ExprSymbol
         Value = value;
     }
     public long Value { get; }
-    public override bool IsCompileTime => true;
     public override TypeSymbol Type => LangDefaults.Types.Integer;
 }
 
@@ -172,7 +157,6 @@ public class BooleanSymbol : ExprSymbol
         Value = value;
     }
     public bool Value { get; }
-    public override bool IsCompileTime => true;
     public override TypeSymbol Type => LangDefaults.Types.Boolean;
 }
 
@@ -183,7 +167,6 @@ public class StringSymbol : ExprSymbol
         Value = value;
     }
     public string Value { get; }
-    public override bool IsCompileTime => true;
     public override TypeSymbol Type => LangDefaults.Types.String;
 }
 
@@ -194,6 +177,5 @@ public class DecimalSymbol : ExprSymbol
         Value = value;
     }
     public decimal Value { get; }
-    public override bool IsCompileTime => true;
     public override TypeSymbol Type => LangDefaults.Types.Decimal;
 }

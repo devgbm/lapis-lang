@@ -18,7 +18,7 @@ public class ClrHelper
             case DecimalSymbol decSymbol:
                 return decSymbol.Value;
 
-            default: return null;
+            default: return symbol; // complex types (InstanceSymbol, etc.) passed as-is
         }
     }
 

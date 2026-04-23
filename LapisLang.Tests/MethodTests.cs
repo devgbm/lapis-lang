@@ -110,4 +110,16 @@ public class MethodTests
         H.Eval("def Int.Tag = 1;", scope);
         Assert.True(H.HasErrors("def Int.Tag = 2;", scope));
     }
+
+    [Fact]
+    public void Nested_Call_Resolve_Target_Correctly()
+    {
+        var scope = new EvaluationScope();
+        H.Eval("def Pt = type { x: Int; y: Int; };", scope);
+        H.Eval("def Pt.avg = func(self, Pt other) Pt :{ return Pt{ x: (self.x + other.x) / 2; y: (self.y + other.y) / 2; }; };", scope);
+        H.Eval("def Pt.create = func(Int x, Int y) Pt: { return Pt { x: x; y: y; }; };", scope);
+        H.Eval("def Pt.sum = func(self) Int: { return self.x + self.y; };", scope);
+        var result = H.EvalAs<IntegerSymbol>("Pt.create(0,0).avg(Pt.create(2, 2)).sum()", scope);
+        Assert.Equal(2L, result.Value);
+    }
 }

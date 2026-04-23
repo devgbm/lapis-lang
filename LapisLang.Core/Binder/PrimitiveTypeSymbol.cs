@@ -6,7 +6,6 @@ public class PrimitiveTypeSymbol : TypeSymbol
     {
     }
 
-    public override bool IsCompileTime => true;
 
     public override bool IsEquivalent(ExprSymbol symbol)
     {

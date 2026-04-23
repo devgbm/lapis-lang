@@ -15,7 +15,6 @@ public class VoidSymbol : ExprSymbol
 {
     public static VoidSymbol Instance = new();
     private VoidSymbol(){}
-    public override bool IsCompileTime => true;
     public override TypeSymbol Type => LangDefaults.Types.Void;
 }
 public class UnkownSymbol : Symbol
@@ -49,15 +48,14 @@ public static class LangDefaults
 
         private static void BuildIntegerType()
         {
-            var toStringType = new FuncTypeSymbol([], String);
-            var toStringNative = new NativeFuncSymbol(true, toStringType,
-                (ExprSymbol self) => self is IntegerSymbol i ? i.Value.ToString() : "",
-                isInstanceMethod: true);
+            var toStringType = new FuncTypeSymbol([new ParameterSymbol("self", Integer, false)], String);
+            var toStringNative = new NativeFuncSymbol(toStringType,
+                (long self) => self.ToString());
             Integer.DefineMember("toString", toStringNative);
 
 
-            var parseType = new FuncTypeSymbol([new ParameterSymbol("value", String, true)], Integer, true);
-            var parseNative = new NativeFuncSymbol(false, parseType, (object? arg) =>
+            var parseType = new FuncTypeSymbol([new ParameterSymbol("value", String, true)], Integer);
+            var parseNative = new NativeFuncSymbol(parseType, (object? arg) =>
             {
                 return  long.Parse(arg?.ToString() ?? "0");
             });
@@ -66,14 +64,13 @@ public static class LangDefaults
 
         public static void BuildDecimalType()
         {
-            var toStringType = new FuncTypeSymbol([], String);
-            var toStringNative = new NativeFuncSymbol(true, toStringType,
-                (ExprSymbol self) => self is DecimalSymbol i ? i.Value.ToString() : "",
-                isInstanceMethod: true);
+            var toStringType = new FuncTypeSymbol([new ParameterSymbol("self", Decimal, false)], String);
+            var toStringNative = new NativeFuncSymbol(toStringType,
+                (decimal self) => self.ToString());
             Decimal.DefineMember("toString", toStringNative);
 
-            var parseType = new FuncTypeSymbol([new ParameterSymbol("value", String, true)], Decimal, true);
-            var parseNative = new NativeFuncSymbol(false, parseType, (object? arg) =>
+            var parseType = new FuncTypeSymbol([new ParameterSymbol("value", String, true)], Decimal);
+            var parseNative = new NativeFuncSymbol(parseType, (object? arg) =>
             {
                 return  decimal.Parse(arg?.ToString() ?? "0");
             });
@@ -83,10 +80,9 @@ public static class LangDefaults
 
         public static void BuildBoolType()
         {
-            var toStringType = new FuncTypeSymbol([], String);
-            var toStringNative = new NativeFuncSymbol(true, toStringType,
-                (ExprSymbol self) => self is BooleanSymbol i ? i.Value.ToString() : "",
-                isInstanceMethod: true);
+            var toStringType = new FuncTypeSymbol([new ParameterSymbol("self", Boolean, false)], String);
+            var toStringNative = new NativeFuncSymbol(toStringType,
+                (bool self) => self.ToString());
             Boolean.DefineMember("toString", toStringNative);
         }
     }
@@ -118,8 +114,8 @@ public static partial class LangStd
         public static BoundScope DebugNamespace = new BoundScope("Debug");
         static Compiler()
         {
-            var funcType = new FuncTypeSymbol([], LangDefaults.Types.Integer, false);
-            DebugNamespace.Define("runtime", new NativeFuncSymbol(false, funcType, () => 0L));
+            var funcType = new FuncTypeSymbol([], LangDefaults.Types.Integer);
+            DebugNamespace.Define("runtime", new NativeFuncSymbol(funcType, () => 0L));
         }
 
     }
@@ -139,7 +135,7 @@ public static partial class LangStd
         public static NativeFuncSymbol Write()
         {
             var type = new FuncTypeSymbol([new ParameterSymbol("str", LangDefaults.Types.String, true)], LangDefaults.Types.Void);
-            var symbol = new NativeFuncSymbol(true, type, (object? arg) =>
+            var symbol = new NativeFuncSymbol(type, (object? arg) =>
             {
                 System.Console.WriteLine(arg?.ToString());
             });
@@ -149,7 +145,7 @@ public static partial class LangStd
         public static NativeFuncSymbol Read()
         {
             var type = new FuncTypeSymbol([], LangDefaults.Types.String);
-            return new NativeFuncSymbol(false, type, () =>  System.Console.ReadLine());
+            return new NativeFuncSymbol(type, () =>  System.Console.ReadLine());
 
         }
     }

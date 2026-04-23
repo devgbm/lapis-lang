@@ -73,7 +73,6 @@ public class BinaryExprSymbol : ExprSymbol
         Type = type;
     }
 
-    public override bool IsCompileTime => Left.IsCompileTime && Right.IsCompileTime;
 
     public override TypeSymbol Type { get; }
 }
@@ -89,7 +88,6 @@ public class UnaryExprSymbol : ExprSymbol
         Type = type;
     }
 
-    public override bool IsCompileTime => Operand.IsCompileTime;
 
     public override TypeSymbol Type { get; }
 }
