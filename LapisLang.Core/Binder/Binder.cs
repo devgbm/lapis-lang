@@ -372,7 +372,7 @@ public class Binder
                 return ExprSymbol.Unkown;
             }
             var staticMemberType = staticMember is TypeSymbol sft ? sft : staticMember.Type;
-            return new MemberSymbol(expression, staticMemberType, memberName);
+            return new MemberSymbol(expression, staticMemberType, memberName, staticMember.IsCompileTime);
         }
 
         // Instance member (struct field or instance method)
@@ -389,7 +389,7 @@ public class Binder
             member is  MemberSymbol ms
             ? ms.Expression.Type
             : member.Type;
-        return new MemberSymbol(expression, memberType, memberName);
+        return new MemberSymbol(expression, memberType, memberName, member.IsCompileTime);
     }
 
     private ExprSymbol BindInstanceInitializationSyntax(InstanceInitializationExpression syntax, BoundScope scope)

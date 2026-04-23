@@ -138,8 +138,8 @@ public class EvaluationScope
     public ExprSymbol GetVariable(string name)
     {
         if (_variables.ContainsKey(name)) return _variables[name];
-        if (BoundScope.TryGetExprSymbol(name, out var symbol)) return symbol;
         if (_parent is not null) return _parent.GetVariable(name);
+        if (BoundScope.TryGetExprSymbol(name, out var symbol)) return symbol;
         return ExprSymbol.Unkown;        
     }
 

@@ -20,7 +20,7 @@ public class CallSymbol : ExprSymbol
     {
         CallableExpression = callableExpression;
         Arguments = arguments;
-        IsCompileTime = callableExpression.IsCompileTime;
+        IsCompileTime = callableExpression.IsCompileTime && arguments.All(a => a.Expression.IsCompileTime);
         Type = returnType;
     }
     public override bool IsCompileTime { get; }
@@ -118,11 +118,12 @@ public class MemberSymbol : ExprSymbol
     public MemberSymbol(
         ExprSymbol expression,
         TypeSymbol type,
-        string name
+        string name,
+        bool memberIsCompileTime
     )
     {
         Expression = expression;
-        IsCompileTime = expression.IsCompileTime;
+        IsCompileTime = memberIsCompileTime;
         Name = name;
         Type = type;
     }

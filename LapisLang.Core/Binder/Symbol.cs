@@ -103,6 +103,7 @@ public static class LangDefaults
         scope.Define("Type", Types.Type);
         scope.Define("Func", Types.Function);
 
+        scope.Define("Compiler", LangStd.Compiler.DebugNamespace);
         scope.Define("Console", LangStd.Console.ConsoleNamespace);
 
         return scope;
@@ -112,6 +113,16 @@ public static class LangDefaults
 
 public static partial class LangStd
 {
+    public class Compiler
+    {
+        public static BoundScope DebugNamespace = new BoundScope("Debug");
+        static Compiler()
+        {
+            var funcType = new FuncTypeSymbol([], LangDefaults.Types.Integer, false);
+            DebugNamespace.Define("runtime", new NativeFuncSymbol(false, funcType, () => 0L));
+        }
+
+    }
     public class Console
     {
         public static BoundScope ConsoleNamespace = CreateConsoleNs();
