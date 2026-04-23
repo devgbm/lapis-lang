@@ -86,8 +86,8 @@ public class LapisEvaluator
         if (result is not BooleanSymbol bs) throw new Exception("If condition must be a boolean symbol");
 
         var derivedScope = evaluationScope.Derive();
-        if (bs.Value == true) return EvaluateStatement(symbol.Statements, evaluationScope);
-        else if(symbol.ElseStatements is not null) return EvaluateStatement(symbol.ElseStatements, evaluationScope);
+        if (bs.Value == true) return EvaluateStatement(symbol.Statements, derivedScope);
+        else if(symbol.ElseStatements is not null) return EvaluateStatement(symbol.ElseStatements, derivedScope);
 
         return VoidSymbol.Instance;   
     }
@@ -96,9 +96,13 @@ public class LapisEvaluator
     {
         foreach (var statement in ss.StatementSymbols)
         {
-            var returnSymbol = EvaluateStatement(statement, evaluationScope);
+            EvaluateStatement(statement, evaluationScope);
             if (evaluationScope.ReturnRequest is not null)
             {
+                if(!evaluationScope.ExpectReturn && evaluationScope._parent is not null)
+                {
+                    evaluationScope._parent.ReturnRequest = evaluationScope.ReturnRequest;
+                }
                 return evaluationScope.ReturnRequest;
             }
         }
@@ -219,7 +223,7 @@ public class LapisEvaluator
         var derivedScope = scope.Derive();
 
         derivedScope.SetVariable("self", receiver ?? fs);
-
+        derivedScope.ExpectReturn = true;
         foreach (var argument in cs.Arguments)
         {
             var argumentExpr = EvaluateExpression(argument.Expression, derivedScope);

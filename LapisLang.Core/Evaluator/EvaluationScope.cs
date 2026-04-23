@@ -8,8 +8,9 @@ public class EvaluationScope
 {
     public BoundScope BoundScope { get; }
     private Dictionary<string, ExprSymbol> _variables = new();
-    private EvaluationScope? _parent = null;
+    public EvaluationScope? _parent = null;
     public ExprSymbol? ReturnRequest { get; set; }
+    public bool ExpectReturn { get; set; } = false;
     public EvaluationScope(BoundScope? scope = null)
     {
         BoundScope = scope ?? LangDefaults.CreateDefaultScope();
