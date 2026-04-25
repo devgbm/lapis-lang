@@ -7,5 +7,5 @@ def fib = func (Int n) Int: {
 };
 
 Console.write('write a number');
-def num = Int.parse(Console.read());
+var num = Int.parse(Console.read());
 Console.write(fib(num).toString());

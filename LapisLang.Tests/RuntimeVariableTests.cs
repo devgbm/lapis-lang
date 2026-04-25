@@ -24,7 +24,7 @@ public class RuntimeVariableTests
         // If Compiler.runtime() were incorrectly classified as compile-time, the binder would
         // evaluate it during binding, producing VoidSymbol instead of IntegerSymbol.
         var scope = new EvaluationScope();
-        H.Eval("def x = Compiler.runtime();", scope);
+        H.Eval("var x = Compiler.runtime();", scope);
         var result = H.EvalAs<IntegerSymbol>("x", scope);
         Assert.Equal(0L, result.Value);
     }
@@ -37,7 +37,7 @@ public class RuntimeVariableTests
         // When `f(x)` is called, the derived scope must walk _parent to find `x`,
         // not BoundScope (which holds the unevaluated CallSymbol from the binder).
         var scope = new EvaluationScope();
-        H.Eval("def x = Compiler.runtime();", scope);
+        H.Eval("var x = Compiler.runtime();", scope);
         H.Eval("def f = func (Int n) Int: { return n; };", scope);
         var result = H.EvalAs<IntegerSymbol>("f(x)", scope);
         Assert.Equal(0L, result.Value);
@@ -50,7 +50,7 @@ public class RuntimeVariableTests
         // Before the fix, only the callable's IsCompileTime was checked, so a call
         // like `addTwo(runtimeValue)` was incorrectly treated as compile-time.
         var scope = new EvaluationScope();
-        H.Eval("def x = Compiler.runtime();", scope);
+        H.Eval("var x = Compiler.runtime();", scope);
         H.Eval("def addTwo = func (Int n) Int: { return n + 2; };", scope);
         var result = H.EvalAs<IntegerSymbol>("addTwo(x)", scope);
         Assert.Equal(2L, result.Value);
@@ -60,7 +60,7 @@ public class RuntimeVariableTests
     public void Runtime_Variable_In_Nested_Function_Calls()
     {
         var scope = new EvaluationScope();
-        H.Eval("def x = Compiler.runtime();", scope);
+        H.Eval("var x = Compiler.runtime();", scope);
         H.Eval("def addOne = func (Int n) Int: { return n + 1; };", scope);
         var result = H.EvalAs<IntegerSymbol>("addOne(addOne(x))", scope);
         Assert.Equal(2L, result.Value);
@@ -72,7 +72,7 @@ public class RuntimeVariableTests
         // Regression for the EvaluateBinaryExpr crash: when `n` resolved to the unevaluated
         // CallSymbol instead of an IntegerSymbol, the binary operator cast would fail.
         var scope = new EvaluationScope();
-        H.Eval("def x = Compiler.runtime();", scope);
+        H.Eval("var x = Compiler.runtime();", scope);
         H.Eval("def isZero = func (Int n) Bool: { if (n == 0) { return true; } else { return false; } };", scope);
         var result = H.EvalAs<BooleanSymbol>("isZero(x)", scope);
         Assert.True(result.Value);
@@ -93,7 +93,7 @@ public class RuntimeVariableTests
                 }
             };
             """, scope);
-        H.Eval("def num = Compiler.runtime();", scope);
+        H.Eval("var num = Compiler.runtime();", scope);
         var result = H.EvalAs<IntegerSymbol>("fib(num)", scope);
         Assert.Equal(0L, result.Value);
     }

@@ -1,8 +1,5 @@
 namespace LapisLang.Core;
 
-
-public record EvaluationResult(Symbol result, DiagnosticsBag Diagnostics);
-
 public class LapisInterpreter
 {
     public static EvaluationResult Evaluate(string code, EvaluationScope? scope = null)

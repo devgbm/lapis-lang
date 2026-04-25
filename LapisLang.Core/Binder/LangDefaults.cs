@@ -1,0 +1,86 @@
+namespace LapisLang.Core;
+
+public static class LangDefaults
+{
+    public static class Types
+    {
+        public static TypeSymbol Unkown = new PrimitiveTypeSymbol("Unkown");
+        public static TypeSymbol Void = new PrimitiveTypeSymbol("Void");
+        public static TypeSymbol Namespace = new PrimitiveTypeSymbol("Namespace");
+        public static TypeSymbol Type = new PrimitiveTypeSymbol("Type");
+        public static TypeSymbol Integer = new PrimitiveTypeSymbol("Int");
+        public static TypeSymbol Boolean = new PrimitiveTypeSymbol("Bool");
+        public static TypeSymbol String = new PrimitiveTypeSymbol("Str");
+        public static TypeSymbol Decimal = new PrimitiveTypeSymbol("Dec");
+        public static TypeSymbol Function = new PrimitiveTypeSymbol("Func");
+
+        static Types()
+        {
+            BuildIntegerType();
+            BuildDecimalType();
+            BuildBoolType();
+            BuildStrType();
+        }
+        private static void BuildStrType()
+        {
+        }
+
+        private static void BuildIntegerType()
+        {
+            var toStringType = new FuncTypeSymbol([new ParameterSymbol("self", Integer, false)], String, BindFlag.IsInstance);
+            var toStringNative = new NativeFuncSymbol(toStringType,
+                (long self) => self.ToString());
+            Integer.DefineMember("toString", toStringNative);
+
+
+            var parseType = new FuncTypeSymbol([new ParameterSymbol("value", String, true)], Integer);
+            var parseNative = new NativeFuncSymbol(parseType, (object? arg) =>
+            {
+                return long.Parse(arg?.ToString() ?? "0");
+            });
+            Integer.DefineMember("parse", parseNative);
+        }
+
+        public static void BuildDecimalType()
+        {
+            var toStringType = new FuncTypeSymbol([new ParameterSymbol("self", Decimal, false)], String, BindFlag.IsInstance);
+            var toStringNative = new NativeFuncSymbol(toStringType,
+                (decimal self) => self.ToString());
+            Decimal.DefineMember("toString", toStringNative);
+
+            var parseType = new FuncTypeSymbol([new ParameterSymbol("value", String, true)], Decimal);
+            var parseNative = new NativeFuncSymbol(parseType, (object? arg) =>
+            {
+                return decimal.Parse(arg?.ToString() ?? "0");
+            });
+
+            Decimal.DefineMember("parse", parseNative);
+        }
+
+        public static void BuildBoolType()
+        {
+            var toStringType = new FuncTypeSymbol([new ParameterSymbol("self", Boolean, false)], String, BindFlag.IsInstance);
+            var toStringNative = new NativeFuncSymbol(toStringType,
+                (bool self) => self.ToString());
+            Boolean.DefineMember("toString", toStringNative);
+        }
+    }
+
+    public static BoundScope CreateDefaultScope()
+    {
+        var scope = new BoundScope("global");
+        scope.Define("Void", Types.Void);
+        scope.Define("Unkown", Types.Unkown);
+        scope.Define("Bool", Types.Boolean);
+        scope.Define("Int", Types.Integer);
+        scope.Define("Dec", Types.Decimal);
+        scope.Define("Str", Types.String);
+        scope.Define("Type", Types.Type);
+        scope.Define("Func", Types.Function);
+
+        scope.Define("Compiler", LangStd.Compiler.DebugNamespace);
+        scope.Define("Console", LangStd.Console.ConsoleNamespace);
+
+        return scope;
+    }
+}

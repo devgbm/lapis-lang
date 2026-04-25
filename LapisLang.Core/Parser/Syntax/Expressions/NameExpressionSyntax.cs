@@ -13,13 +13,3 @@ public class NameExpressionSyntax : ExpressionSyntax
         Name = name;
     }
 }
-
-public class CompilerNameExpressionSyntax : NameExpressionSyntax
-{
-
-    public CompilerNameExpressionSyntax(
-        SourceSpan sourceSpan,
-        Token name) : base(sourceSpan, name)
-    {
-    }
-}

@@ -45,7 +45,8 @@ public class NativeFuncTests
         var vecType = (TypeSymbol)scope.GetVariable("Vec");
         var funcType = new FuncTypeSymbol(
             [new ParameterSymbol("self", vecType, false)],
-            LangDefaults.Types.Integer);
+            LangDefaults.Types.Integer,
+            BindFlag.IsInstance);
         var native = new NativeFuncSymbol(funcType,
             (ExprSymbol self) =>
             {
@@ -69,7 +70,8 @@ public class NativeFuncTests
         var boxType = (TypeSymbol)scope.GetVariable("Box");
         var funcType = new FuncTypeSymbol(
             [new ParameterSymbol("self", boxType, false), new ParameterSymbol("scale", LangDefaults.Types.Integer, true)],
-            LangDefaults.Types.Integer);
+            LangDefaults.Types.Integer,
+            BindFlag.IsInstance);
         var native = new NativeFuncSymbol(funcType,
             (ExprSymbol self, object? scale) =>
             {

@@ -1,3 +1,4 @@
+using System;
 using LapisLang.Core;
 
 namespace LapisLang.Tests;

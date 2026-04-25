@@ -155,15 +155,23 @@ public class Binder
         scope._selfName = name;
         var expression = BindExpressionSyntax(dss.Expression, scope);
 
-        if (expression is TypeSymbol ts && ts.DebugName == "anonimous-type") ts.DebugName = name;
+        if (expression.Flags.HasFlag(BindFlag.IsRuntimeOnly))
+        {
+            Diagnostics.Report("def cannot bind a runtime-only expression", dss.Expression);
+            return StatementSymbol.UnkownStatement;
+        }
 
-        if (!scope.Define(name, expression))
+        var evaluated = LapisEvaluator.Instance.EvaluateExpression(expression, scope);
+
+        if (evaluated is TypeSymbol ts && ts.DebugName == "anonimous-type") ts.DebugName = name;
+
+        if (!scope.Define(name, evaluated))
         {
             Diagnostics.Report("Symbol canot be redeclared", dss);
             return StatementSymbol.UnkownStatement;
         }
         scope._selfName = null;
-        return new DefineSymbol(name, expression);
+        return new DefineSymbol(name, evaluated);
     }
 
     private ExprSymbol BindExpressionSyntax(ExpressionSyntax syntax, BoundScope scope)
@@ -193,63 +201,18 @@ public class Binder
 
         var (unaryOp, resultType) = scope.ResolveUnaryExpression(syntax.TokenOperator, operand);
 
-        return new UnaryExprSymbol(operand, unaryOp, resultType);
+        return new UnaryExprSymbol(operand, unaryOp, resultType, PropagateRuntimeOnly(operand));
     }
 
     private ExprSymbol BindCallExpressionSyntax(CallExpressionSyntax ces, BoundScope scope)
     {
-        if (ces.Expression is MemberExpressionSyntax memberExpr)
-            return BindMemberCallExpression(memberExpr, ces, scope);
+        var callable = BindExpressionSyntax(ces.Expression, scope);
 
-        var expression = BindExpressionSyntax(ces.Expression, scope);
-        return BindCall(expression, ces, scope, receiver: null);
-    }
-
-    private ExprSymbol BindMemberCallExpression(MemberExpressionSyntax memberExpr, CallExpressionSyntax ces, BoundScope scope)
-    {
-        var baseExpr = BindExpressionSyntax(memberExpr.Expresison, scope);
-        var memberName = memberExpr.Member.Name.String;
-
-        ExprSymbol callable;
-        ExprSymbol? receiver = null;
-
-        if (baseExpr.Type == LangDefaults.Types.Namespace && baseExpr is NameSymbol nsRef)
-        {
-            if (!scope.TryGetExprSymbol(nsRef.Name, out var nsExpr) || nsExpr is not BoundScope bs)
-            {
-                Diagnostics.Report("unkown member", memberExpr.Expresison);
-                return ExprSymbol.Unkown;
-            }
-            if (!bs.TryGetExprSymbol(memberName, out callable))
-            {
-                Diagnostics.Report("unkown member", memberExpr.Member);
-                return ExprSymbol.Unkown;
-            }
-        }
-        else if (baseExpr is NameSymbol nameRef && nameRef.Type == LangDefaults.Types.Type)
-        {
-            if (!scope.TryGetExprSymbol(nameRef.Name, out var typeExpr) || typeExpr is not TypeSymbol ts)
-            {
-                Diagnostics.Report("unkown type", memberExpr.Expresison);
-                return ExprSymbol.Unkown;
-            }
-            callable = ts.GetMember(memberName);
-            if (callable == ExprSymbol.Unkown)
-            {
-                Diagnostics.Report("unkown member", memberExpr.Member);
-                return ExprSymbol.Unkown;
-            }
-        }
-        else
-        {
-            callable = baseExpr.Type.GetMember(memberName);
-            if (callable == ExprSymbol.Unkown)
-            {
-                Diagnostics.Report("unkown member", memberExpr.Member);
-                return ExprSymbol.Unkown;
-            }
-            receiver = baseExpr;
-        }
+        var receiver = callable is MemberSymbol ms
+                    && callable.Type is FuncTypeSymbol fts
+                    && fts.Flags.HasFlag(BindFlag.IsInstance)
+            ? ms.Expression
+            : null;
 
         return BindCall(callable, ces, scope, receiver);
     }
@@ -286,7 +249,8 @@ public class Binder
             boundArguments.Add(new ArgumentSymbol(zip.First.Name, boundArgument));
         }
 
-        return new CallSymbol(callable, boundArguments.ToImmutableArray(), fts.ReturnType == LangDefaults.Types.Function ? fts : fts.ReturnType);
+        var callFlags = PropagateRuntimeOnly([callable, .. boundArguments.Select(a => a.Expression)]) | (fts.Flags & BindFlag.IsRuntimeOnly);
+        return new CallSymbol(callable, boundArguments.ToImmutableArray(), fts.ReturnType == LangDefaults.Types.Function ? fts : fts.ReturnType, callFlags);
     }
 
     private ExprSymbol BindFunctionExpressionSyntax(FuncExpressionSyntax fes, BoundScope scope)
@@ -308,14 +272,7 @@ public class Binder
             }
 
             var typeSymbol = BindExpressionSyntax(parameter.TypeName, scope);
-            if (typeSymbol is not ExprSymbol es)
-            {
-                Diagnostics.Report("Symbol should evaluate to expression", parameter.TypeName);
-                es = ExprSymbol.Unkown;
-            }
-
-            var evaluated = LapisEvaluator.Instance.Evaluate(es, scope);
-            if (evaluated is not TypeSymbol evaluatedType)
+            if (ResolveExpr(typeSymbol, scope) is not TypeSymbol evaluatedType)
             {
                 Diagnostics.Report("Parameter type shoudle evaluate to type", parameter.TypeName);
                 evaluatedType = LangDefaults.Types.Unkown;
@@ -348,13 +305,14 @@ public class Binder
         }
         else
         {
-            var concreteType = LapisEvaluator.Instance.EvaluateExpression(returnSymbol, derivedScope) as TypeSymbol;
-            derivedScope._expectedReturn = concreteType ?? LangDefaults.Types.Unkown;
-            returnSymbol = derivedScope._expectedReturn;
+            var concreteType = ResolveExpr(returnSymbol, derivedScope) as TypeSymbol ?? LangDefaults.Types.Unkown;
+            derivedScope._expectedReturn = concreteType;
+            returnSymbol = concreteType;
             returnType = returnSymbol.Type;
         }
 
-        var funcType = new FuncTypeSymbol(parameters.ToImmutableArray(), derivedScope._expectedReturn);
+        var funcType = new FuncTypeSymbol(parameters.ToImmutableArray(), derivedScope._expectedReturn,
+            isInstanceMethod ? BindFlag.IsInstance : BindFlag.None);
 
         if (scope._selfName is not null)
         {
@@ -406,7 +364,7 @@ public class Binder
                 return ExprSymbol.Unkown;
             }
             var staticMemberType = staticMember is TypeSymbol sft ? sft : staticMember.Type;
-            return new MemberSymbol(expression, staticMemberType, memberName);
+            return new MemberSymbol(expression, staticMemberType, memberName, PropagateRuntimeOnly(expression));
         }
 
         // Instance member (struct field or instance method)
@@ -423,7 +381,7 @@ public class Binder
             member is  MemberSymbol ms
             ? ms.Expression.Type
             : member.Type;
-        return new MemberSymbol(expression, memberType, memberName);
+        return new MemberSymbol(expression, memberType, memberName, PropagateRuntimeOnly(expression));
     }
 
     private ExprSymbol BindInstanceInitializationSyntax(InstanceInitializationExpression syntax, BoundScope scope)
@@ -498,7 +456,7 @@ public class Binder
 
         var (binaryOp, resultType) = scope.ResolveBinaryExpression(bes.OperatorToken, leftExpr, rightExpr);
 
-        return new BinaryExprSymbol(leftExpr, rightExpr, binaryOp, resultType);
+        return new BinaryExprSymbol(leftExpr, rightExpr, binaryOp, resultType, PropagateRuntimeOnly(leftExpr, rightExpr));
     }
     private ExprSymbol BindTypeExpressionSyntax(TypeExpressionSyntax tes, BoundScope scope)
     {
@@ -509,17 +467,17 @@ public class Binder
             var fieldName = fieldSyntax.Identifier.String;
             var typeExpression = BindExpressionSyntax(fieldSyntax.Expression, scope);
             
-            var evaluated = LapisEvaluator.Instance.EvaluateExpression(typeExpression, EvaluationScope.CreateScope(scope));
-            if (evaluated is not TypeSymbol ets)
+            var resolved = ResolveExpr(typeExpression, scope);
+            if (resolved is not TypeSymbol ets)
             {
-                if (!_allowTypeReference || (_allowTypeReference && evaluated.Type != LangDefaults.Types.Type))
+                if (!_allowTypeReference || resolved.Type != LangDefaults.Types.Type)
                 {
                     Diagnostics.Report("Expression should evatuale to a type symbol", fieldSyntax.Expression);
                     typeExpression = LangDefaults.Types.Unkown;
                 }
                 else
                 {
-                    typeExpression = evaluated;
+                    typeExpression = resolved;
                 }
             }
             else
@@ -532,6 +490,14 @@ public class Binder
 
         return new StructTypeSymbol(fieldsArr.ToImmutableArray(), "anonimous-type");
     }
+
+    private static BindFlag PropagateRuntimeOnly(params ExprSymbol[] exprs) =>
+        exprs.Any(e => e.Flags.HasFlag(BindFlag.IsRuntimeOnly)) ? BindFlag.IsRuntimeOnly : BindFlag.None;
+
+    // Resolve a NameSymbol to its actual value in scope (e.g. NameSymbol("Int") → PrimitiveTypeSymbol).
+    // Since def evaluates at bind time, all defined names are already stored as their concrete values.
+    private static ExprSymbol ResolveExpr(ExprSymbol bound, BoundScope scope) =>
+        bound is NameSymbol ns && scope.TryGetExprSymbol(ns.Name, out var sym) ? sym : bound;
 
     private ExprSymbol BindLiteralExpression(LiteralExpressionSyntax les, BoundScope scope)
     {
