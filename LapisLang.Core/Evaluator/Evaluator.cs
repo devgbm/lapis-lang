@@ -138,6 +138,8 @@ public class LapisEvaluator
             case StringSymbol:
             case FuncSymbol:
             case NativeFuncSymbol:
+            case EnumVariantConstructorSymbol:
+            case EnumInstanceSymbol:
                 return expr;
 
             case TypeSymbol ts:
@@ -200,6 +202,14 @@ public class LapisEvaluator
             return result;
         }
 
+        if (funcSymbol is EnumVariantConstructorSymbol evcs)
+        {
+            var fields = ImmutableDictionary.CreateBuilder<string, ExprSymbol>();
+            foreach (var (field, arg) in evcs.Variant.Fields.Zip(cs.Arguments))
+                fields.Add(field.Name, EvaluateExpression(arg.Expression, scope));
+            return new EnumInstanceSymbol(evcs.EnumType, evcs.Variant.Name, fields.ToImmutableDictionary());
+        }
+
         if (funcSymbol is not FuncSymbol fs) throw new Exception("Call target is not a function");
         var derivedScope = scope.Derive();
 
@@ -224,6 +234,13 @@ public class LapisEvaluator
             if (instance.Atributes.TryGetValue(ms.Name, out var attr)) return attr;
             var structMethod = instance.Type.GetMember(ms.Name);
             return structMethod != ExprSymbol.Unkown ? structMethod : ExprSymbol.Unkown;
+        }
+
+        if (expression is EnumInstanceSymbol enumInst)
+        {
+            if (enumInst.Fields.TryGetValue(ms.Name, out var field)) return field;
+            var enumMethod = enumInst.EnumType.GetMember(ms.Name);
+            return enumMethod != ExprSymbol.Unkown ? enumMethod : ExprSymbol.Unkown;
         }
 
         if (expression is TypeSymbol ts)

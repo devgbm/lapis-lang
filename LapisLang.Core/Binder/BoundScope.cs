@@ -128,6 +128,27 @@ public class BoundScope : ExprSymbol
                 _ => (BinaryOperator.Unkown, LangDefaults.Types.Unkown)
             };
         }
+        // x == OptInt.Some  — variant tag check (right is an enum variant constructor)
+        if (left.Type is EnumTypeSymbol enumTagType
+            && right.Type is FuncTypeSymbol fts
+            && fts.ReturnType == enumTagType)
+        {
+            return operatorToken.Kind switch
+            {
+                TokenKind.DoubleEquals => (BinaryOperator.Equality, LangDefaults.Types.Boolean),
+                TokenKind.BangEquals => (BinaryOperator.Inequality, LangDefaults.Types.Boolean),
+                _ => (BinaryOperator.Unkown, LangDefaults.Types.Unkown)
+            };
+        }
+        if (left.Type is EnumTypeSymbol enumType && right.Type == enumType)
+        {
+            return operatorToken.Kind switch
+            {
+                TokenKind.DoubleEquals => (BinaryOperator.Equality, LangDefaults.Types.Boolean),
+                TokenKind.BangEquals => (BinaryOperator.Inequality, LangDefaults.Types.Boolean),
+                _ => (BinaryOperator.Unkown, LangDefaults.Types.Unkown)
+            };
+        }
         return (BinaryOperator.Unkown, LangDefaults.Types.Unkown);
     }
 

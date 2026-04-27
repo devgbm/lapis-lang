@@ -118,8 +118,49 @@ public class EvaluationScope
             };
         }
 
+        // x == OptInt.Some  — variant tag check
+        if (type1 is EnumTypeSymbol enumTagType && type2 is FuncTypeSymbol ftsTag && ftsTag.ReturnType == enumTagType)
+        {
+            return binaryOperator switch
+            {
+                BinaryOperator.Equality => (l, r) => new BooleanSymbol(((EnumInstanceSymbol)l).VariantName == ((EnumVariantConstructorSymbol)r).Variant.Name),
+                BinaryOperator.Inequality => (l, r) => new BooleanSymbol(((EnumInstanceSymbol)l).VariantName != ((EnumVariantConstructorSymbol)r).Variant.Name),
+                _ => throw new Exception()
+            };
+        }
+        if (type1 is EnumTypeSymbol && type1 == type2)
+        {
+            return binaryOperator switch
+            {
+                BinaryOperator.Equality => (l, r) => new BooleanSymbol(EnumInstanceEqual((EnumInstanceSymbol)l, (EnumInstanceSymbol)r)),
+                BinaryOperator.Inequality => (l, r) => new BooleanSymbol(!EnumInstanceEqual((EnumInstanceSymbol)l, (EnumInstanceSymbol)r)),
+                _ => throw new Exception()
+            };
+        }
+
         throw new Exception();
     }
+
+    private static bool EnumInstanceEqual(EnumInstanceSymbol a, EnumInstanceSymbol b)
+    {
+        if (a.VariantName != b.VariantName) return false;
+        foreach (var (key, val) in a.Fields)
+        {
+            if (!b.Fields.TryGetValue(key, out var bVal)) return false;
+            if (!ExprValueEqual(val, bVal)) return false;
+        }
+        return true;
+    }
+
+    private static bool ExprValueEqual(ExprSymbol a, ExprSymbol b) => (a, b) switch
+    {
+        (IntegerSymbol ia, IntegerSymbol ib) => ia.Value == ib.Value,
+        (BooleanSymbol ba, BooleanSymbol bb) => ba.Value == bb.Value,
+        (StringSymbol sa, StringSymbol sb) => sa.Value == sb.Value,
+        (DecimalSymbol da, DecimalSymbol db) => da.Value == db.Value,
+        (EnumInstanceSymbol ea, EnumInstanceSymbol eb) => EnumInstanceEqual(ea, eb),
+        _ => ReferenceEquals(a, b)
+    };
 
     internal bool Define(string name, ExprSymbol symbol)
     {

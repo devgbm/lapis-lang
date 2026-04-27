@@ -231,6 +231,7 @@ public class Lexer
             "func" => TokenKind.FuncKeyword,
             "return" => TokenKind.ReturnKeyword,
             "match" => TokenKind.MatchKeyword,
+            "enum" => TokenKind.EnumKeyword,
             "if" => TokenKind.IfKeyword,
             "else" => TokenKind.ElseKeyword,
             "var" => TokenKind.VarKeyword,

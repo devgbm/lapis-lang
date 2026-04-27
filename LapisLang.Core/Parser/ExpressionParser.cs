@@ -156,6 +156,9 @@ public class LapisParser : ParserBase
             case TokenKind.TypeKeyword:
                 expression = ParseTypeExpression();
                 break;
+            case TokenKind.EnumKeyword:
+                expression = ParseEnumExpression();
+                break;
             case TokenKind.FuncKeyword:
                 expression = ParseFuncExpression();
                 break;
@@ -279,6 +282,39 @@ public class LapisParser : ParserBase
         Match(TokenKind.Collon);
         var expression = ParseExpression();
         return new FieldInitilizationSyntax(SourceSpan.Between(identifier, expression), identifier, expression);
+    }
+
+    private EnumExpressionSyntax ParseEnumExpression()
+    {
+        var keyword = Match(TokenKind.EnumKeyword);
+        var open = Match(TokenKind.OpenCurlyBrace);
+        var variants = MatchUntil(TokenKind.CloseCurlyBrace, () =>
+        {
+            var variant = ParseEnumVariant();
+            if (Current.Kind != TokenKind.CloseCurlyBrace) Match(TokenKind.Comma);
+            return variant;
+        });
+        var close = Match(TokenKind.CloseCurlyBrace);
+        return new EnumExpressionSyntax(SourceSpan.Between(keyword, close), variants);
+    }
+
+    private EnumVariantSyntax ParseEnumVariant()
+    {
+        var name = Match(TokenKind.Identifier);
+        if (Current.Kind != TokenKind.OpenParenthesis)
+            return new EnumVariantSyntax(name.SourceSpan, name, ImmutableArray<FieldDeclarationSyntax>.Empty);
+
+        Match(TokenKind.OpenParenthesis);
+        var fields = MatchUntil(TokenKind.CloseParenthesis, () =>
+        {
+            var typeExpr = ParseExpression();
+            var fieldName = Match(TokenKind.Identifier);
+            var field = new FieldDeclarationSyntax(SourceSpan.Between(typeExpr, fieldName), fieldName, typeExpr);
+            if (Current.Kind != TokenKind.CloseParenthesis) Match(TokenKind.Comma);
+            return field;
+        });
+        var close = Match(TokenKind.CloseParenthesis);
+        return new EnumVariantSyntax(SourceSpan.Between(name, close), name, fields);
     }
 
     private TypeExpressionSyntax ParseTypeExpression()

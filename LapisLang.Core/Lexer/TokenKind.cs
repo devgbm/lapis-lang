@@ -69,6 +69,7 @@ public enum TokenKind {
     Percent,
     DefineKeyword,
     MatchKeyword,
+    EnumKeyword,
     BangAnd,
     And,
     TypeofKeyword,

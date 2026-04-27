@@ -163,7 +163,7 @@ public class Binder
 
         var evaluated = LapisEvaluator.Instance.EvaluateExpression(expression, scope);
 
-        if (evaluated is TypeSymbol ts && ts.DebugName == "anonimous-type") ts.DebugName = name;
+        if (evaluated is TypeSymbol ts && (ts.DebugName == "anonimous-type" || ts.DebugName == "anonymous-enum")) ts.DebugName = name;
 
         if (!scope.Define(name, evaluated))
         {
@@ -180,6 +180,7 @@ public class Binder
         {
             case LiteralExpressionSyntax les: return BindLiteralExpression(les, scope);
             case TypeExpressionSyntax tes: return BindTypeExpressionSyntax(tes, scope);
+            case EnumExpressionSyntax ees: return BindEnumExpressionSyntax(ees, scope);
             case BinaryExpressionSyntax bes: return BindBinaryExpressionSyntax(bes, scope);
             case UnaryExpressionSyntax ues: return BindUnaryExpressionSyntax(ues, scope);
             case NameExpressionSyntax nes: return BindNameExpressionSyntax(nes, scope);
@@ -369,6 +370,21 @@ public class Binder
 
         // Instance member (struct field or instance method)
         var member = expression.Type.GetMember(memberName);
+        if (member == ExprSymbol.Unkown && expression.Type is EnumTypeSymbol enumType)
+        {
+            // Field access on an enum instance: search variant fields by name.
+            // Multiple variants may share a field name; we accept if all matching fields have the same type.
+            TypeSymbol? foundFieldType = null;
+            foreach (var variant in enumType.Variants)
+            {
+                var field = variant.Fields.FirstOrDefault(f => f.Name == memberName);
+                if (field is null) continue;
+                if (foundFieldType is null) { foundFieldType = field.Type; continue; }
+                if (!foundFieldType.IsEquivalent(field.Type)) { foundFieldType = LangDefaults.Types.Unkown; break; }
+            }
+            if (foundFieldType is not null)
+                return new MemberSymbol(expression, foundFieldType, memberName, PropagateRuntimeOnly(expression));
+        }
         if (member == ExprSymbol.Unkown)
         {
             Diagnostics.Report("unkown member", mes.Member);
@@ -489,6 +505,47 @@ public class Binder
         }
 
         return new StructTypeSymbol(fieldsArr.ToImmutableArray(), "anonimous-type");
+    }
+
+    private ExprSymbol BindEnumExpressionSyntax(EnumExpressionSyntax ees, BoundScope scope)
+    {
+        var variantsBuilder = ImmutableArray.CreateBuilder<EnumVariantInfo>();
+
+        foreach (var variantSyntax in ees.Variants)
+        {
+            var fieldsBuilder = ImmutableArray.CreateBuilder<FieldSymbol>();
+            foreach (var fieldSyntax in variantSyntax.Fields)
+            {
+                var typeExpression = BindExpressionSyntax(fieldSyntax.Expression, scope);
+                var resolved = ResolveExpr(typeExpression, scope);
+                if (resolved is not TypeSymbol fieldType)
+                {
+                    Diagnostics.Report("Enum variant field type must resolve to a type", fieldSyntax.Expression);
+                    fieldType = LangDefaults.Types.Unkown;
+                }
+                fieldsBuilder.Add(new FieldSymbol(fieldSyntax.Identifier.String, fieldType));
+            }
+            variantsBuilder.Add(new EnumVariantInfo(variantSyntax.Name.String, fieldsBuilder.ToImmutableArray()));
+        }
+
+        var enumType = new EnumTypeSymbol(variantsBuilder.ToImmutableArray(), "anonymous-enum");
+
+        foreach (var variant in enumType.Variants)
+        {
+            if (variant.Fields.IsEmpty)
+            {
+                var instance = new EnumInstanceSymbol(enumType, variant.Name, ImmutableDictionary<string, ExprSymbol>.Empty);
+                enumType.DefineMember(variant.Name, instance);
+            }
+            else
+            {
+                var parameters = variant.Fields.Select(f => new ParameterSymbol(f.Name, f.Type, false)).ToImmutableArray();
+                var funcType = new FuncTypeSymbol(parameters, enumType);
+                enumType.DefineMember(variant.Name, new EnumVariantConstructorSymbol(enumType, variant, funcType));
+            }
+        }
+
+        return enumType;
     }
 
     private static BindFlag PropagateRuntimeOnly(params ExprSymbol[] exprs) =>
