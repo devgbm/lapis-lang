@@ -1,0 +1,22 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+artifacts/
+[Dd]ebug/
+[Rr]elease/
+TestResults/
+*.trx
+*.coverage
+*.received.txt
+*.received.*
+
+# Editors
+.vs/
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

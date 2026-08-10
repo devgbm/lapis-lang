@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="../Lapis.TypeChecker/Lapis.TypeChecker.csproj" />
+    <ProjectReference Include="../Lapis.Runtime/Lapis.Runtime.csproj" />
+    <ProjectReference Include="../Lapis.Ast/Lapis.Ast.csproj" />
+    <ProjectReference Include="../Lapis.Diagnostics/Lapis.Diagnostics.csproj" />
+  </ItemGroup>
+
+</Project>
