@@ -1,1 +1,0 @@
-Console.write('Hello, Lapis!');

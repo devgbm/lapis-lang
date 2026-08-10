@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- A spec §33 exige que o executável se chame `lapis`. -->
+    <AssemblyName>lapis</AssemblyName>
+    <RootNamespace>Lapis.Cli</RootNamespace>
+    <PublishAot>false</PublishAot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Lapis.Diagnostics/Lapis.Diagnostics.csproj" />
+    <ProjectReference Include="../Lapis.Ast/Lapis.Ast.csproj" />
+    <ProjectReference Include="../Lapis.Lexer/Lapis.Lexer.csproj" />
+    <ProjectReference Include="../Lapis.Parser/Lapis.Parser.csproj" />
+    <ProjectReference Include="../Lapis.Desugar/Lapis.Desugar.csproj" />
+    <ProjectReference Include="../Lapis.TypeChecker/Lapis.TypeChecker.csproj" />
+    <ProjectReference Include="../Lapis.Runtime/Lapis.Runtime.csproj" />
+    <ProjectReference Include="../Lapis.Evaluator/Lapis.Evaluator.csproj" />
+    <ProjectReference Include="../Lapis.PartialEvaluator/Lapis.PartialEvaluator.csproj" />
+  </ItemGroup>
+
+</Project>

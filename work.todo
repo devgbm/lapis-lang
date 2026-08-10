@@ -1,6 +1,0 @@
-
-
-
-var sum: @function = func(@integer: a, @integer: b) {
-    return a + b;
-}

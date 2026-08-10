@@ -1,0 +1,33 @@
+<Project>
+
+  <!--
+    Versionamento central de pacotes.
+    Referência: plans/01-solution-skeleton.md §1.3
+  -->
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <ItemGroup Label="Testes">
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+    <PackageVersion Include="xunit.v3" Version="3.2.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <PackageVersion Include="Shouldly" Version="4.3.0" />
+    <PackageVersion Include="coverlet.collector" Version="10.0.1" />
+  </ItemGroup>
+
+  <ItemGroup Label="Snapshots (planos 02, 04, 05)">
+    <PackageVersion Include="Verify.XunitV3" Version="31.28.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Property-based (planos 12-14)">
+    <PackageVersion Include="FsCheck.Xunit" Version="3.3.4" />
+  </ItemGroup>
+
+  <ItemGroup Label="CLI (plano 10)">
+    <PackageVersion Include="System.CommandLine" Version="2.0.10" />
+  </ItemGroup>
+
+</Project>
