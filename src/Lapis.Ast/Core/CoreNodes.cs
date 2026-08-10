@@ -195,6 +195,44 @@ public sealed class CoreEnumDef(
     public ImmutableArray<CoreVariantDecl> Variants { get; } = variants;
 }
 
+public abstract record CorePattern
+{
+    public required SourceSpan Span { get; init; }
+}
+
+public sealed record CoreWildcardPattern : CorePattern;
+
+public sealed record CoreBindingPattern(string Name) : CorePattern;
+
+public sealed record CoreVariantPattern(
+    string EnumName,
+    string VariantName,
+    ImmutableArray<CorePattern> Arguments) : CorePattern
+{
+    public required SourceSpan VariantSpan { get; init; }
+}
+
+public sealed record CoreLiteralPattern(ConstantValue Value) : CorePattern;
+
+public sealed record CoreArm(CorePattern Pattern, CoreExpr Body, SourceSpan Span);
+
+/// <summary>
+/// <c>Match</c> permanece como primitiva da Core: desugará-lo exigiria primitivas
+/// <c>enum_tag</c> e <c>enum_payload</c>, aumentando o runtime — contra a spec §58
+/// ("runtime mínimo"). Um plano futuro pode inverter isso sem afetar nada acima
+/// do desugar.
+/// </summary>
+public sealed class CoreMatch(
+    int nodeId,
+    SourceSpan span,
+    CoreExpr scrutinee,
+    ImmutableArray<CoreArm> arms) : CoreExpr(nodeId, span)
+{
+    public CoreExpr Scrutinee { get; } = scrutinee;
+
+    public ImmutableArray<CoreArm> Arms { get; } = arms;
+}
+
 /// <summary>Um arquivo <c>.ls</c> inteiro reduzido a uma única expressão.</summary>
 public sealed class CoreProgram(CoreExpr body, int nodeCount)
 {

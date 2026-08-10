@@ -110,7 +110,7 @@ public sealed class Parser
     /// <c>if x &lt; 0 { return -x; }</c> seguido de <c>return x;</c> — não parsearia.
     /// </summary>
     private static bool IsBlockLike(Expression expression) =>
-        expression is BlockExpression or IfExpression;
+        expression is BlockExpression or IfExpression or MatchExpression;
 
     private Statement ParseDefStatement()
     {
@@ -453,6 +453,9 @@ public sealed class Parser
             case TokenKind.EnumKeyword:
                 return ParseEnum();
 
+            case TokenKind.MatchKeyword:
+                return ParseMatch();
+
             default:
                 var code = token.Kind == TokenKind.EndOfFile
                     ? DiagnosticCodes.UnexpectedEndOfFile
@@ -555,6 +558,192 @@ public sealed class Parser
         }
 
         return new EnumExpression(typeParameters, variants.ToImmutable()) { Span = SpanFrom(start) };
+    }
+
+    /// <summary>
+    /// <c>match e { padrão =&gt; corpo, ... }</c>. O escrutinado usa a gramática de
+    /// expressão sem restrição: como a construção de tipo leva ponto inicial (Q2),
+    /// não há como confundir o `{` do match com um literal de struct.
+    /// </summary>
+    private Expression ParseMatch()
+    {
+        var start = Current.Span.Start;
+        _tokens.Advance(); // 'match'
+
+        var scrutinee = ParseExpression();
+        var arms = ImmutableArray.CreateBuilder<MatchArm>();
+
+        if (!_tokens.Match(TokenKind.OpenBrace))
+        {
+            Report(DiagnosticCodes.UnexpectedToken, Current.Span, "esperado '{' no corpo do match");
+            return new MatchExpression(scrutinee, arms.ToImmutable()) { Span = SpanFrom(start) };
+        }
+
+        while (Current.Kind != TokenKind.CloseBrace && !_tokens.AtEnd)
+        {
+            var before = _tokens.Mark();
+            var armStart = Current.Span.Start;
+            var pattern = ParsePattern();
+
+            if (!_tokens.Match(TokenKind.FatArrow))
+            {
+                Report(DiagnosticCodes.UnexpectedToken, Current.Span, "esperado '=>' no braço do match");
+            }
+
+            var body = ParseExpression();
+            arms.Add(new MatchArm(pattern, body) { Span = SpanFrom(armStart) });
+
+            if (!_tokens.Match(TokenKind.Comma))
+            {
+                break;
+            }
+
+            if (_tokens.Mark() == before)
+            {
+                _tokens.Advance();
+            }
+        }
+
+        if (!_tokens.Match(TokenKind.CloseBrace))
+        {
+            Report(DiagnosticCodes.UnclosedBrace, Current.Span, "esperado '}' para fechar o match");
+        }
+
+        if (arms.Count == 0)
+        {
+            Report(DiagnosticCodes.MatchRequiresArm, SpanFrom(start), "'match' requer ao menos um braço");
+        }
+
+        return new MatchExpression(scrutinee, arms.ToImmutable()) { Span = SpanFrom(start) };
+    }
+
+    /// <summary>
+    /// Q3 tornou os padrões não ambíguos: `x` é sempre binding novo, `A.B` é
+    /// sempre variante. Nada aqui depende do escopo.
+    /// </summary>
+    private Pattern ParsePattern()
+    {
+        var start = Current.Span.Start;
+        var token = Current;
+
+        switch (token.Kind)
+        {
+            case TokenKind.Underscore:
+                _tokens.Advance();
+                return new WildcardPattern { Span = token.Span };
+
+            case TokenKind.IntegerLiteral:
+                _tokens.Advance();
+                return new LiteralPattern(new ConstInt(token.IntegerValue)) { Span = token.Span };
+
+            case TokenKind.FloatLiteral:
+                _tokens.Advance();
+                return new LiteralPattern(new ConstFloat(token.FloatValue)) { Span = token.Span };
+
+            case TokenKind.StringLiteral:
+                _tokens.Advance();
+                return new LiteralPattern(new ConstStr(token.StringValue)) { Span = token.Span };
+
+            case TokenKind.TrueKeyword:
+            case TokenKind.FalseKeyword:
+                _tokens.Advance();
+                return new LiteralPattern(token.Kind == TokenKind.TrueKeyword ? ConstBool.True : ConstBool.False)
+                {
+                    Span = token.Span,
+                };
+
+            case TokenKind.Minus:
+                return ParseNegativeLiteralPattern(start);
+
+            case TokenKind.Identifier:
+                return ParseNamePattern(start);
+
+            default:
+                Report(
+                    DiagnosticCodes.ExpectedPattern,
+                    token.Span,
+                    $"esperado um padrão, encontrado {token.Kind.Describe()}");
+                _tokens.Advance();
+                return new WildcardPattern { Span = token.Span };
+        }
+    }
+
+    private Pattern ParseNegativeLiteralPattern(int start)
+    {
+        _tokens.Advance(); // '-'
+        var token = Current;
+
+        switch (token.Kind)
+        {
+            case TokenKind.IntegerLiteral:
+                _tokens.Advance();
+                return new LiteralPattern(new ConstInt(-token.IntegerValue)) { Span = SpanFrom(start) };
+
+            case TokenKind.FloatLiteral:
+                _tokens.Advance();
+                return new LiteralPattern(new ConstFloat(-token.FloatValue)) { Span = SpanFrom(start) };
+
+            default:
+                Report(DiagnosticCodes.ExpectedPattern, token.Span, "esperado um literal numérico após '-'");
+                return new WildcardPattern { Span = SpanFrom(start) };
+        }
+    }
+
+    private Pattern ParseNamePattern(int start)
+    {
+        var first = _tokens.Advance();
+
+        // Sem ponto: é um binding novo.
+        if (Current.Kind != TokenKind.Dot)
+        {
+            return new BindingPattern(first.Text) { Span = first.Span };
+        }
+
+        _tokens.Advance(); // '.'
+        var variantToken = Current;
+
+        if (Current.Kind != TokenKind.Identifier)
+        {
+            Report(DiagnosticCodes.ExpectedIdentifier, Current.Span, "esperado o nome da variante após '.'");
+            return new WildcardPattern { Span = SpanFrom(start) };
+        }
+
+        _tokens.Advance();
+        var arguments = ImmutableArray<Pattern>.Empty;
+
+        if (_tokens.Match(TokenKind.OpenParen))
+        {
+            var builder = ImmutableArray.CreateBuilder<Pattern>();
+
+            while (Current.Kind != TokenKind.CloseParen && !_tokens.AtEnd)
+            {
+                var before = _tokens.Mark();
+                builder.Add(ParsePattern());
+
+                if (!_tokens.Match(TokenKind.Comma))
+                {
+                    break;
+                }
+
+                if (_tokens.Mark() == before)
+                {
+                    _tokens.Advance();
+                }
+            }
+
+            if (!_tokens.Match(TokenKind.CloseParen))
+            {
+                Report(DiagnosticCodes.UnexpectedToken, Current.Span, "esperado ')' no padrão de variante");
+            }
+
+            arguments = builder.ToImmutable();
+        }
+
+        return new VariantPattern(first.Text, variantToken.Text, arguments)
+        {
+            Span = SpanFrom(start),
+            VariantSpan = variantToken.Span,
+        };
     }
 
     private VariantSyntax ParseVariant()

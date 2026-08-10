@@ -200,6 +200,23 @@ public static class CoreSourcePrinter
                 PrintEnumDef(builder, n, indent);
                 break;
 
+            case CoreMatch n:
+                builder.Append("match ");
+                Print(builder, n.Scrutinee, indent, Precedence.Lowest);
+                builder.AppendLine(" {");
+
+                for (var i = 0; i < n.Arms.Length; i++)
+                {
+                    Indent(builder, indent + 1);
+                    builder.Append(CoreSExprPrinter.PrintPattern(n.Arms[i].Pattern)).Append(" => ");
+                    Print(builder, n.Arms[i].Body, indent + 1, Precedence.Lowest);
+                    builder.AppendLine(i < n.Arms.Length - 1 ? "," : string.Empty);
+                }
+
+                Indent(builder, indent);
+                builder.Append('}');
+                break;
+
             default:
                 throw InternalCompilerException.Unreachable(node, node.Span);
         }

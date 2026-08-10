@@ -100,6 +100,7 @@ public sealed class Evaluator
         CoreIndex n => EvaluateIndex(n, environment),
         CoreField n => EvaluateField(n),
         CoreEnumDef n => EvaluateEnumDef(n),
+        CoreMatch n => EvaluateMatch(n, environment),
         _ => throw InternalCompilerException.Unreachable(node, node.Span),
     };
 
@@ -304,6 +305,70 @@ public sealed class Evaluator
         }
 
         return Completion.Normal(new TypeValue(resolution.Definition));
+    }
+
+    /// <summary>
+    /// Escrutinado avaliado <b>uma única vez</b>; braços testados em ordem, o
+    /// primeiro que casa vence. O checker garante exaustividade (LAP0262), então
+    /// "nenhum braço casou" só pode ser bug nosso.
+    /// </summary>
+    private Completion EvaluateMatch(CoreMatch node, Environment environment)
+    {
+        var scrutinee = Evaluate(node.Scrutinee, environment);
+
+        if (!scrutinee.IsNormal)
+        {
+            return scrutinee;
+        }
+
+        foreach (var arm in node.Arms)
+        {
+            var bindings = new List<(string, Value)>();
+
+            if (TryMatch(arm.Pattern, scrutinee.Value, bindings))
+            {
+                return Evaluate(arm.Body, environment.ExtendAll(bindings));
+            }
+        }
+
+        throw new InternalCompilerException(
+            "nenhum braço do 'match' casou; o checker deveria ter exigido exaustividade", node.Span);
+    }
+
+    private static bool TryMatch(CorePattern pattern, Value value, List<(string, Value)> bindings)
+    {
+        switch (pattern)
+        {
+            case CoreWildcardPattern:
+                return true;
+
+            case CoreBindingPattern binding:
+                bindings.Add((binding.Name, value));
+                return true;
+
+            case CoreLiteralPattern literal:
+                return Primitives.StructuralEquals(FromConstant(literal.Value), value);
+
+            case CoreVariantPattern variant:
+                if (value is not EnumValue enumValue
+                    || !string.Equals(enumValue.Variant.Name, variant.VariantName, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                for (var i = 0; i < variant.Arguments.Length; i++)
+                {
+                    if (!TryMatch(variant.Arguments[i], enumValue.Payload[i], bindings))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+
+            default:
+                throw new InternalCompilerException($"padrão inesperado: {pattern.GetType().Name}");
+        }
     }
 
     private Completion EvaluateCall(CoreCall node, Environment environment)

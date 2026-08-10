@@ -65,6 +65,9 @@ public sealed class CoreFactory
         ImmutableArray<CoreVariantDecl> variants) =>
         new(Next(), span, typeParameters, variants);
 
+    public CoreMatch Match(SourceSpan span, CoreExpr scrutinee, ImmutableArray<CoreArm> arms) =>
+        new(Next(), span, scrutinee, arms);
+
     public CoreProgram Program(CoreExpr body) => new(body, _nextNodeId);
 
     private int Next() => _nextNodeId++;

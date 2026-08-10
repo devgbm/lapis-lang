@@ -209,11 +209,36 @@ public static class SurfaceSExprPrinter
                 Close(builder, indent);
                 break;
 
+            case MatchExpression n:
+                Open(builder, indent, "match");
+                PrintExpression(builder, n.Scrutinee, indent + 1);
+
+                foreach (var arm in n.Arms)
+                {
+                    Open(builder, indent + 1, $"arm {PrintPattern(arm.Pattern)}");
+                    PrintExpression(builder, arm.Body, indent + 2);
+                    Close(builder, indent + 1);
+                }
+
+                Close(builder, indent);
+                break;
+
             default:
                 Line(builder, indent, $"(<desconhecido {expression.GetType().Name}>)");
                 break;
         }
     }
+
+    public static string PrintPattern(Pattern pattern) => pattern switch
+    {
+        WildcardPattern => "_",
+        BindingPattern p => p.Name,
+        LiteralPattern p => p.Value.ToDisplayString(),
+        VariantPattern { Arguments.IsDefaultOrEmpty: true } p => $"{p.EnumName}.{p.VariantName}",
+        VariantPattern p =>
+            $"{p.EnumName}.{p.VariantName}({string.Join(", ", p.Arguments.Select(PrintPattern))})",
+        _ => "<?>",
+    };
 
     public static string PrintType(TypeSyntax type) => type switch
     {

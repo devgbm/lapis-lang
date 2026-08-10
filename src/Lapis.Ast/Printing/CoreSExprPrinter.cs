@@ -141,10 +141,35 @@ public static class CoreSExprPrinter
                 Close(builder, indent);
                 break;
 
+            case CoreMatch n:
+                Open(builder, indent, $"{tag}match");
+                PrintExpression(builder, n.Scrutinee, indent + 1, ids);
+
+                foreach (var arm in n.Arms)
+                {
+                    Open(builder, indent + 1, $"arm {PrintPattern(arm.Pattern)}");
+                    PrintExpression(builder, arm.Body, indent + 2, ids);
+                    Close(builder, indent + 1);
+                }
+
+                Close(builder, indent);
+                break;
+
             default:
                 throw InternalCompilerException.Unreachable(node, node.Span);
         }
     }
+
+    public static string PrintPattern(CorePattern pattern) => pattern switch
+    {
+        CoreWildcardPattern => "_",
+        CoreBindingPattern p => p.Name,
+        CoreLiteralPattern p => p.Value.ToDisplayString(),
+        CoreVariantPattern { Arguments.IsDefaultOrEmpty: true } p => $"{p.EnumName}.{p.VariantName}",
+        CoreVariantPattern p =>
+            $"{p.EnumName}.{p.VariantName}({string.Join(", ", p.Arguments.Select(PrintPattern))})",
+        _ => throw new InternalCompilerException($"padrão inesperado: {pattern.GetType().Name}"),
+    };
 
     private static void PrintLetChain(StringBuilder builder, CoreExpr node, int indent, bool ids)
     {

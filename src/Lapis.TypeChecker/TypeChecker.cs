@@ -97,6 +97,7 @@ public sealed class TypeChecker
             CoreIndex n => CheckIndex(n, scope),
             CoreField n => CheckField(n, scope),
             CoreEnumDef n => CheckEnumDef(n, scope),
+            CoreMatch n => CheckMatch(n, scope),
             _ => throw InternalCompilerException.Unreachable(node, node.Span),
         };
 
@@ -682,6 +683,246 @@ public sealed class TypeChecker
         _resolutions[node.NodeId] = new TypeDefinitionResolution(definition);
 
         return new MetaType(definition);
+    }
+
+    // ---------------------------------------------------------------- match
+
+    private LapisType CheckMatch(CoreMatch node, Scope scope)
+    {
+        var scrutinee = CheckExpression(node.Scrutinee, scope);
+
+        if (node.Arms.IsEmpty)
+        {
+            // O parser já reportou LAP0107.
+            return ErrorType.Instance;
+        }
+
+        var coverage = new MatchCoverage();
+        LapisType? joined = null;
+
+        foreach (var arm in node.Arms)
+        {
+            var armScope = scope.Child();
+
+            // Um braço depois de um coringa nunca executa.
+            if (coverage.HasCatchAll)
+            {
+                _diagnostics.ReportWarning(
+                    DiagnosticCodes.UnreachableArm, arm.Span, "braço inalcançável");
+            }
+            else if (!CheckPattern(arm.Pattern, scrutinee, armScope, coverage))
+            {
+                _diagnostics.ReportWarning(
+                    DiagnosticCodes.UnreachableArm, arm.Span, "braço inalcançável: o caso já foi coberto");
+            }
+
+            var bodyType = CheckExpression(arm.Body, armScope);
+
+            if (joined is null)
+            {
+                joined = bodyType;
+                continue;
+            }
+
+            var next = TypeRelations.Join(joined, bodyType);
+
+            if (next is null)
+            {
+                _diagnostics.ReportError(
+                    DiagnosticCodes.IncompatibleMatchArms,
+                    arm.Body.Span,
+                    $"braços de 'match' têm tipos incompatíveis: {joined.ToDisplayString()} "
+                    + $"e {bodyType.ToDisplayString()}");
+                joined = ErrorType.Instance;
+            }
+            else
+            {
+                joined = next;
+            }
+        }
+
+        ReportIfNotExhaustive(node, scrutinee, coverage);
+
+        return joined ?? ErrorType.Instance;
+    }
+
+    /// <summary>
+    /// Q6: <c>match</c> é uma expressão e precisa produzir um valor em toda
+    /// execução, logo tem de cobrir todos os casos.
+    /// </summary>
+    private void ReportIfNotExhaustive(CoreMatch node, LapisType scrutinee, MatchCoverage coverage)
+    {
+        if (coverage.HasCatchAll || scrutinee is ErrorType or NeverType)
+        {
+            return;
+        }
+
+        if (scrutinee is NamedType { Definition.Kind: TypeDefinitionKind.Enum } named)
+        {
+            var missing = named.Definition.Variants
+                .Where((_, index) => !coverage.Variants.Contains(index))
+                .Select(v => $"{named.Definition.Name}.{v.Name}")
+                .ToList();
+
+            if (missing.Count > 0)
+            {
+                _diagnostics.ReportError(
+                    DiagnosticCodes.NonExhaustiveMatch,
+                    node.Span,
+                    $"'match' não é exaustivo; faltam: {string.Join(", ", missing)}");
+            }
+
+            return;
+        }
+
+        // `Bool` tem exatamente dois valores, então literais bastam para esgotá-lo.
+        // Int, Float e Str não, e por isso continuam exigindo um coringa.
+        if (scrutinee is PrimitiveType { Kind: PrimitiveKind.Bool }
+            && coverage.Literals.Contains(ConstBool.True)
+            && coverage.Literals.Contains(ConstBool.False))
+        {
+            return;
+        }
+
+        _diagnostics.ReportError(
+            DiagnosticCodes.NonExhaustiveMatch,
+            node.Span,
+            $"'match' sobre {scrutinee.ToDisplayString()} não é exaustivo; adicione um braço '_'");
+    }
+
+    /// <summary>
+    /// Checa um padrão contra o tipo escrutinado e declara seus bindings em
+    /// <paramref name="scope"/>. Devolve <c>false</c> quando o padrão é
+    /// inalcançável por já ter sido coberto.
+    /// </summary>
+    private bool CheckPattern(CorePattern pattern, LapisType expected, Scope scope, MatchCoverage coverage)
+    {
+        switch (pattern)
+        {
+            case CoreWildcardPattern:
+                coverage.HasCatchAll = true;
+                return true;
+
+            case CoreBindingPattern binding:
+                coverage.HasCatchAll = true;
+                scope.Declare(new BindingInfo(
+                    NextBindingId(), binding.Name, expected, binding.Span, BindingKind.Value));
+                return true;
+
+            case CoreLiteralPattern literal:
+                if (expected is not ErrorType && literal.Value.Type != expected)
+                {
+                    _diagnostics.ReportError(
+                        DiagnosticCodes.PatternTypeMismatch,
+                        literal.Span,
+                        $"padrão incompatível com o tipo {expected.ToDisplayString()}");
+                    return true;
+                }
+
+                return coverage.Literals.Add(literal.Value);
+
+            case CoreVariantPattern variant:
+                return CheckVariantPattern(variant, expected, scope, coverage);
+
+            default:
+                throw new InternalCompilerException($"padrão inesperado: {pattern.GetType().Name}");
+        }
+    }
+
+    private bool CheckVariantPattern(
+        CoreVariantPattern pattern,
+        LapisType expected,
+        Scope scope,
+        MatchCoverage coverage)
+    {
+        if (expected is ErrorType)
+        {
+            return true;
+        }
+
+        if (expected is not NamedType { Definition.Kind: TypeDefinitionKind.Enum } named)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.PatternTypeMismatch,
+                pattern.Span,
+                $"padrão de variante não se aplica a {expected.ToDisplayString()}");
+            return true;
+        }
+
+        var definition = named.Definition;
+
+        if (!string.Equals(pattern.EnumName, definition.Name, StringComparison.Ordinal))
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.PatternTypeMismatch,
+                pattern.Span,
+                $"padrão de '{pattern.EnumName}' não se aplica a {expected.ToDisplayString()}");
+            return true;
+        }
+
+        var index = definition.IndexOfVariant(pattern.VariantName);
+
+        if (index < 0)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.UnknownVariant,
+                pattern.VariantSpan,
+                $"{definition.Name} não possui a variante '{pattern.VariantName}'");
+            return true;
+        }
+
+        var variant = definition.Variants[index];
+
+        if (pattern.Arguments.Length != variant.Payload.Length)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.VariantArityMismatch,
+                pattern.Span,
+                $"variante '{variant.Name}' espera {variant.Payload.Length} argumentos, "
+                + $"fornecidos {pattern.Arguments.Length}");
+            return true;
+        }
+
+        // Os tipos da carga vêm da declaração e trazem os parâmetros de tipo do
+        // enum; substituir pelos argumentos da instância é o que faz `v` ser `Int`
+        // em `match r { Result.Ok(v) => ... }` com `r: Result<Int, IndexError>`.
+        var bindings = BuildSubstitution(definition, named.Arguments);
+
+        // Sub-padrões têm sua própria cobertura: um coringa dentro de
+        // `Result.Ok(_)` cobre a carga, não o `match` inteiro.
+        var nested = new MatchCoverage();
+
+        for (var i = 0; i < pattern.Arguments.Length; i++)
+        {
+            var payloadType = TypeSubstitution.Apply(variant.Payload[i], bindings);
+            CheckPattern(pattern.Arguments[i], payloadType, scope, nested);
+        }
+
+        return coverage.Variants.Add(index);
+    }
+
+    /// <summary>O que os braços já cobriram, para exaustividade e alcançabilidade.</summary>
+    private sealed class MatchCoverage
+    {
+        public bool HasCatchAll { get; set; }
+
+        public HashSet<int> Variants { get; } = [];
+
+        public HashSet<ConstantValue> Literals { get; } = [];
+    }
+
+    private static Dictionary<string, LapisType> BuildSubstitution(
+        TypeDefinition definition,
+        ImmutableArray<LapisType> arguments)
+    {
+        var bindings = new Dictionary<string, LapisType>(StringComparer.Ordinal);
+
+        for (var i = 0; i < definition.TypeParameters.Length && i < arguments.Length; i++)
+        {
+            bindings[definition.TypeParameters[i].Name] = arguments[i];
+        }
+
+        return bindings;
     }
 
     // ------------------------------------------------------------ auxiliar
