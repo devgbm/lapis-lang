@@ -1,9 +1,9 @@
 # Plano 18 — `constraint`, `throw` e contexto de compilação
 
 **Projeto:** `Lapis.Macros`, `Lapis.Runtime`, `Lapis.Cli`
-**Milestone:** M12
+**Milestone:** M9
 **Spec:** [`lapislang-macros-0.1.md` §8](../spec/lapislang-macros-0.1.md)
-**Depende de:** 17 (macro engine), 08 (evaluator), 06 (type checker)
+**Depende de:** 17 (macro engine), 12 (PE núcleo — o "PE básico"), 08, 06
 
 ---
 
@@ -23,9 +23,11 @@ orquestrador que roda tudo isso.
 
 ## O que será construído
 
-### 18.1 A decisão que organiza o plano
+### 18.1 A decisão que organiza o plano — Q21 ✅
 
 > **Uma linguagem, um evaluator, dois ambientes.**
+
+Confirmado pelo autor.
 
 `constraint` roda na própria LapisLang, avaliada pelo **evaluator do plano 08**.
 Não há uma segunda linguagem de compile time nem uma segunda semântica.
@@ -169,9 +171,19 @@ as duas é caro. Aqui a escolha é uma só: `constraint` é LapisLang. O custo �
 linguagem precisa ser expressiva o bastante para validações — e é, desde o M4:
 tem `Str`, arrays, `match`, `Result` e funções.
 
-O benefício direto para a pesquisa: o **partial evaluator do M6–M9 também roda em
+O benefício direto para a pesquisa: o **partial evaluator também roda em
 `constraint`**, porque é o mesmo Core. Uma constraint cara pode ser especializada
 com a mesma máquina que especializa o programa.
+
+**E há uma dependência na direção contrária, que decide o cronograma.** Uma
+`constraint` recebe capturas sintáticas e precisa reduzi-las a valores para decidir
+— dobrar `"route." + path`, avaliar `arrayLength(faltando) > 0`. Isso é exatamente
+constant folding e propagação, ou seja, o **núcleo do plano 12**.
+
+Por isso o M7 (PE núcleo) vem antes do M8 (macro engine) mesmo com a decisão do
+autor de tratar macros antes do partial evaluator: o que se antecipa é a *fatia
+mínima* do plano 12 — folding e propagação —, não o PE inteiro. Especialização
+(13) e análise (14) continuam depois das macros.
 
 ### Por que `Str` no contexto
 

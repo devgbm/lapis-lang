@@ -291,8 +291,8 @@ Da [spec de macros](../spec/lapislang-macros-0.1.md), planos 16–20. **Ainda n�
 implementada**; entra aqui para que a gramática tenha um lugar só.
 
 ```ebnf
-(* declaração — Q19 *)
-macro_expr     = "macro" macro_rule+ ;
+(* declaração nomeada — Q19: macro não é valor, não passa por `def` *)
+macro_decl     = "macro" IDENT macro_rule+ ";" ;
 macro_rule     = "match" macro_pattern
                  ( "constraint" block )?
                  "expand" block ;
@@ -330,6 +330,10 @@ identificadores são `[A-Za-z_][A-Za-z0-9_]*` (spec §7).
 lugares: se `@if` vai ser construído a partir de `goto`, o salto condicional não pode
 depender de `if`.
 
+O salto pode ir **para trás** (Q24), desde que o rótulo esteja no mesmo escopo ou num
+que o contenha, dentro da mesma função. É o que viabiliza `@while` — e o que acaba
+com a terminação por construção da 0.2.
+
 ---
 
 ## A.11 Precedência resumida
@@ -354,12 +358,15 @@ depender de `if`.
 def  fn  type  enum  return  true  false  if  else  match
 ```
 
-A proposta de macros acrescentaria `macro`, `constraint`, `expand`, `goto`, `label`
-e `throw`. Note que `match` já é reservada e é reaproveitada na declaração de macro,
-sem ambiguidade: dentro de `macro`, `match` só pode iniciar uma regra.
+A proposta de macros acrescenta `macro`, `constraint`, `expand`, `goto`, `label` e
+`throw`, e **remove `match`** (Q22): `match` vira macro do prelude, e a palavra passa
+a ser usada só dentro de `macro`, onde inicia uma regra.
 
-Em contrapartida, `if` e `match` **deixariam** de ser reservadas quando `@if` e
-`@match` assumirem (Q22) — o saldo de palavras reservadas é praticamente neutro.
+`if` **continua reservada**, mas só dentro de `goto ... if ...` — o salto
+condicional a partir do qual `@if`, `@while` e `@match` são construídos; derivá-lo
+do próprio `if` seria circular.
+
+Saldo: entram seis, sai uma.
 
 `Int`, `Float`, `Bool`, `Str`, `Void`, `Result`, `IndexError`, `Option`, `print`,
 `array_length` **não** são reservadas — são bindings do prelude ou nomes

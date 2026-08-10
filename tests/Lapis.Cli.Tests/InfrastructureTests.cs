@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace Lapis.Cli.Tests;
 
 /// <summary>
@@ -104,5 +106,86 @@ public sealed class InfrastructureTests
     {
         Directory.Exists(Path.Combine(RepoLayout.Root, "plans")).ShouldBeTrue();
         File.Exists(Path.Combine(RepoLayout.Root, "spec", "lapislang-0.2.md")).ShouldBeTrue();
+        File.Exists(Path.Combine(RepoLayout.Root, "spec", "lapislang-macros-0.1.md")).ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// Todo plano referenciado pelo índice existe. Um índice que aponta para o
+    /// vazio é pior que índice nenhum, e é o tipo de coisa que só se percebe meses
+    /// depois — daí o teste.
+    /// </summary>
+    [Fact]
+    public void PlansIndex_HasNoDanglingLinks()
+    {
+        var plans = Path.Combine(RepoLayout.Root, "plans");
+        var index = File.ReadAllText(Path.Combine(plans, "README.md"));
+
+        var referenced = Regex.Matches(index, @"\]\((?<file>[0-9a-z-]+\.md)\)")
+            .Select(m => m.Groups["file"].Value)
+            .Distinct(StringComparer.Ordinal);
+
+        foreach (var file in referenced)
+        {
+            File.Exists(Path.Combine(plans, file)).ShouldBeTrue($"plans/README.md aponta para '{file}'");
+        }
+    }
+
+    /// <summary>
+    /// Todo plano declara o milestone a que pertence, e todo milestone declarado
+    /// aparece na tabela do índice. É o que impede um plano de ficar órfão do
+    /// roteiro depois de uma reordenação.
+    /// </summary>
+    [Fact]
+    public void EveryPlan_DeclaresAMilestoneListedInTheIndex()
+    {
+        var plans = Path.Combine(RepoLayout.Root, "plans");
+        var index = File.ReadAllText(Path.Combine(plans, "README.md"));
+
+        foreach (var path in Directory.EnumerateFiles(plans, "*.md").Order(StringComparer.Ordinal))
+        {
+            var name = Path.GetFileName(path);
+
+            // O índice e os apêndices não são planos.
+            if (name == "README.md" || name.StartsWith("appendix-", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var milestones = Regex.Matches(File.ReadAllText(path), @"\*\*Milestone:\*\*(?<rest>[^\n]*)")
+                .SelectMany(m => Regex.Matches(m.Groups["rest"].Value, @"M(?<n>\d+)"))
+                .Select(m => m.Groups["n"].Value)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            milestones.ShouldNotBeEmpty($"{name} não declara '**Milestone:**'");
+
+            foreach (var milestone in milestones)
+            {
+                index.ShouldContain(
+                    $"**M{milestone}**",
+                    customMessage: $"{name} declara M{milestone}, ausente da tabela de milestones");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Nenhum código de diagnóstico do catálogo aparece em duas faixas. Foi
+    /// exatamente o que aconteceu ao propor macros em `LAP04xx`, que já era do
+    /// partial evaluator.
+    /// </summary>
+    [Fact]
+    public void DiagnosticCatalogue_HasNoDuplicateCodes()
+    {
+        var catalogue = File.ReadAllText(
+            Path.Combine(RepoLayout.Root, "plans", "appendix-b-diagnostics.md"));
+
+        var duplicates = Regex.Matches(catalogue, @"^\|\s*~?~?`(?<code>LAP\d{4})`", RegexOptions.Multiline)
+            .Select(m => m.Groups["code"].Value)
+            .GroupBy(code => code, StringComparer.Ordinal)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToList();
+
+        duplicates.ShouldBeEmpty($"códigos repetidos no catálogo: {string.Join(", ", duplicates)}");
     }
 }

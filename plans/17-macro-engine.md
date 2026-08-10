@@ -1,7 +1,7 @@
 # Plano 17 — Macro Engine
 
 **Projeto:** `Lapis.Macros` (novo), `Lapis.Parser`, `Lapis.Cli`
-**Milestone:** M11
+**Milestone:** M8
 **Spec:** [`lapislang-macros-0.1.md` §3–§7, §9](../spec/lapislang-macros-0.1.md)
 **Depende de:** 04 (parser), 02 (Surface AST)
 
@@ -42,7 +42,11 @@ expansão é anterior às duas. O plano 18 quebra isso de propósito e explica c
 ### 17.2 Surface AST
 
 ```csharp
-sealed record MacroExpression(ImmutableArray<MacroRule> Rules) : Expression;
+// Declaração nomeada — Q19: macro não é first-class citizen e não passa por `def`.
+sealed record MacroDeclaration(string Name, ImmutableArray<MacroRule> Rules) : Statement
+{
+    public required SourceSpan NameSpan { get; init; }
+}
 
 sealed record MacroRule(
     MacroPattern Pattern,
@@ -66,8 +70,13 @@ sealed record MacroInvocation(
 }
 ```
 
-`MacroExpression` é uma expressão porque a spec adotou `def x = macro ...` (Q19) —
-mesma forma de `fn`, `type` e `enum`.
+`MacroDeclaration` é um `Statement`, não uma `Expression`: Q19 decidiu que uma macro
+**não é first-class citizen**. Ela não existe em runtime, não é argumento, não é
+retorno — e é a única exceção ao princípio §2 ("todo nome vem de `def`"), justamente
+porque `def` liga valores.
+
+Macros ocupam um **espaço de nomes próprio**: `macro log` e `def log = fn ...`
+convivem, porque `@log` e `log` nunca se confundem.
 
 **`MacroInvocation` guarda tokens, não árvores.** É a decisão central deste plano:
 o parser não sabe a forma de `@unless` até a macro estar registrada, então ele
@@ -103,8 +112,8 @@ sealed class MacroRegistry
 ```
 
 Macros são visíveis **do ponto da declaração em diante**, no arquivo — a mesma
-regra de `def` (Q8). Uma pré-passagem varre os `DefStatement` de topo cujo valor é
-`MacroExpression` e registra na ordem em que aparecem.
+regra de `def` (Q8). Uma pré-passagem varre os `MacroDeclaration` de topo e registra
+na ordem em que aparecem.
 
 ### 17.5 `MacroMatcher`
 
@@ -242,12 +251,14 @@ construíveis. Limite de **64** níveis, com `LAP0505` — a mesma postura do li
 
 | Teste | Fonte | Esperado |
 |---|---|---|
-| `Macro_SingleRule` | `def m = macro match Expression:e expand { e };` | 1 regra |
+| `Macro_SingleRule` | `macro m match Expression:e expand { e };` | 1 regra |
 | `Macro_MultipleRules` | duas cláusulas `match`/`expand` | 2 regras |
 | `Macro_PatternWithLiteral` | `match Identifier:i in Expression:c Block:b` | `PatternLiteral("in")` |
 | `Macro_PatternWithRepeat` | `MatchArm:arms* separado por ,` | `PatternRepeat` |
 | `Macro_UnknownCategory` | `match Foo:x` | `LAP0504` |
 | `Macro_RequiresExpand` | `match` sem `expand` | `LAP0101` |
+| `Macro_IsNotAValue` | `def m = macro ...;` | `LAP0510` |
+| `Macro_NamespaceIsSeparate` | `macro log` e `def log = fn ...` | convivem |
 
 ### Delimitação da invocação
 

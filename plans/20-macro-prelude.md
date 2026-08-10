@@ -1,7 +1,7 @@
 # Plano 20 — Macros de controle e a retirada de `If`/`Match`
 
 **Projeto:** `Lapis.Runtime` (`prelude.ls`), `Lapis.Ast`, `Lapis.TypeChecker`
-**Milestone:** M14
+**Milestone:** M11
 **Spec:** [`lapislang-macros-0.1.md` §12](../spec/lapislang-macros-0.1.md)
 **Depende de:** 16 (goto/label), 17 (macro engine), 18 (constraint), 19 (reflection)
 
@@ -14,11 +14,12 @@ critério objetivo cumprido, retirar `If` e `Match` da Core.
 
 ## Escopo
 
-**Entra:** as macros de controle no `prelude.ls`; as primitivas que `@match` exige;
-a checagem de exaustividade por `constraint`; a retirada condicional dos nós.
+**Entra:** `@if`, `@unless`, `@while` e `@match` no `prelude.ls`; a comparação por
+variante; a exaustividade por `constraint`; a retirada condicional dos nós.
 
-**Fica de fora:** `@foreach` e `@while` — precisam de salto para trás, que precisa
-de recursão (Q8, 0.3).
+**Fica de fora:** `@foreach` — precisa de iteração sobre coleção, que precisa de um
+protocolo de iteração que a 0.2 não tem; e a ligação de carga em `@match`, que
+aguarda Q23.
 
 ---
 
@@ -60,103 +61,141 @@ def ifm = macro
 o que autoriza esta fase a existir: se as duas formas não são observacionalmente
 iguais, não há substituição a fazer.
 
-### 20.2 `@match` — a conta que precisa ser feita
+### 20.2 `@while` — o que o salto para trás comprou
 
-`@match` precisa de duas coisas que `goto`/`label` não dão: **saber qual variante um
-valor é** e **extrair a carga**. Duas primitivas novas:
-
-```text
-enumTag(valor) Int
-enumPayload(valor, índice) <tipo da carga>
+```c
+macro while
+    match Expression:condition Block:body
+    expand {
+        label top;
+        goto done if !condition;
+        body;
+        goto top;
+        label done;
+    };
 ```
 
-O comentário que hoje está em `CoreNodes.cs` explica por que `Match` continuou
-primitivo:
+`@while` é a razão de o `goto` poder voltar (plano 16 §10.2), e é o primeiro
+programa LapisLang capaz de não terminar. O evaluator aborta com `LAP0303`.
+
+### 20.3 `@match` compara variantes — Q20
+
+**Decisão do autor:** `@match` **não desestrutura carga**. Ele compara a variante, e
+só. Isso elimina inteiramente `enumTag` e `enumPayload` — exatamente as primitivas
+que o M3 havia rejeitado por ferirem o princípio §58.2:
 
 > desugará-lo exigiria primitivas `enum_tag` e `enum_payload`, aumentando o
 > runtime — contra a spec §58 ("runtime mínimo")
 
-A conta, agora que temos os dois lados:
+O comentário em `CoreNodes.cs` continua correto. A saída não foi pagar o preço: foi
+não precisar dele. Basta que enums sejam **comparáveis**, e eles já são desde o M3.
+
+```c
+macro match
+    match Expression:scrutinee { MatchArm:arms* separado por , }
+    constraint { /* exaustividade — §20.4 */ }
+    expand {
+        def subject = scrutinee;
+
+        goto arm0 if subject == Color.Red;
+        goto arm1 if subject == Color.Green;
+        goto done;
+
+        label arm0;  /* corpo 0 */  goto done;
+        label arm1;  /* corpo 1 */  goto done;
+        label done;
+    };
+```
+
+A conta final, agora sem contrapartida:
 
 | Sai | Entra |
 |---|---|
-| `CoreMatch`, `CorePattern` e família | `enumTag`, `enumPayload` |
-| a máquina de padrões do evaluator (`TryMatch`) | |
-| `MatchCoverage` e a exaustividade do checker | uma `constraint` em `.ls` |
+| `CoreMatch`, `CorePattern` e família | uma regra de tipo para `valor == Enum.Variante` |
+| `TryMatch` do evaluator | |
+| `MatchCoverage` e a exaustividade do checker | |
 | `CoreIf` | |
 
-Cinco estruturas de C# saem, duas nativas entram. A conta favorece as macros.
+**A única adição:** comparar um valor de enum com um **construtor de variante** não
+aplicado compara apenas a variante, ignorando a carga.
 
-### 20.3 O obstáculo que decide o cronograma
+```csharp
+// TypeChecker.CheckEquality — caso novo
+// `r == Result.Ok` onde Result.Ok : fn(T) Result<T, E>
+if (right is FunctionType && IsVariantConstructor(node.Right))
+{
+    return PrimitiveType.Bool;   // compara tag
+}
+```
 
-> **O tipo de `enumPayload` depende da variante.**
-
-Em `Result.Ok(v) => ...`, `v` é `T`. Em `Result.Err(e) => ...`, `e` é `E`. Uma
-assinatura `fn(Any, Int) Any` perderia isso, e um `@match` expandido seria **menos
-tipado** que o `Match` de hoje — o oposto do objetivo.
-
-Saídas possíveis, em ordem de preferência:
-
-1. **`enumPayload` como intrínseco do checker**, com o tipo derivado da variante
-   testada no caminho de controle que chega até ele. Requer que o checker saiba, no
-   ponto do `enumPayload`, que `enumTag(x) == k` já foi verificado — ou seja, uma
-   análise de fluxo com refinamento por condição. É a solução certa e é trabalho de
-   verdade: o checker de hoje é uma travessia única dirigida por sintaxe (§47),
-   sem fluxo.
-
-2. **Uma primitiva por variante**, gerada pelo `expand` a partir de reflection:
-   `payloadOf_Result_Ok(x) T`. Preserva o tipo sem análise de fluxo, ao custo de
-   uma nativa sintética por variante — o que contraria "runtime mínimo" de um jeito
-   diferente e pior.
-
-3. **Aceitar a perda de tipo** dentro do `expand` de `@match`, com uma asserção de
-   tipo interna. Rejeitada: é exatamente o que a spec §41 proíbe — macro não
-   substitui type checker.
-
-**A saída 1 é a que este plano persegue**, e é por isso que o M14 é o último da
-sequência: ele depende de o checker ganhar noção de fluxo, o que o CFG do plano 16
-torna possível mas não automático.
+Para variantes nulárias (`Color.Red`) nada muda: `==` já funciona hoje. Para
+variantes com carga, `Result.Ok` é um construtor, e funções não são comparáveis
+(`LAP0281`) — daí a regra. **Uma regra de tipo e uma linha no evaluator**, contra
+duas nativas.
 
 ### 20.4 Exaustividade por `constraint` e reflection
 
 Q6 exige `match` exaustivo. Com `@match` sendo macro, quem impõe é a `constraint`:
 
 ```c
-def matchm = macro
-    match Expression:scrutinee { MatchArm:arms* separado por , }
+constraint {
+    def enumName = enumNameOf(arms);
 
-    constraint {
-        def enumName = enumNameOf(arms);
+    if enumName == "" {
+        if !hasWildcard(arms) {
+            throw "match sobre valor não-enum exige um braço '_'";
+        }
+    } else {
+        def faltando = missingVariants(reflect(enumName).variants, arms);
 
-        if enumName == "" {
-            if !hasWildcard(arms) {
-                throw "match sobre valor não-enum exige um braço '_'";
-            }
-        } else {
-            def info = reflect(enumName);
-            def faltando = missingVariants(info.variants, arms);
-
-            if arrayLength(faltando) > 0 {
-                throw "match não é exaustivo; faltam: " + join(faltando, ", ");
-            }
+        if arrayLength(faltando) > 0 {
+            throw "match não é exaustivo; faltam: " + join(faltando, ", ");
         }
     }
-
-    expand { ... };
+}
 ```
 
 **O que faz isso funcionar é uma decisão já tomada.** Q3 exige variantes
 qualificadas — `Color.Red`, nunca `Red`. Então os próprios braços nomeiam o enum, e
-a `constraint` descobre qual é **sem precisar do tipo do escrutinado** — que, em
-tempo de expansão, ainda não existe.
+a `constraint` descobre qual é **sem precisar do tipo do escrutinado**, que em tempo
+de expansão ainda não existe.
 
 Sem Q3 isto seria impossível: a exaustividade dependeria do type checker, que roda
-depois da expansão. É um caso em que uma decisão tomada por ergonomia acabou
-pagando uma dívida arquitetural que ninguém tinha visto.
+depois da expansão.
 
 **Limite conhecido:** braços só de literais ou só `_` não nomeiam enum nenhum. Aí a
-`constraint` exige `_`, que é a mesma regra que o checker aplica hoje a `Int`,
-`Float` e `Str`.
+`constraint` exige `_` — a mesma regra que o checker aplica hoje a `Int`, `Float` e
+`Str`.
+
+### 20.4b ⚠️ Ligação de carga — Q23, em aberto
+
+Q20 tem uma consequência que precisa estar escrita, e não subentendida.
+
+O `match` de hoje **liga a carga**:
+
+```c
+match result {
+    Result.Ok(value) => return value,        // `value` é o conteúdo
+    Result.Err(error) => return fallback
+}
+```
+
+Comparando só a variante, `value` não tem de onde sair. **`examples/result.ls` — o
+exemplo canônico de tratamento de erro da linguagem — não é expressável** com o
+`@match` de §20.3.
+
+Isso não invalida Q20: não ter `enumTag`/`enumPayload` continua valendo. O que falta
+é decidir **como** a carga é lida:
+
+| Caminho | Custo | Observação |
+|---|---|---|
+| Acesso a campo na variante (`r.value`) | uma regra no checker | carga vira campo nomeado; combina com `type` |
+| Acessor gerado por macro, por enum | zero primitivas | verboso, mas só usa o que já existe |
+| Manter `Match` da Core só para desestruturação | zero trabalho | contradiz Q22 pela metade |
+
+**Enquanto Q23 não for decidida, `Match` permanece na Core para os casos com carga.**
+É o critério de saída que o autor já estabeleceu — os nós só saem quando o
+substituto estiver funcional — aplicado a uma parte específica.
 
 ### 20.5 A retirada, com critério de saída
 
@@ -165,7 +204,8 @@ pagando uma dívida arquitetural que ninguém tinha visto.
 - [ ] `GotoForm_EquivalentToIf` — equivalência observacional (plano 16);
 - [ ] `@if` e `@unless` passando toda a suíte de `if` existente, sem alteração de expectativa;
 - [ ] `@match` passando toda a suíte de `match` existente, idem;
-- [ ] `enumPayload` tipando **tão bem quanto** `Match` — nenhum programa hoje aceito passa a exigir anotação;
+- [ ] nenhum programa hoje aceito passa a exigir anotação ou reescrita;
+- [ ] Q23 decidida e a ligação de carga funcionando;
 - [ ] exaustividade por `constraint` produzindo os mesmos `LAP0262` que o checker produz hoje, com os mesmos spans;
 - [ ] a suíte de conformidade (plano 11) inteira verde com `if`/`match` reescritos como macros.
 
@@ -202,9 +242,9 @@ e a que mais merece a confirmação do autor antes do M14 começar (Q22).
 
 ### Por que `@foreach` não entra
 
-Precisa de salto para trás, que precisa de recursão, que a 0.2 não tem (Q8). Entra
-junto com laços, na 0.3. Colocá-lo aqui exigiria relaxar a regra de terminação do
-plano 16 sem ter o que a substitua.
+`@while` entra porque `goto` para trás basta. `@foreach` precisa de mais: um
+protocolo de iteração sobre coleções (`length` + índice, ou um iterador), que a 0.2
+não define. É trabalho de biblioteca, não de macro, e vem depois.
 
 ---
 
@@ -232,16 +272,36 @@ Os quatro são **portões**, não testes comuns: a retirada de §20.5 depende de
 | `MacroMatch_Bool_TwoLiterals` | `true`/`false` | expande, como hoje |
 | `MacroMatch_SameSpansAsChecker` | span idêntico ao `LAP0262` atual | igual |
 
-### Tipagem da carga
+### Comparação por variante
+
+| Teste | Fonte | Esperado |
+|---|---|---|
+| `VariantEquality_Nullary` | `c == Color.Red` | `Bool` — já funciona hoje |
+| `VariantEquality_WithPayload` | `r == Result.Ok` | `Bool`, compara só a variante |
+| `VariantEquality_IgnoresPayload` | `Result.Ok(1) == Result.Ok` | `true` |
+| `VariantEquality_DifferentVariant` | `Result.Err(e) == Result.Ok` | `false` |
+| `VariantEquality_WrongEnum` | `c == Result.Ok` | `LAP0280` |
+| `FunctionEquality_StillRejected` | `f == g` com funções comuns | `LAP0281` |
+
+O último garante que a regra nova é **estreita**: só construtor de variante, não
+função qualquer.
+
+### `@while`
 
 | Teste | Asserção |
 |---|---|
-| `EnumPayload_HasVariantType` | `Result.Ok(v)` ⇒ `v: T`, não `Any` |
-| `EnumPayload_WrongVariant_IsError` | extrair carga da variante errada é erro |
-| `MacroMatch_NoAnnotationRegression` | nenhum programa aceito hoje passa a exigir anotação |
+| `MacroWhile_Iterates` | contador chega ao valor esperado |
+| `MacroWhile_ZeroIterations` | condição falsa de saída ⇒ corpo não executa |
+| `MacroWhile_Infinite_Aborts` | `LAP0303` |
 
-O último é o portão de §20.5 que mais importa: se ele falhar, a retirada não
-acontece.
+### Regressão
+
+| Teste | Asserção |
+|---|---|
+| `MacroMatch_NoAnnotationRegression` | nenhum programa aceito hoje passa a exigir anotação |
+| `PayloadBinding_StillWorks` | `examples/result.ls` continua rodando (via Q23) |
+
+Os dois são portões de §20.5: se falharem, a retirada não acontece.
 
 ---
 

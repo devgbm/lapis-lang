@@ -171,6 +171,11 @@ Não são diagnósticos de compilação: são relatados na saída de execução 
 |---|---|---|
 | ~~`LAP0301`~~ | — | **aposentado** (Q9): a divisão inteira por zero produz o maior `Int`, então a operação é total |
 | `LAP0302` | abort | profundidade de chamada excedida (limite {0}) |
+| `LAP0303` | abort | limite de saltos excedido (limite {0}) |
+
+`LAP0303` chega com o `goto` para trás (plano 16). Até o M4 todo programa terminava
+por construção — sem recursão (Q8) e sem laços; `goto` para trás acaba com isso, e
+este é o diagnóstico que troca um travamento por uma mensagem.
 
 ---
 
@@ -213,11 +218,12 @@ apontando o ponto dentro da macro.
 | Código | Severidade | Mensagem |
 |---|---|---|
 | `LAP0520` | error | rótulo `{0}` não existe nesta função |
-| `LAP0521` | error | `goto` para trás não é permitido: `{0}` foi declarado antes |
+| `LAP0521` | error | rótulo `{0}` está fora do escopo deste `goto` |
 | `LAP0522` | error | rótulo `{0}` declarado mais de uma vez |
 
-`LAP0521` existe porque salto para trás é a única forma de escrever um programa que
-não termina numa linguagem sem recursão (Q8). Ele sai quando laços entrarem.
+Salto **para trás é permitido** (decisão do autor): é o que viabiliza `@while`.
+`LAP0521` cobre só o salto que sai do escopo — para outra função, ou para dentro de
+um bloco ainda não aberto.
 
 ---
 

@@ -1,7 +1,7 @@
 # Plano 19 — Reflection
 
 **Projeto:** `Lapis.Runtime`, `Lapis.TypeChecker`, `Lapis.Macros`
-**Milestone:** M13
+**Milestone:** M10
 **Spec:** [`lapislang-macros-0.1.md` §11](../spec/lapislang-macros-0.1.md)
 **Depende de:** 18 (compile time), 06 (type checker), 09 (prelude)
 
@@ -149,9 +149,9 @@ mesmo jeito que `MakeOk` já monta um `Result`. Nada de reflexão de C#.
 ### 19.5 Ganho para o partial evaluator
 
 `reflect(User)` sobre um tipo conhecido é **inteiramente estático**: a definição não
-depende de valor de runtime nenhum. O partial evaluator (plano 12) dobra a chamada
-inteira em um `StructValue` literal, e o programa residual não paga nada por usar
-reflection.
+depende de valor de runtime nenhum. O partial evaluator (plano 12, já pronto no M7)
+dobra a chamada inteira em um `StructValue` literal, e o programa residual não paga
+nada por usar reflection.
 
 Isto é material de pesquisa, não bônus: é um caso limpo em que uma feature
 aparentemente cara é gratuita depois da especialização, e vale medir no plano 15.

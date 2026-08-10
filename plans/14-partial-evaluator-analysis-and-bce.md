@@ -1,12 +1,19 @@
 # 14 — Partial Evaluator: Análise Estática e Bounds-Check Elimination
 
-**Milestone:** M8/M9 · **Depende de:** 13 · **Projeto:** `Lapis.PartialEvaluator`
+**Milestone:** M13/M14 · **Depende de:** 13 · **Projeto:** `Lapis.PartialEvaluator`
 
 Corresponde ao terceiro bloco da spec §52 ("conditional specialization, dead
 branch elimination, array specialization, bounds-check elimination"), a §41–§42,
 e aos testes de §54–§55.
 
 ---
+
+> **Laços, a partir do M6.** O `goto` para trás (Q24) traz laços para a linguagem, e
+> com eles o fim da terminação por construção. Especializar um laço não é como
+> especializar um `If`: exige *widening* ou combustível, sob pena de o próprio
+> partial evaluator não terminar. Este plano precisa ser revisitado com isso em mãos
+> antes de começar.
+
 
 ## Objetivo
 

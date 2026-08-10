@@ -7,7 +7,7 @@ evaluation**.
 - **Extensão:** `.ls` · **CLI:** `lapis` · **Implementação:** C# / .NET 10
 - **Especificação:** [`spec/lapislang-0.2.md`](spec/lapislang-0.2.md)
 - **Planos de implementação:** [`plans/`](plans/README.md)
-- **Em proposta:** [macros, reflection e `goto`/`label`](spec/lapislang-macros-0.1.md)
+- **Extensão planejada:** [macros, reflection e `goto`/`label`](spec/lapislang-macros-0.1.md)
 
 ```c
 def add = fn(a: Int, b: Int) Int {
@@ -40,8 +40,10 @@ lapis hello.ls
 | **M3** — `match`, tipos definidos pelo usuário | ✅ concluído |
 | **M4** — generics escritos pelo programador | ✅ concluído |
 | M5 — suíte de conformidade | ⏳ próximo |
-| M6–M9 — partial evaluator | ⬜ |
-| M10–M14 — macros, reflection, `goto`/`label` | 📋 em proposta |
+| M6 — `goto`/`label` | 📋 planejado |
+| M7 — PE núcleo (folding e propagação) | 📋 planejado |
+| M8–M11 — macros, `constraint`, reflection, `@if`/`@while`/`@match` | 📋 planejado |
+| M12–M14 — PE: especialização, análise, equivalência | ⬜ |
 
 **890 testes** cobrindo lexer, parser, desugar, type checker, runtime, evaluator
 e CLI.

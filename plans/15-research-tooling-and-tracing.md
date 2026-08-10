@@ -1,6 +1,6 @@
 # 15 — Ferramentas de Pesquisa e Tracing
 
-**Milestone:** M8 · **Depende de:** 12, 13, 14 · **Projeto:** `Lapis.Cli` + `Lapis.PartialEvaluator`
+**Milestone:** M13 · **Depende de:** 12, 13, 14 · **Projeto:** `Lapis.Cli` + `Lapis.PartialEvaluator`
 
 Corresponde à spec §56 e à pergunta científica de §61.
 

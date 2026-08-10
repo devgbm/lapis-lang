@@ -1,7 +1,7 @@
 # Plano 16 — `goto` e `label`
 
 **Projeto:** `Lapis.Ast`, `Lapis.Parser`, `Lapis.Desugar`, `Lapis.TypeChecker`, `Lapis.Evaluator`
-**Milestone:** M10
+**Milestone:** M6
 **Spec:** [`lapislang-macros-0.1.md` §10](../spec/lapislang-macros-0.1.md)
 **Depende de:** 02, 04, 05, 06, 08 (M1–M4 concluídos)
 
@@ -23,13 +23,14 @@ os planos 14 (bounds-check elimination) e 15 (tracing) querem analisar.
 - `goto L;`, `goto L if e;`, `label L;` na linguagem de superfície;
 - `CoreGoto`, `CoreGotoIf`, `CoreLabeled` na Core AST;
 - decomposição em blocos básicos no desugar;
-- tipagem (`Never` / `Void` / junção) e a regra de salto para frente;
+- tipagem (`Never` / `Void` / junção) e a regra de escopo do salto;
+- salto **para trás**, e com ele o limite de saltos do evaluator (`LAP0303`);
 - `CompletionKind.Goto` no evaluator.
 
 **Fica de fora:**
 
-- salto para trás e laços — exigem recursão, que a 0.2 não tem (Q8);
 - salto entre funções — um `label` é local à função, como `return`;
+- salto para dentro de um bloco ainda não aberto;
 - remoção de `If`/`Match` da Core — plano 20, e só quando as macros funcionarem;
 - construção de um CFG explícito — plano 14 já o quer, e passa a tê-lo de graça.
 
@@ -120,11 +121,14 @@ Três regras:
    Não é limitação: o salto pode tê-los pulado. Usá-los ali é `LAP0201`, com a
    mensagem normal de variável inexistente.
 
+Com salto para trás, os joins de um grupo podem se referenciar mutuamente. A
+decomposição não muda — o que muda é que o grafo de joins deixa de ser um DAG.
+
 ### 16.5 Type checker
 
 | Nó | Tipo | Verificações |
 |---|---|---|
-| `CoreGoto` | `Never` | rótulo existe e está à frente (`LAP0520`, `LAP0521`) |
+| `CoreGoto` | `Never` | rótulo existe (`LAP0520`) e está no escopo (`LAP0521`) |
 | `CoreGotoIf` | `Void` | idem, mais condição `Bool` (`LAP0230`) |
 | `CoreLabeled` | `Join(entrada, joins…)` | rótulos duplicados no mesmo grupo (`LAP0522`) |
 
@@ -135,6 +139,11 @@ Três regras:
 **`ReturnAnalysis`** ganha o caso `Labeled`: `DR(Labeled) = DR(entry) && todos os
 joins DR`. Um `Goto` isolado **não** conta como retorno — ele desvia, não sai da
 função —, e é por isso que a análise precisa olhar os joins.
+
+Com ciclos entre joins a análise precisa de um ponto fixo: assume-se `DR = true`
+para os joins ainda não visitados e itera até estabilizar. É a leitura otimista
+padrão, e é correta porque um join que só volta para o laço nunca "cai fora" da
+função sem passar por um `return`.
 
 ### 16.6 Evaluator
 
@@ -151,10 +160,15 @@ continua. Qualquer outra completion sobe.
 É exatamente o tratamento que `Return` já recebe na fronteira de chamada
 (plano 08 §8.6): **nenhuma exceção C#, nenhum mecanismo novo**.
 
-**Terminação.** Saltos são só para frente e os joins são sufixos, então a sequência
-de rótulos visitados é estritamente crescente e finita. O evaluator não precisa de
-proteção contra laço infinito — e não teria como criá-lo, porque a linguagem
-continua sem recursão.
+**Iteração, não recursão.** Um salto para trás é apenas mais uma volta do `while` em
+C# que consome as completions: o join é reavaliado e **a pilha de C# não cresce**. É
+o que torna `@while` viável sem recursão na linguagem e sem risco de stack overflow
+no interpretador.
+
+**Terminação deixa de ser garantida.** Até o M4 todo programa terminava por
+construção — sem recursão (Q8) e sem laços. `goto` para trás acaba com isso. O
+evaluator passa a contar saltos e aborta com `LAP0303` ao passar do limite
+(1.000.000), exatamente como `LAP0302` já faz com profundidade de chamada.
 
 ### 16.7 Printers
 
@@ -177,14 +191,26 @@ justamente para casar fluxo não estruturado com escopo léxico.
 O ganho concreto: **substituição e inlining continuam textuais** no partial
 evaluator, que era a razão de não haver `Block` para começo de conversa.
 
-### Por que só para frente
+### Por que salto para trás, e o que ele custa
 
-Sem recursão (Q8), salto para trás é a única forma de escrever um programa que não
-termina. Proibi-lo preserva a garantia de terminação da 0.2 — e é exatamente o
-suficiente para `@if`, `@unless` e `@match`, que só saltam para frente.
+Decisão do autor, e é o que viabiliza `@while` (plano 20). O preço está pago com os
+olhos abertos:
 
-Laços chegam junto com a recursão, na 0.3. Aí a regra é relaxada num lugar só, e o
-evaluator ganha a mesma proteção de profundidade que já existe para chamadas.
+| Perde | Ganha |
+|---|---|
+| garantia de terminação por construção | `@while` no prelude, sem tocar no compilador |
+| PE sobre laços é mais difícil que sobre `If` | uma forma só de controle para a análise entender |
+| `LAP0303` a mais no evaluator | laços sem precisar de recursão (Q8 segue valendo) |
+
+O item do meio é o mais caro e cai nos planos 13 e 14: especializar um laço exige
+*widening* ou combustível. Está registrado lá.
+
+### Por que o salto não sai do escopo
+
+Um `label` é local à função, como `return`. Saltar para dentro de um bloco ainda não
+aberto pularia as declarações que ele introduz, e os nomes lá dentro não teriam
+sentido — é a mesma razão pela qual nomes declarados entre o `goto` e o `label` não
+são visíveis no destino.
 
 ### Por que `Statement` e não `Expression`
 
@@ -223,7 +249,8 @@ expressão elimina a pergunta sem precisar de regra.
 |---|---|---|
 | `Goto_IsNever` | `def x: Int = { goto fim; label fim; 1 };` | tipa |
 | `Goto_UnknownLabel` | `goto inexistente;` | `LAP0520` |
-| `Goto_Backward_IsError` | `label a; goto a;` | `LAP0521` |
+| `Goto_Backward_IsAllowed` | `label a; goto a if c;` | tipa |
+| `Goto_OutOfScope_IsError` | rótulo de função diferente | `LAP0521` |
 | `Label_Duplicate` | `label a; label a;` | `LAP0522` |
 | `GotoIf_ConditionMustBeBool` | `goto fim if 1;` | `LAP0230` |
 | `Goto_DoesNotCrossFunction` | `goto` para rótulo de fora da função | `LAP0520` |
@@ -242,12 +269,16 @@ expressão elimina a pergunta sem precisar de regra.
 | `Goto_ChainedJumps` | salto que cai em join que salta de novo | último join |
 | `Goto_InsideFunction_DoesNotEscape` | `goto` não vaza da closure | valor da função |
 | `Unless_ByHand` | `@unless` escrito à mão com `goto` | equivale ao `if` |
+| `While_ByHand` | laço escrito à mão | itera o número certo de vezes |
+| `Goto_BackwardLoop_Terminates` | laço com condição de saída | termina |
+| `Goto_InfiniteLoop_Aborts` | `label a; goto a;` | `LAP0303` |
+| `Goto_Backward_DoesNotGrowStack` | 100.000 iterações | sem stack overflow |
 
 ### Propriedade
 
 | Teste | Asserção |
 |---|---|
-| `Goto_NeverDiverges` | property: todo programa com `goto` termina |
+| `Goto_TerminatesOrAborts` | property: todo programa termina **ou** reporta `LAP0303` |
 | `GotoForm_EquivalentToIf` | property: `if c { a }` ≡ a forma com `goto`, mesma saída |
 
 O último é o teste que **justifica o plano 20**: se as duas formas não são
@@ -260,6 +291,7 @@ observacionalmente iguais, `@if` não pode substituir `If`.
 - [ ] `goto`/`label` parseiam, desugaram, tipam e executam.
 - [ ] Round-trip do `CoreSourcePrinter` verde para programas com rótulos.
 - [ ] `GotoForm_EquivalentToIf` verde — pré-requisito do plano 20.
-- [ ] Salto para trás e rótulo desconhecido rejeitados com código e span.
+- [ ] Salto fora de escopo e rótulo desconhecido rejeitados com código e span.
+- [ ] Laço infinito abortando com `LAP0303`, sem stack overflow.
 - [ ] `ReturnAnalysis` cobrindo `Labeled`.
 - [ ] Zero regressão: a suíte inteira continua verde sem alteração de expectativa.

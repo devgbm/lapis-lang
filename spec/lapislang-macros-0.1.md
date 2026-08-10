@@ -11,8 +11,9 @@
 > sejam definidas pela própria linguagem — o princípio §58.2 ("runtime mínimo")
 > aplicado à *sintaxe*.
 >
-> **Estado:** proposta. As decisões marcadas 🔴 aguardam confirmação do autor e
-> estão registradas em [`../plans/appendix-c-decisions.md`](../plans/appendix-c-decisions.md).
+> **Estado:** Q19–Q22 decididas pelo autor. Segue aberta apenas **Q23** (ligação de
+> carga em `@match`), registrada em
+> [`../plans/appendix-c-decisions.md`](../plans/appendix-c-decisions.md).
 
 ---
 
@@ -26,15 +27,17 @@ um conflito real com a 0.2 já implementada.
 |---|---|---|
 | 1 | `emit` → **`expand`** | pedido do autor |
 | 2 | Reflection também em **runtime**, somente leitura | pedido do autor; a proposta original a restringia a compile time |
-| 3 | `macro nome ...` → **`def nome = macro ...`** 🔴 | §2 da 0.2: "todo nome é introduzido através de `def`", e não existem declarações nomeadas |
+| 3 | `macro nome ...` **mantido** | decisão do autor (Q19): macro não é first-class citizen, então não passa por `def` |
 | 4 | `$end` → **`end`** | `$` não é lexável: identificadores são `[A-Za-z_][A-Za-z0-9_]*` (§7) |
 | 5 | `String:path` → **`Str:path`** | o primitivo se chama `Str` desde a 0.2 |
 | 6 | `if (cond) { }` → **`if cond { }`** | a 0.2 não usa parênteses na condição |
 | 7 | `routes.contains(...)`/`routes.add(...)` → **primitivas de contexto** | não há method syntax nem mutação na linguagem (§8, §23) |
 | 8 | Regras de macro: ordenadas → **todas testadas, exatamente uma deve casar** | a proposta pedia ordem *e* detecção de ambiguidade, o que é contraditório |
 | 9 | `goto`/`label` ganham semântica de **join point**, não de salto arbitrário | a Core é orientada a expressões e não tem nó `Block` (Q10) |
-| 10 | `If` e `Match` **permanecem** na Core | pedido do autor: só saem quando `@if`/`@match` estiverem funcionais |
-| 11 | Fases de implementação reescritas | a proposta mandava construir a Surface AST, que já existe desde o M1 |
+| 10 | `@match` compara **variantes**, não desestrutura carga | decisão do autor (Q20): elimina as primitivas `enumTag`/`enumPayload` que o M3 havia rejeitado |
+| 11 | `goto` pode saltar **para trás**, mas nunca para fora do próprio escopo | decisão do autor; traz laços e, com eles, o fim da garantia de terminação |
+| 12 | `if`, `while` e `match` viram macros do prelude | decisão do autor (Q22); o token `if` sobrevive dentro de `goto ... if ...` |
+| 13 | Fases de implementação reescritas | a proposta mandava construir a Surface AST, que já existe desde o M1 |
 
 ---
 
@@ -89,11 +92,10 @@ Evaluator:          Typed Core AST → Value
 
 # 3. Declaração de macro
 
-Uma macro é uma expressão, ligada a um nome por `def` — como `fn`, `type` e
-`enum` (§2):
+Uma macro é uma **declaração nomeada**, e não uma expressão ligada por `def`:
 
 ```c
-def unless = macro
+macro unless
     match Expression:condition Block:body
     expand {
         goto done if condition;
@@ -105,7 +107,7 @@ def unless = macro
 Forma geral:
 
 ```text
-def <nome> = macro
+macro <nome>
     match <padrão>
     [constraint { <statements> }]
     expand { <sintaxe> }
@@ -116,24 +118,27 @@ def <nome> = macro
 Uma macro define uma ou mais **regras**. Cada regra é um trio
 `match` / `constraint`? / `expand`.
 
-> **🔴 Decisão Q19.** A proposta original escrevia `macro unless ...`, uma
-> declaração nomeada. Isso contraria o princípio §2 da 0.2 — "não existem
-> declarações nomeadas específicas para funções, tipos ou enums", e a forma única
-> de introduzir um nome é `def name = expression;`. Adotar `def x = macro ...`
-> mantém uma regra só para todo o idioma e reaproveita escopo, sombreamento e
-> diagnósticos que já existem.
+> **✅ Decisão Q19 — do autor.** Esta é a única exceção ao princípio §2 da 0.2
+> ("todo nome é introduzido através de `def`"), e ela é justificada: `def` liga
+> **valores**, e uma macro **não é first-class citizen**. Não existe em runtime,
+> não pode ser passada como argumento, não pode ser devolvida por uma função.
 >
-> A ressalva: uma macro **não é um valor de runtime**. `def m = macro ...;`
-> seguido de `print(m)` não faz sentido. O tipo de uma macro é `MacroType`, um
-> tipo interno de compile time; usá-la em posição de valor é `LAP0510`. É o mesmo
-> tratamento que `MetaType` já recebe para `type`/`enum`, então não é um conceito
-> novo.
+> Forçá-la a passar por `def` exigiria um `MacroType` que só existe para proibir
+> tudo o que `def` normalmente permite — a uniformidade seria aparente e a
+> assimetria, real. `macro nome` diz a verdade sobre o que a coisa é.
+>
+> Macros ocupam, portanto, um **espaço de nomes próprio**: `macro log` e
+> `def log = fn ...` convivem sem colidir, porque `@log` e `log` nunca se
+> confundem.
 
 ## 3.1 Escopo e visibilidade
 
 Macros são visíveis **do ponto da declaração em diante**, no arquivo onde foram
 declaradas — a mesma regra de `def` (§8, Q8). Uma macro não pode se invocar, nem
 direta nem indiretamente: não há recursão na 0.2, e isso vale para a expansão.
+
+Como macros vivem num espaço de nomes separado, `@log` nunca é confundido com um
+`log` de valor, e sombrear um não afeta o outro.
 
 A expansão é aplicada repetidamente até não restar invocação (uma macro pode
 expandir para código que usa outras macros), com limite de profundidade de **64**;
@@ -443,15 +448,50 @@ construído a partir de `goto`, o salto condicional não pode depender de `if`.
 
 Rótulos vivem num espaço de nomes próprio — um `label x` e um `def x` não colidem.
 
-## 10.2 Regra: saltos são para frente
+## 10.2 Regra: o salto não sai do próprio escopo
 
-Um `goto` só pode nomear um `label` declarado **depois** dele, no mesmo bloco ou
-num bloco que o contenha, dentro da mesma função. Saltar para trás é `LAP0521`.
+Um `goto` pode nomear um `label` **em qualquer direção** — para frente ou para trás
+—, desde que o rótulo esteja no **mesmo bloco ou num bloco que o contenha, dentro
+da mesma função**. Sair do escopo é `LAP0521`; rótulo inexistente é `LAP0520`.
 
-Isto não é timidez: sem recursão (Q8), salto para trás é a única forma de escrever
-um programa que não termina. Proibi-lo mantém a garantia de terminação da 0.2
-intacta, e é **exatamente o suficiente** para `@if`, `@unless` e `@match`, que só
-saltam para frente. Laços chegam com a recursão, na 0.3.
+```c
+def f = fn() Void {
+    label topo;
+    goto topo if cond;      // ok: para trás, mesmo escopo
+};
+
+def g = fn() Void {
+    goto topo;              // LAP0521: `topo` é de outra função
+};
+```
+
+Um `label` é local à função, como `return`. Não há salto entre funções, entre
+closures, nem para dentro de um bloco que ainda não foi aberto — entrar no meio de
+um escopo pularia as declarações que ele introduz, e não haveria como dar sentido
+aos nomes lá dentro.
+
+### O que o salto para trás custa
+
+Salto para trás é o que permite `@while`, e é também **o fim da garantia de
+terminação** da 0.2. Até aqui a linguagem não tinha recursão (Q8) nem laços, então
+todo programa terminava por construção. Com `goto` para trás, não termina mais:
+
+```c
+label sempre;
+goto sempre;
+```
+
+Três consequências, todas assumidas de propósito:
+
+1. **O evaluator ganha um limite de saltos** (`LAP0303`), do mesmo tipo que o
+   limite de profundidade de chamada que já existe. Um programa que não termina
+   aborta com diagnóstico em vez de travar.
+2. **O partial evaluator passa a enfrentar laços.** Especializar um laço exige
+   *widening* ou combustível, e é problema genuinamente mais difícil que
+   especializar `If` — os planos 13 e 14 registram isso.
+3. **`Never` deixa de significar "não retorna".** Um `goto` para trás pode
+   divergir sem sair da função; o tipo continua `Never`, mas a leitura passa a ser
+   "não continua daqui", que é o que sempre foi de fato.
 
 ## 10.3 Semântica: join points, não saltos
 
@@ -499,6 +539,10 @@ que é a leitura correta: o salto pode tê-lo pulado. Usá-lo lá é `LAP0201`.
 | `Goto` | `Never` — diverge, como `return` (Q13) |
 | `GotoIf` | `Void` — pode não saltar |
 | `Labeled` | junção do tipo da entrada com o de todos os joins |
+
+Com saltos para trás, os joins de um mesmo grupo podem se referenciar mutuamente. A
+junção é calculada sobre o conjunto todo, não em ordem — um join que só diverge
+contribui `Never` e não atrapalha.
 
 `Never` já se propaga por `Let`, `If`, `Binary`, `Unary` e `Call` desde o M1, então
 `goto` cabe em qualquer posição sem regra nova.
@@ -596,10 +640,17 @@ versão prioriza `type` e `enum`, que é o que `@match` precisa.
 
 # 12. As macros de controle
 
+`if`, `while` e `match` deixam de ser construções do compilador e passam a ser
+macros do `prelude.ls`, escritas na própria linguagem.
+
+O token `if` **sobrevive**, mas só dentro de `goto ... if ...`: é o salto
+condicional, a primitiva a partir da qual as três são construídas. Derivá-lo do
+`if` seria circular.
+
 ## 12.1 `@if` e `@unless`
 
 ```c
-def unless = macro
+macro unless
     match Expression:condition Block:body
     expand {
         goto done if condition;
@@ -609,7 +660,7 @@ def unless = macro
 ```
 
 ```c
-def ifm = macro
+macro if
     match Expression:condition Block:then else Block:otherwise
     expand {
         goto alt if !condition;
@@ -630,72 +681,136 @@ def ifm = macro
 
 Nada de novo é necessário: `goto`, `label` e `!` (Q4) bastam.
 
-## 12.2 `@match` — e o preço dele
+## 12.2 `@while`
 
-Aqui a proposta encontra o princípio §58.2 de frente, e vale escrever a conta em
-vez de escondê-la.
-
-`@match` precisa de duas coisas que `goto`/`label` não dão: **testar qual variante
-um valor é** e **extrair a carga**. Isso exige duas primitivas novas:
-
-```text
-enumTag(valor) Int
-enumPayload(valor, índice) <tipo da carga>
-```
-
-O comentário que hoje está em `CoreNodes.cs` dizia exatamente por que `Match`
-permaneceu primitivo:
-
-> desugará-lo exigiria primitivas `enum_tag` e `enum_payload`, aumentando o
-> runtime — contra a spec §58 ("runtime mínimo")
-
-A troca é: **2 nativas a mais** contra **um nó da Core, a máquina de padrões do
-evaluator e a de exaustividade do checker a menos**. A conta favorece as macros —
-mas há um obstáculo real, e ele decide o cronograma:
-
-> **O tipo de `enumPayload` depende da variante.** Em
-> `Result.Ok(v) => ...`, `v` é `T`; em `Result.Err(e) => ...`, `e` é `E`. Uma
-> assinatura `fn(Any, Int) Any` perderia isso, e um `@match` expandido seria
-> **menos** tipado que o `Match` de hoje. Fazer `enumPayload` ser outro intrínseco
-> do checker, com tipo dependente da variante testada no caminho, é possível — mas
-> é trabalho de verdade, não um detalhe.
-
-**Por isso `If` e `Match` continuam na Core.** Eles saem quando `@if` e `@match`
-estiverem funcionais e tipando tão bem quanto os nós que substituem — não antes.
-É um milestone com critério de saída objetivo, não uma intenção.
-
-## 12.3 Exaustividade de `@match` por `constraint` e reflection
-
-Q6 exige que `match` seja exaustivo. Com `@match` sendo macro, quem impõe isso é a
-`constraint` — usando reflection para descobrir as variantes:
+Aqui o salto para trás paga o seu preço:
 
 ```c
-def matchm = macro
-    match Expression:scrutinee { MatchArm:arms* separado por , }
-
-    constraint {
-        def enumName = enumNameOfFirstVariantPattern(arms);
-        def info = reflect(enumName);
-
-        // toda variante declarada tem de aparecer, ou há um `_`
-        ...
-    }
-
-    expand { ... };
+macro while
+    match Expression:condition Block:body
+    expand {
+        label top;
+        goto done if !condition;
+        body;
+        goto top;
+        label done;
+    };
 ```
 
-O detalhe que faz isso funcionar é uma decisão já tomada: **Q3 exige variantes
-qualificadas** (`Color.Red`, nunca `Red`). Então os próprios braços nomeiam o enum,
-e a `constraint` descobre qual é sem precisar do tipo do escrutinado — que, em
+`@while` é a razão de `goto` poder voltar (§10.2), e é também o primeiro programa
+LapisLang capaz de não terminar. O evaluator conta saltos e aborta com `LAP0303`.
+
+## 12.3 `@match` compara variantes
+
+**Decisão do autor (Q20):** `@match` **não desestrutura carga**. Ele compara a
+variante, e só. Isso elimina inteiramente as primitivas `enumTag`/`enumPayload` —
+que eram exatamente o que o M3 havia rejeitado por ferir o princípio §58.2
+("runtime mínimo").
+
+O que basta é que enums sejam **comparáveis**, e eles já são desde o M3:
+
+```c
+macro match
+    match Expression:scrutinee { MatchArm:arms* separado por , }
+
+    constraint { /* exaustividade — §12.4 */ }
+
+    expand {
+        def subject = scrutinee;
+
+        goto arm0 if subject == Color.Red;
+        goto arm1 if subject == Color.Green;
+        goto done;
+
+        label arm0;  /* corpo 0 */  goto done;
+        label arm1;  /* corpo 1 */  goto done;
+        label done;
+    };
+```
+
+Uma cadeia de `goto ... if ...` sobre `==`. Nenhuma primitiva nova, nenhum nó novo
+na Core.
+
+### Comparação com variante portadora de carga
+
+Para variantes nulárias (`Color.Red`) o `==` já funciona hoje. Para variantes com
+carga, `Result.Ok` é um **construtor**, não um valor — e funções não são
+comparáveis (`LAP0281`).
+
+A regra nova, mínima:
+
+> Comparar um valor de enum com um **construtor de variante** não aplicado compara
+> **apenas a variante**, ignorando a carga. `r == Result.Ok` tem tipo `Bool`.
+
+É uma regra de tipo e uma linha no evaluator — muito menos que duas nativas, e
+mantém a conta a favor de `@match`.
+
+## 12.4 Exaustividade por `constraint` e reflection
+
+Q6 exige `match` exaustivo. Com `@match` sendo macro, quem impõe é a `constraint`,
+usando reflection para descobrir as variantes:
+
+```c
+constraint {
+    def enumName = enumNameOf(arms);
+
+    if enumName == "" {
+        if !hasWildcard(arms) {
+            throw "match sobre valor não-enum exige um braço '_'";
+        }
+    } else {
+        def faltando = missingVariants(reflect(enumName).variants, arms);
+
+        if arrayLength(faltando) > 0 {
+            throw "match não é exaustivo; faltam: " + join(faltando, ", ");
+        }
+    }
+}
+```
+
+**O que faz isso funcionar é uma decisão já tomada.** Q3 exige variantes
+qualificadas — `Color.Red`, nunca `Red`. Então os próprios braços nomeiam o enum, e
+a `constraint` descobre qual é **sem precisar do tipo do escrutinado** — que, em
 tempo de expansão, ainda não existe.
 
 Sem Q3 isto seria impossível: a exaustividade dependeria do type checker, que roda
-depois. É um caso em que uma decisão de ergonomia acabou pagando uma dívida
-arquitetural.
+depois da expansão. É um caso em que uma decisão tomada por ergonomia acabou pagando
+uma dívida arquitetural que ninguém tinha visto.
 
-**Limite conhecido:** um `@match` cujos braços sejam só literais ou só `_` não
-nomeia enum nenhum, e a `constraint` não tem o que reflectir. Nesse caso ela exige
-um braço `_` — a mesma regra que o checker aplica hoje a `Int`, `Float` e `Str`.
+**Limite conhecido:** braços só de literais ou só `_` não nomeiam enum nenhum. Aí a
+`constraint` exige `_`, que é a mesma regra que o checker aplica hoje a `Int`,
+`Float` e `Str`.
+
+## 12.5 ⚠️ O que se perde: ligação de carga
+
+Q20 tem uma consequência que precisa estar escrita, não subentendida.
+
+O `match` de hoje **liga a carga**:
+
+```c
+match result {
+    Result.Ok(value) => return value,        // `value` é o conteúdo
+    Result.Err(error) => return fallback
+}
+```
+
+Comparando só a variante, `value` não tem de onde sair. O `examples/result.ls`, que
+é o exemplo canônico de tratamento de erro da linguagem, **não é expressável** com
+`@match` como especificado em §12.3.
+
+Isso não invalida Q20 — a decisão de não ter `enumTag`/`enumPayload` continua
+valendo. O que falta é decidir **como** a carga é lida, e há três caminhos:
+
+| Caminho | Custo | Observação |
+|---|---|---|
+| Acesso a campo na variante (`r.value`) | uma regra no checker | carga vira campo nomeado; combina com `type` |
+| Um acessor no prelude por enum, gerado por macro | zero primitivas | verboso, mas usa só o que já existe |
+| Manter `Match` da Core só para desestruturação | zero trabalho novo | contradiz Q22 |
+
+**Está registrado como Q23 e aguarda decisão.** Enquanto ela não vier, o plano 20
+mantém `Match` na Core para os casos com carga — que é exatamente o critério de
+saída que o autor já havia estabelecido: os nós só saem quando o substituto estiver
+funcional.
 
 ---
 
@@ -731,7 +846,7 @@ invocação e o do ponto dentro da macro que o originou.
 # 14. Filosofia
 
 1. Macros trabalham com **sintaxe**, não com valores.
-2. Macros são identificadas por `@` e ligadas por `def`.
+2. Macros são identificadas por `@` e declaradas por `macro` — não são valores (Q19).
 3. A macro define sua própria forma sintática via `match`.
 4. Capturas preservam AST.
 5. `constraint` roda em compile time, na **mesma** linguagem e no **mesmo** evaluator.
@@ -742,3 +857,5 @@ invocação e o do ponto dentro da macro que o originou.
 10. Macro expansion não substitui type checking nem partial evaluation.
 11. O runtime não conhece macros.
 12. A Core permanece pequena — e só encolhe quando o substituto está pronto.
+13. `if`, `while` e `match` são prelude, não compilador (Q22).
+14. `@match` compara variantes; não desestrutura (Q20).

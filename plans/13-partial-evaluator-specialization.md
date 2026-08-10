@@ -1,11 +1,18 @@
 # 13 — Partial Evaluator: Beta Reduction e Especialização
 
-**Milestone:** M7 · **Depende de:** 12 · **Projeto:** `Lapis.PartialEvaluator`
+**Milestone:** M12 · **Depende de:** 12 · **Projeto:** `Lapis.PartialEvaluator`
 
 Corresponde à spec §37 e ao segundo bloco de §52 ("beta reduction, closure
 specialization, function specialization").
 
 ---
+
+> **Laços, a partir do M6.** O `goto` para trás (Q24) traz laços para a linguagem, e
+> com eles o fim da terminação por construção. Especializar um laço não é como
+> especializar um `If`: exige *widening* ou combustível, sob pena de o próprio
+> partial evaluator não terminar. Este plano precisa ser revisitado com isso em mãos
+> antes de começar.
+
 
 ## Objetivo
 
