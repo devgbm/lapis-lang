@@ -40,21 +40,21 @@ lapis hello.ls
 | **M3** — `match`, tipos definidos pelo usuário | ✅ concluído |
 | **M4** — generics escritos pelo programador | ✅ concluído |
 | **M5** — suíte de conformidade e subcomandos do CLI | ✅ concluído |
-| M6 — `goto`/`label` | ⏳ próximo |
-| M7 — PE núcleo (folding e propagação) | 📋 planejado |
+| **M6** — `goto`/`label` | ✅ concluído |
+| M7 — PE núcleo (folding e propagação) | ⏳ próximo |
 | M8–M11 — macros, `constraint`, reflection, `@unless`/`@while` | 📋 planejado |
 | M12–M14 — PE: especialização, análise, equivalência | ⬜ |
 
-**1087 testes** cobrindo lexer, parser, desugar, type checker, runtime,
-evaluator e CLI — entre eles uma **suíte de conformidade** de 118 programas
+**1165 testes** cobrindo lexer, parser, desugar, type checker, runtime,
+evaluator e CLI — entre eles uma **suíte de conformidade** de 130 programas
 `.ls` que é a especificação executável do projeto: cada afirmação testável da
 spec é um arquivo, e o nome do teste que falha já é o arquivo a abrir.
 
 A linguagem já roda programas de verdade: funções de primeira classe com
 closures, `return` explícito com verificação de "retorna em todos os caminhos",
 arrays com indexação segura, enums, `match` exaustivo, tipos definidos pelo
-usuário, generics (inclusive const generics) e um prelude escrito na própria
-linguagem.
+usuário, generics (inclusive const generics), `goto`/`label` e um prelude escrito
+na própria linguagem.
 
 ```c
 def numbers = [10, 20, 30];
@@ -94,8 +94,34 @@ print(scale<3>(5));    // 15
 print(twice<3>(5));    // 30
 ```
 
-O que falta (M6 em diante): `goto`/`label`, macros e o partial evaluator. O
-roteiro completo está em [`plans/`](plans/README.md).
+`goto`/`label` (M6) dão controle de fluxo explícito — saída antecipada sem
+aninhamento, e um grafo de fluxo que o partial evaluator vai analisar. O desugar
+decompõe o bloco em blocos básicos: cada `label` abre um *join point*, e o
+segmento anterior é fechado com um salto implícito.
+
+```c
+def buscar = fn(indice: Int) Int {
+    goto invalido if indice < 0;
+    goto invalido if indice > 2;
+
+    match valores[indice] {
+        Result.Ok(v) => return v,
+        Result.Err(e) => return -1
+    }
+
+    label invalido;
+    return -1;
+};
+```
+
+Saltar para trás é permitido, e com isso a terminação deixa de ser garantida por
+construção: o evaluator conta saltos e aborta com `LAP0303` em vez de travar. Um
+laço, porém, ainda **não consegue avançar** — bindings são imutáveis e o corpo de
+um join roda sempre no mesmo ambiente, então nada muda entre as voltas. É a
+questão Q25 do apêndice C, e é o que bloqueia `@while`.
+
+O que falta (M7 em diante): macros e o partial evaluator. O roteiro completo está
+em [`plans/`](plans/README.md).
 
 ```bash
 $ lapis examples/hello.ls

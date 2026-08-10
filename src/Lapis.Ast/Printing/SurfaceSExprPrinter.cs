@@ -53,6 +53,20 @@ public static class SurfaceSExprPrinter
                 Close(builder, indent);
                 break;
 
+            case GotoStatement { Condition: null } jump:
+                Line(builder, indent, $"(goto {jump.Label})");
+                break;
+
+            case GotoStatement jump:
+                Open(builder, indent, $"goto-if {jump.Label}");
+                PrintExpression(builder, jump.Condition!, indent + 1);
+                Close(builder, indent);
+                break;
+
+            case LabelStatement label:
+                Line(builder, indent, $"(label {label.Label})");
+                break;
+
             default:
                 Line(builder, indent, $"(<desconhecido {statement.GetType().Name}>)");
                 break;

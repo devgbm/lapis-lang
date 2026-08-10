@@ -30,6 +30,26 @@ public sealed record DefStatement(string Name, TypeSyntax? Annotation, Expressio
 
 public sealed record ExpressionStatement(Expression Expression) : Statement;
 
+/// <summary>
+/// <c>goto L;</c> ou <c>goto L if e;</c>.
+///
+/// É <c>Statement</c>, não <c>Expression</c>: um salto não produz valor, e
+/// mantê-lo fora da gramática de expressão elimina <c>def x = goto L;</c> sem
+/// precisar de regra (plano 16 §"Por que Statement e não Expression").
+/// </summary>
+public sealed record GotoStatement(string Label, Expression? Condition) : Statement
+{
+    public required SourceSpan LabelSpan { get; init; }
+}
+
+/// <summary>
+/// <c>label L;</c> — o destino de um <c>goto</c>, local à função que o contém.
+/// </summary>
+public sealed record LabelStatement(string Label) : Statement
+{
+    public required SourceSpan LabelSpan { get; init; }
+}
+
 // ------------------------------------------------------------ expressions
 
 public abstract record Expression : SurfaceNode;

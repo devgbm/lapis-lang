@@ -105,6 +105,80 @@ public sealed class SemanticPropertyTests
     }
 
     /// <summary>
+    /// Todo programa termina <b>ou</b> reporta <c>LAP0303</c> (plano 16).
+    ///
+    /// Até o M4 a terminação era garantida por construção — sem recursão (Q8) e
+    /// sem laços. O salto para trás acaba com isso, e o orçamento de saltos é o
+    /// que troca um travamento por um diagnóstico. Esta propriedade é o que
+    /// impede a garantia de virar promessa.
+    /// </summary>
+    [Theory]
+    [InlineData("label a;\ngoto a;")]
+    [InlineData("def c = true;\nlabel a;\ngoto a if c;")]
+    [InlineData("label a;\nprint(1);\ngoto a;")]
+    [InlineData("goto b;\nlabel a;\ngoto b;\nlabel b;\ngoto a;")]
+    public void Goto_TerminatesOrAborts(string source)
+    {
+        var result = Pipeline.Compile(
+            SourceText.From(source, "propriedade.ls"),
+            PipelineStage.Evaluate,
+            new RuntimeContext(new StringOutput()));
+
+        result.HasErrors.ShouldBeFalse();
+        result.Evaluation.ShouldNotBeNull();
+
+        // Terminou de um jeito ou de outro; o que não pode é travar.
+        if (result.Evaluation.Status == ExecutionStatus.Aborted)
+        {
+            result.Evaluation.Code.ShouldBe(DiagnosticCodes.JumpLimitExceeded);
+        }
+    }
+
+    /// <summary>
+    /// A forma com <c>goto</c> é equivalente à forma com <c>if</c>.
+    ///
+    /// Não é formalidade: é a evidência de que <c>goto</c>/<c>label</c> expressam
+    /// o que <c>If</c> expressa. Sem ela, nenhuma macro de controle construída
+    /// sobre salto (plano 20) merece confiança.
+    /// </summary>
+    [Theory]
+    [InlineData("true", "1", "2")]
+    [InlineData("false", "1", "2")]
+    [InlineData("1 > 0", "10", "20")]
+    [InlineData("1 > 2", "10", "20")]
+    public void GotoForm_EquivalentToIf(string condition, string then, string otherwise)
+    {
+        var comIf = Run($$"""
+            def c = {{condition}};
+            if c { print({{then}}); } else { print({{otherwise}}); }
+            """);
+
+        var comGoto = Run($$"""
+            def c = {{condition}};
+            goto entao if c;
+            print({{otherwise}});
+            goto fim;
+            label entao;
+            print({{then}});
+            label fim;
+            """);
+
+        comGoto.ShouldBe(comIf);
+    }
+
+    private static string Run(string source)
+    {
+        var output = new StringOutput();
+        var result = Pipeline.Compile(
+            SourceText.From(source, "propriedade.ls"), PipelineStage.Evaluate, new RuntimeContext(output));
+
+        result.HasErrors.ShouldBeFalse(
+            string.Join(", ", result.Diagnostics.Select(d => $"{d.Code} {d.Message}")));
+
+        return output.Text;
+    }
+
+    /// <summary>
     /// <c>desugar(parse(print(core))) ≡ core</c> — o round-trip do plano 02 §2.8,
     /// aqui sobre o corpus inteiro em vez de uma lista escolhida a dedo.
     ///

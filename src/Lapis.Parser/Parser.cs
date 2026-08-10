@@ -94,6 +94,16 @@ public sealed class Parser
             return ParseDefStatement();
         }
 
+        if (Current.Kind == TokenKind.GotoKeyword)
+        {
+            return ParseGotoStatement();
+        }
+
+        if (AtLabelStatement())
+        {
+            return ParseLabelStatement();
+        }
+
         if (Current.Kind == TokenKind.Bad)
         {
             // O lexer já reportou; consumir em silêncio evita erro duplo.
@@ -172,6 +182,91 @@ public sealed class Parser
             Span = SourceSpan.FromBounds(start, PreviousEnd()),
             NameSpan = nameToken.Span,
         };
+    }
+
+    /// <summary>
+    /// <c>goto IDENT ("if" expressão)? ";"</c>.
+    ///
+    /// O <c>if</c> reaproveita <see cref="TokenKind.IfKeyword"/> sem ambiguidade:
+    /// o <c>goto</c> já determinou a produção.
+    /// </summary>
+    private Statement ParseGotoStatement()
+    {
+        var start = Current.Span.Start;
+        _tokens.Advance(); // 'goto'
+
+        var (label, labelSpan) = ParseLabelName();
+
+        Expression? condition = null;
+
+        if (_tokens.Match(TokenKind.IfKeyword))
+        {
+            condition = ParseExpression();
+        }
+
+        if (!ExpectSemicolon(start))
+        {
+            RecoverToStatementBoundary();
+        }
+
+        return new GotoStatement(label, condition)
+        {
+            Span = SourceSpan.FromBounds(start, PreviousEnd()),
+            LabelSpan = labelSpan,
+        };
+    }
+
+    /// <summary>
+    /// <c>label</c> é palavra-chave <b>contextual</b>: só vale quando inicia um
+    /// statement e vem seguida de um identificador.
+    ///
+    /// Reservá-la quebraria programa válido — o exemplo da própria spec §13 usa
+    /// <c>label</c> como nome de campo (<c>type&lt;Label: Str, ...&gt; { label: Str; }</c>).
+    /// A ambiguidade não existe: dois identificadores seguidos nunca formam uma
+    /// expressão. <c>goto</c>, ao contrário, é reservada — ninguém a usa como nome,
+    /// e reservá-la é o que permite dizer "esperado um rótulo" em vez de deixar a
+    /// linha virar uma expressão malformada.
+    /// </summary>
+    private bool AtLabelStatement() =>
+        Current.Kind == TokenKind.Identifier
+        && Current.Text == "label"
+        && _tokens.Peek(1).Kind == TokenKind.Identifier;
+
+    private Statement ParseLabelStatement()
+    {
+        var start = Current.Span.Start;
+        _tokens.Advance(); // 'label'
+
+        var (label, labelSpan) = ParseLabelName();
+
+        if (!ExpectSemicolon(start))
+        {
+            RecoverToStatementBoundary();
+        }
+
+        return new LabelStatement(label)
+        {
+            Span = SourceSpan.FromBounds(start, PreviousEnd()),
+            LabelSpan = labelSpan,
+        };
+    }
+
+    /// <summary>
+    /// Rótulos são identificadores comuns (spec §7). Vivem num espaço de nomes
+    /// separado do de valores, então <c>label x</c> e <c>def x</c> convivem.
+    /// </summary>
+    private (string Name, SourceSpan Span) ParseLabelName()
+    {
+        var token = Current;
+
+        if (token.Kind != TokenKind.Identifier)
+        {
+            Report(DiagnosticCodes.ExpectedIdentifier, token.Span, "esperado um rótulo");
+            return ("?", token.Span);
+        }
+
+        _tokens.Advance();
+        return (token.Text, token.Span);
     }
 
     private bool ExpectSemicolon(int statementStart)
@@ -1276,6 +1371,14 @@ public sealed class Parser
             if (Current.Kind == TokenKind.DefKeyword)
             {
                 statements.Add(ParseDefStatement());
+            }
+            else if (Current.Kind == TokenKind.GotoKeyword)
+            {
+                statements.Add(ParseGotoStatement());
+            }
+            else if (AtLabelStatement())
+            {
+                statements.Add(ParseLabelStatement());
             }
             else if (Current.Kind == TokenKind.Bad)
             {

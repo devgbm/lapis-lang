@@ -173,9 +173,28 @@ Não são diagnósticos de compilação: são relatados na saída de execução 
 | `LAP0302` | abort | profundidade de chamada excedida (limite {0}) |
 | `LAP0303` | abort | limite de saltos excedido (limite {0}) |
 
-`LAP0303` chega com o `goto` para trás (plano 16). Até o M4 todo programa terminava
-por construção — sem recursão (Q8) e sem laços; `goto` para trás acaba com isso, e
-este é o diagnóstico que troca um travamento por uma mensagem.
+`LAP0303` chegou com o `goto` para trás (M6). Até o M4 todo programa terminava por
+construção — sem recursão (Q8) e sem laços; `goto` para trás acaba com isso, e este
+é o diagnóstico que troca um travamento por uma mensagem. O orçamento é do
+**programa inteiro** (1.000.000 de saltos), não de cada laço: é o que torna "todo
+programa termina ou reporta `LAP0303`" uma propriedade verificável.
+
+---
+
+## LAP052x — `goto` e `label` (implementado, M6)
+
+| Código | Severidade | Mensagem |
+|---|---|---|
+| `LAP0520` | error | o rótulo `'{0}'` não existe |
+| `LAP0521` | error | o rótulo `'{0}'` pertence a uma função externa |
+| `LAP0522` | error | o rótulo `'{0}'` já foi declarado neste bloco |
+
+`LAP0521` existe para não responder "não existe" a quem escreveu um rótulo que
+existe: um `label` é local à função, como `return`, e a diferença entre "esse nome
+não é rótulo de nada" e "esse rótulo é de outra função" é a diferença entre um erro
+de digitação e um mal-entendido sobre escopo.
+
+A condição de `goto ... if ...` usa `LAP0230`, o mesmo do `if` — é a mesma exigência.
 
 ---
 
@@ -215,20 +234,13 @@ apontando o ponto dentro da macro.
 
 ### Controle de fluxo
 
-| Código | Severidade | Mensagem |
-|---|---|---|
-| `LAP0520` | error | rótulo `{0}` não existe nesta função |
-| `LAP0521` | error | rótulo `{0}` está fora do escopo deste `goto` |
-| `LAP0522` | error | rótulo `{0}` declarado mais de uma vez |
+`LAP0520`–`LAP0522` saíram da proposta: estão implementados (M6) e documentados
+acima, na seção "LAP052x — `goto` e `label`".
 
 `LAP0523` em diante estão **livres**: foram esboçados para a leitura de carga por
 campo, que Q23 descartou por ser insegura. Como nunca chegaram a ser publicados —
 não há implementação —, os números voltam ao pool. A construção que Q23 vier a
 definir alocará os seus.
-
-Salto **para trás é permitido** (decisão do autor): é o que viabiliza `@while`.
-`LAP0521` cobre só o salto que sai do escopo — para outra função, ou para dentro de
-um bloco ainda não aberto.
 
 ---
 

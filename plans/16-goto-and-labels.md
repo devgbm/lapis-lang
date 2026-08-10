@@ -289,10 +289,80 @@ merece confiança.
 
 ## Critérios de conclusão
 
-- [ ] `goto`/`label` parseiam, desugaram, tipam e executam.
-- [ ] Round-trip do `CoreSourcePrinter` verde para programas com rótulos.
-- [ ] `GotoForm_EquivalentToIf` verde — evidência de que `goto` expressa o mesmo que `If`.
-- [ ] Salto fora de escopo e rótulo desconhecido rejeitados com código e span.
-- [ ] Laço infinito abortando com `LAP0303`, sem stack overflow.
-- [ ] `ReturnAnalysis` cobrindo `Labeled`.
-- [ ] Zero regressão: a suíte inteira continua verde sem alteração de expectativa.
+- [x] `goto`/`label` parseiam, desugaram, tipam e executam.
+- [x] Round-trip do `CoreSourcePrinter` verde para programas com rótulos.
+- [x] `GotoForm_EquivalentToIf` verde — evidência de que `goto` expressa o mesmo que `If`.
+- [x] Salto fora de escopo e rótulo desconhecido rejeitados com código e span.
+- [x] Laço infinito abortando com `LAP0303`, sem stack overflow.
+- [x] `ReturnAnalysis` cobrindo `Labeled`.
+- [x] Zero regressão: a suíte inteira continua verde sem alteração de expectativa.
+
+---
+
+## O que a implementação corrigiu no plano
+
+Quatro pontos deste plano não sobreviveram ao contato com o código. Ficam
+registrados porque a diferença é a informação, não o plano original.
+
+### `label` é palavra-chave contextual, não reservada
+
+§16.3 previa dois tokens novos. `label` não pode ser reservada: o exemplo da spec
+§13 usa `label` como **nome de campo** (`type<Label: Str, ...> { label: Str; }`), e
+reservá-la quebraria um programa documentado. Ela é reconhecida só quando inicia um
+statement e vem seguida de um identificador — dois identificadores seguidos nunca
+formam expressão, então não há ambiguidade. `goto` é reservada de verdade.
+
+### `DR(Labeled)` não é "entrada e todos os joins"
+
+§16.5 propunha `DR(Labeled) = DR(entry) && todos os joins DR`. Está errado: com essa
+regra a função abaixo, que sempre retorna, seria rejeitada com `LAP0272` —
+`DR(entry)` é falso porque a entrada termina em salto, não em `return`.
+
+```c
+def f = fn() Int { goto fim; label fim; return 1; };
+```
+
+A regra correta é **`DR(Goto L) = DR(L)`**: o salto não retorna, quem retorna é o
+destino. Daí `DR(Labeled) = DR(entry)` sozinho — todo join é alcançado por salto, e
+o salto já consulta o join. O ponto fixo continua necessário, pelo mesmo motivo
+(ciclos entre joins), e é o maior ponto fixo: começa otimista e desce.
+
+E um salto **condicional** é um desvio de duas saídas, com a continuação sendo a
+segunda: `DR(Let(_, GotoIf(L), resto)) = DR(L) && DR(resto)`, exatamente como um
+`If`. Tratado no caso do `Let`, porque o nó sozinho não enxerga a sua continuação.
+
+### O salto implícito precisa ser marcado
+
+O salto que fecha um segmento é gerado pelo desugar, não escrito por ninguém. Sem
+uma marca (`CoreGoto.IsImplicit`) ele causa dois defeitos: `LAP0273` acusa "código
+inalcançável após return" apontando para um `label` perfeitamente alcançável, e o
+printer não tem como distinguir o salto que deve omitir daquele que deve imprimir.
+
+### `LAP0231` no `Labeled` é inalcançável hoje
+
+Todo caminho menos o último termina em salto, e salto é `Never` — a junção nunca
+falha. O código fica como está (é a operação correta, e passa a importar no dia em
+que um join tiver parâmetros), mas o diagnóstico não tem caso de conformidade
+porque não tem como ser produzido.
+
+---
+
+## O que ficou faltando, e não é bug: laço com progresso
+
+**Um laço construído com salto para trás não avança.** Bindings são imutáveis e o
+corpo de um join roda no ambiente do grupo, o mesmo em toda volta: nada muda entre
+iterações, então a condição de saída também não muda.
+
+```c
+def i = 0;
+label repete;
+def j = i + 1;
+print(j);
+goto repete if j < 3;   // imprime 1 para sempre, até LAP0303
+```
+
+Isso **não** invalida o M6: saída antecipada sem aninhamento, `@unless` e o grafo de
+fluxo explícito para os planos 14 e 15 já são o que este plano prometeu, e estão
+verdes. O que fica bloqueado é `@while` (plano 20), até que se escolha entre join
+com parâmetros, mutação, ou laço por recursão. A spec de macros §10.6 registra a
+comparação.

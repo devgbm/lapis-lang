@@ -35,12 +35,16 @@ public sealed record ConformanceCase(
 
     /// <summary>
     /// O exit code que o caso exige. Quando não declarado, decorre do que foi
-    /// afirmado: diagnóstico de erro ⇒ 65, aborto ⇒ 1, o resto ⇒ 0.
+    /// afirmado: aborto ⇒ 1, diagnóstico de erro ⇒ 65, o resto ⇒ 0.
+    ///
+    /// O aborto vem primeiro porque ele implica que o programa compilou — e o
+    /// código do aborto (LAP03xx) é afirmado como diagnóstico de erro, do mesmo
+    /// jeito que o CLI o renderiza.
     /// </summary>
     public int RequiredExitCode =>
         ExpectedExitCode
-        ?? (ExpectedDiagnostics.Any(d => d.Severity == "error") ? Cli.ExitCodes.CompilationError
-            : ExpectsAbort ? Cli.ExitCodes.RuntimeAbort
+        ?? (ExpectsAbort ? Cli.ExitCodes.RuntimeAbort
+            : ExpectedDiagnostics.Any(d => d.Severity == "error") ? Cli.ExitCodes.CompilationError
             : Cli.ExitCodes.Success);
 
     public override string ToString() => RelativePath;

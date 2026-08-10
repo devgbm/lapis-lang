@@ -306,6 +306,75 @@ public sealed class CoreMatch(
     public ImmutableArray<CoreArm> Arms { get; } = arms;
 }
 
+/// <summary>Salto incondicional. Tipo <c>Never</c>: nada depois dele executa.</summary>
+public sealed class CoreGoto(int nodeId, SourceSpan span, string label) : CoreExpr(nodeId, span)
+{
+    public string Label { get; } = label;
+
+    public SourceSpan LabelSpan { get; init; } = span;
+
+    /// <summary>
+    /// Verdadeiro quando o salto é o que o desugar insere ao fechar um segmento,
+    /// e não algo que alguém escreveu (plano 16 §16.4, regra 1).
+    ///
+    /// A distinção importa em dois lugares: o printer omite o salto implícito (é
+    /// a inversa exata da decomposição) e <c>LAP0273</c> não o trata como código
+    /// inalcançável — depois de um <c>return</c> vem um <c>label</c>, que é
+    /// perfeitamente alcançável por salto.
+    /// </summary>
+    public bool IsImplicit { get; init; }
+}
+
+/// <summary>
+/// Salto condicional. É <b>primitivo</b>, e não açúcar para
+/// <c>If(cond, Goto(L), ())</c>, porque uma macro de controle construída sobre
+/// <c>goto</c> não pode depender do <c>if</c> da linguagem — a construção seria
+/// circular (plano 16 §16.2).
+/// </summary>
+public sealed class CoreGotoIf(
+    int nodeId,
+    SourceSpan span,
+    string label,
+    CoreExpr condition) : CoreExpr(nodeId, span)
+{
+    public string Label { get; } = label;
+
+    public CoreExpr Condition { get; } = condition;
+
+    public SourceSpan LabelSpan { get; init; } = span;
+}
+
+/// <summary>Um destino de salto dentro de um <see cref="CoreLabeled"/>.</summary>
+public sealed record CoreJoin(string Name, CoreExpr Body, SourceSpan Span)
+{
+    public SourceSpan NameSpan { get; init; } = Span;
+}
+
+/// <summary>
+/// Grupo de join points: avalia <see cref="Entry"/> e, se ela terminar em salto
+/// para um dos <see cref="Joins"/>, avalia aquele corpo — que por sua vez pode
+/// saltar de novo.
+///
+/// Join points, e não saltos de verdade, porque a Core não tem nó <c>Block</c>
+/// (Q10): "pular para a instrução 7" não quer dizer nada numa cadeia de
+/// <c>Let</c>. É a forma que compiladores funcionais usam há décadas para casar
+/// fluxo não estruturado com escopo léxico — e é o que mantém substituição e
+/// inlining textuais no partial evaluator.
+///
+/// Com salto para trás os joins podem se referenciar mutuamente: o grafo deixa
+/// de ser um DAG, mas a estrutura não muda.
+/// </summary>
+public sealed class CoreLabeled(
+    int nodeId,
+    SourceSpan span,
+    CoreExpr entry,
+    ImmutableArray<CoreJoin> joins) : CoreExpr(nodeId, span)
+{
+    public CoreExpr Entry { get; } = entry;
+
+    public ImmutableArray<CoreJoin> Joins { get; } = joins;
+}
+
 /// <summary>Um arquivo <c>.ls</c> inteiro reduzido a uma única expressão.</summary>
 public sealed class CoreProgram(CoreExpr body, int nodeCount)
 {

@@ -183,6 +183,32 @@ public static class CoreSExprPrinter
                 Close(builder, indent);
                 break;
 
+            case CoreGoto n:
+                Line(builder, indent, $"({tag}goto {n.Label})");
+                break;
+
+            case CoreGotoIf n:
+                Open(builder, indent, $"{tag}goto-if {n.Label}");
+                PrintExpression(builder, n.Condition, indent + 1, ids);
+                Close(builder, indent);
+                break;
+
+            case CoreLabeled n:
+                Open(builder, indent, $"{tag}labeled");
+                Open(builder, indent + 1, "entry");
+                PrintExpression(builder, n.Entry, indent + 2, ids);
+                Close(builder, indent + 1);
+
+                foreach (var join in n.Joins)
+                {
+                    Open(builder, indent + 1, $"join {join.Name}");
+                    PrintExpression(builder, join.Body, indent + 2, ids);
+                    Close(builder, indent + 1);
+                }
+
+                Close(builder, indent);
+                break;
+
             default:
                 throw InternalCompilerException.Unreachable(node, node.Span);
         }

@@ -555,6 +555,12 @@ Com saltos para trás, os joins de um mesmo grupo podem se referenciar mutuament
 junção é calculada sobre o conjunto todo, não em ordem — um join que só diverge
 contribui `Never` e não atrapalha.
 
+Na prática a junção nunca falha: a entrada e todo join que não é o último terminam
+em salto, e salto é `Never`. O valor do grupo é o do **último** join — o único
+caminho que produz valor. A junção fica no checker mesmo assim, porque é a operação
+correta, e porque deixaria de ser trivial no dia em que um join tiver parâmetros
+(§10.6).
+
 `Never` já se propaga por `Let`, `If`, `Binary`, `Unary` e `Call` desde o M1, então
 `goto` cabe em qualquer posição sem regra nova.
 
@@ -565,8 +571,40 @@ O evaluator representa `return` como **completion record**, não como exceção
 `Goto(rótulo)`. Um `Labeled` que define aquele rótulo captura a completion e segue
 pelo corpo do join — exatamente como a fronteira de chamada captura `Return`.
 
-Como os saltos são para frente e os joins são sufixos, a sequência de saltos é
-estritamente crescente e sempre termina.
+O laço que consome as completions é **iteração**, não recursão: um salto para trás é
+mais uma volta do `while` em C#, e a pilha do interpretador não cresce. O que
+termina a execução no pior caso é o orçamento de saltos (`LAP0303`).
+
+## 10.6 O que o salto para trás **não** dá: laço com progresso
+
+Implementado o M6, um fato ficou visível e precisa estar escrito aqui: **um laço
+construído com salto para trás não consegue avançar**.
+
+```c
+def i = 0;
+label repete;
+def j = i + 1;
+print(j);
+goto repete if j < 3;   // imprime 1 para sempre, até LAP0303
+```
+
+O motivo não é o salto — é o resto da linguagem. Bindings são imutáveis (`def`, sem
+`var`), e o corpo de um join é avaliado no ambiente **do grupo**, o mesmo em toda
+volta. Nada muda entre iterações, então a condição de saída também não muda: ou o
+laço não roda, ou roda até o orçamento acabar.
+
+A consequência é para o plano 20: **`@while` não pode ser construído só com
+`goto`/`label` como estão**. Falta uma de três coisas, e a escolha é do autor:
+
+| Caminho | O que muda | Custo |
+|---|---|---|
+| **join com parâmetros** (`label L(x: Int)` / `goto L(x + 1)`) | join point vira o que ele é na literatura — um `phi` de SSA | sintaxe nova, mas é a forma que casa com a Core sem `Block` e mantém tudo imutável |
+| **mutação** (`var`, atribuição) | a linguagem deixa de ser puramente imutável | muda a semântica inteira, e o partial evaluator junto |
+| **laço por recursão** | derruba a Q8 | recursão traz de volta os problemas que a Q8 evitava |
+
+Nada disso é urgente: `goto`/`label` já pagam sozinhos o que o M6 prometeu — saída
+antecipada sem aninhamento, `@unless`, e um grafo de fluxo explícito para o partial
+evaluator (planos 14 e 15). Mas `@while` fica bloqueado até a decisão.
 
 ---
 

@@ -28,8 +28,23 @@ public static class ConformanceRunner
             ? Pipeline.Compile(source, PipelineStage.Evaluate, new RuntimeContext(output), PreludeLoader.LoadFresh())
             : Pipeline.Compile(source, PipelineStage.Evaluate, new RuntimeContext(output));
 
-        return new ConformanceOutcome(output.Text, ExitCodes.For(result), result.Diagnostics);
+        return new ConformanceOutcome(
+            output.Text, ExitCodes.For(result), WithAbort(result));
     }
+
+    /// <summary>
+    /// O aborto entra na lista de diagnósticos, como o CLI já faz ao renderizá-lo
+    /// (plano 10 §10.2). Sem isso um código LAP03xx não teria como ser afirmado
+    /// por um caso — e a cobertura por diagnóstico ficaria com um buraco em
+    /// exatamente a faixa que descreve falha em execução.
+    /// </summary>
+    private static ImmutableArray<Diagnostic> WithAbort(CompilationResult result) =>
+        result.Evaluation is { Status: Evaluator.ExecutionStatus.Aborted } aborted
+            ? result.Diagnostics.Add(Diagnostic.Error(
+                aborted.Code ?? "LAP0300",
+                aborted.Span ?? SourceSpan.Synthetic,
+                aborted.Message ?? "execução abortada"))
+            : result.Diagnostics;
 
     /// <summary>
     /// Devolve a descrição da primeira divergência, ou <c>null</c> se o caso passa.

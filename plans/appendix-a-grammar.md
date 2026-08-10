@@ -11,9 +11,15 @@ Terminais em maiúsculas são tokens do plano 03.
 program        = statement* EOF ;
 
 statement      = def_statement
+               | goto_statement
+               | label_statement
                | expr_statement ;
 
 def_statement  = "def" IDENT ( ":" type )? "=" expression ";" ;
+
+goto_statement = "goto" IDENT ( "if" expression )? ";" ;
+
+label_statement = "label" IDENT ";" ;
 
 expr_statement = block_like_expression ";"?      (* ponto-e-vírgula opcional *)
                | expression ";" ;
@@ -307,10 +313,6 @@ repetition     = ( IDENT ":" IDENT | "(" macro_pattern ")" ) "*" "separado" "por
 (* invocação *)
 macro_call     = "@" IDENT macro_tokens ;
 
-(* controle de fluxo — plano 16 *)
-goto_stmt      = "goto" IDENT ( "if" expression )? ";" ;
-label_stmt     = "label" IDENT ";" ;
-
 (* compile time — plano 18 *)
 throw_expr     = "throw" expression ;
 
@@ -329,16 +331,8 @@ primitivo se chama `Str` desde a 0.2.
 A repetição de **grupo** (`(Identifier:a Type:b)*`) existe para itens compostos e é
 o que evita inventar categorias sob medida para cada macro.
 
-Rótulos são `IDENT` comuns. **A proposta original escrevia `$end`**, que não lexa:
-identificadores são `[A-Za-z_][A-Za-z0-9_]*` (spec §7).
-
-`goto ... if ...` é **uma produção só**, não um `if` pós-fixo disponível em outros
-lugares: se `@if` vai ser construído a partir de `goto`, o salto condicional não pode
-depender de `if`.
-
-O salto pode ir **para trás** (Q24), desde que o rótulo esteja no mesmo escopo ou num
-que o contenha, dentro da mesma função. É o que viabiliza `@while` — e o que acaba
-com a terminação por construção da 0.2.
+`goto`/`label` saíram desta seção: estão implementados (M6) e vivem em A.1, junto
+dos demais statements.
 
 ---
 
@@ -361,11 +355,19 @@ com a terminação por construção da 0.2.
 ## A.12 Palavras reservadas
 
 ```text
-def  fn  type  enum  return  true  false  if  else  match
+def  fn  type  enum  return  true  false  if  else  match  goto
 ```
 
-A proposta de macros acrescenta `macro`, `constraint`, `expand`, `goto`, `label` e
-`throw`. **Nada sai:** `if` e `match` continuam construções do compilador (Q22), e
+`label` **não** é reservada: é palavra-chave **contextual**, só reconhecida quando
+inicia um statement e vem seguida de um identificador. Reservá-la quebraria
+programa válido — o exemplo da própria spec §13 usa `label` como nome de campo
+(`type<Label: Str, ...> { label: Str; }`) — e a ambiguidade não existe, porque dois
+identificadores seguidos nunca formam expressão. `goto` é reservada de verdade:
+ninguém a usa como nome, e reservá-la é o que permite dizer "esperado um rótulo"
+em vez de deixar a linha virar uma expressão malformada.
+
+A proposta de macros acrescenta `macro`, `constraint`, `expand` e `throw`.
+**Nada sai:** `if` e `match` continuam construções do compilador (Q22), e
 `match` é reaproveitada dentro de `macro`, onde inicia uma regra — sem ambiguidade,
 porque ali só pode ser isso.
 

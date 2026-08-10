@@ -26,6 +26,7 @@ public sealed class Lexer
         ["if"] = TokenKind.IfKeyword,
         ["else"] = TokenKind.ElseKeyword,
         ["match"] = TokenKind.MatchKeyword,
+        ["goto"] = TokenKind.GotoKeyword,
     };
 
     private readonly SourceText _source;

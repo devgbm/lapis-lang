@@ -25,6 +25,21 @@ public sealed class TypeChecker
     private readonly Dictionary<int, LapisType> _nodeTypes = [];
     private readonly Dictionary<int, Resolution> _resolutions = [];
     private readonly Stack<FunctionContext> _functions = new();
+
+    /// <summary>
+    /// Rótulos visíveis no ponto corrente, um item por grupo de joins aninhado.
+    /// Vive fora do <see cref="Scope"/> porque rótulos são um espaço de nomes
+    /// separado do de valores: <c>label x</c> e <c>def x</c> convivem.
+    /// </summary>
+    private List<ImmutableArray<string>> _labelGroups = [];
+
+    /// <summary>
+    /// Rótulos de funções que envolvem a corrente. Não estão em escopo — um salto
+    /// não atravessa fronteira de função —, mas saber que existem é o que separa
+    /// "esse rótulo não existe" de "esse rótulo é de outra função".
+    /// </summary>
+    private readonly HashSet<string> _enclosingFunctionLabels = new(StringComparer.Ordinal);
+
     private PreludeScope? _prelude;
     private int _nextBindingId;
 
@@ -108,6 +123,9 @@ public sealed class TypeChecker
             CoreMatch n => CheckMatch(n, scope),
             CoreTypeDef n => CheckTypeDef(n, scope),
             CoreConstruct n => CheckConstruct(n, scope),
+            CoreGoto n => CheckGoto(n),
+            CoreGotoIf n => CheckGotoIf(n, scope),
+            CoreLabeled n => CheckLabeled(n, scope),
             _ => throw InternalCompilerException.Unreachable(node, node.Span),
         };
 
@@ -178,8 +196,12 @@ public sealed class TypeChecker
 
         var valueReturns = ReturnAnalysis.DefinitelyReturns(node.Value);
 
-        // Código após um `return` no mesmo encadeamento é inalcançável.
-        if (valueReturns && node.Body is not CoreLiteral { Value: ConstUnit })
+        // Código após um `return` no mesmo encadeamento é inalcançável — exceto o
+        // salto implícito que fecha um segmento: depois dele vem um `label`, que é
+        // alcançável por salto.
+        if (valueReturns
+            && node.Body is not CoreLiteral { Value: ConstUnit }
+            && node.Body is not CoreGoto { IsImplicit: true })
         {
             _diagnostics.ReportWarning(
                 DiagnosticCodes.UnreachableAfterReturn, node.Body.Span, "código inalcançável após 'return'");
@@ -261,6 +283,12 @@ public sealed class TypeChecker
 
         _functions.Push(new FunctionContext(returnType));
 
+        // Um `label` é local à função, como `return`: os grupos de fora saem de
+        // escopo aqui e só voltam quando o corpo termina.
+        var outerGroups = _labelGroups;
+        var hidden = outerGroups.SelectMany(g => g).Where(_enclosingFunctionLabels.Add).ToList();
+        _labelGroups = [];
+
         try
         {
             CheckExpression(node.Body, inner);
@@ -268,6 +296,8 @@ public sealed class TypeChecker
         finally
         {
             _functions.Pop();
+            _labelGroups = outerGroups;
+            _enclosingFunctionLabels.ExceptWith(hidden);
         }
 
         // Spec §12: função Void pode cair no fim do corpo; as demais, não.
@@ -651,6 +681,131 @@ public sealed class TypeChecker
         }
 
         return joined;
+    }
+
+    // ------------------------------------------------------------ saltos
+
+    /// <summary>
+    /// <c>Never</c>: nada depois de um salto executa, e o tipo bottom já se propaga
+    /// por <c>Let</c>, <c>If</c>, <c>Binary</c> e <c>Call</c> desde o M1 — é o mesmo
+    /// mecanismo de <c>return</c> (Q13), sem regra nova.
+    /// </summary>
+    private LapisType CheckGoto(CoreGoto node)
+    {
+        ResolveLabel(node.Label, node.LabelSpan);
+        return NeverType.Instance;
+    }
+
+    /// <summary>
+    /// <c>Void</c>, não <c>Never</c>: quando a condição é falsa, a execução segue.
+    /// </summary>
+    private LapisType CheckGotoIf(CoreGotoIf node, Scope scope)
+    {
+        ResolveLabel(node.Label, node.LabelSpan);
+
+        var conditionType = CheckExpression(node.Condition, scope);
+
+        if (conditionType is not PrimitiveType { Kind: PrimitiveKind.Bool }
+            and not ErrorType and not NeverType)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.ConditionMustBeBool,
+                node.Condition.Span,
+                $"condição de 'goto' deve ser Bool, encontrado {conditionType.ToDisplayString()}");
+        }
+
+        return PrimitiveType.Void;
+    }
+
+    /// <summary>
+    /// O tipo do grupo é a junção da entrada com os corpos dos joins: são os
+    /// caminhos por onde o valor pode sair.
+    ///
+    /// Os rótulos entram em escopo <b>antes</b> de checar a entrada e continuam
+    /// visíveis dentro dos joins — é o que permite o salto para trás e o salto de
+    /// um join para outro.
+    /// </summary>
+    private LapisType CheckLabeled(CoreLabeled node, Scope scope)
+    {
+        ReportDuplicateLabels(node);
+
+        _labelGroups.Add([.. node.Joins.Select(j => j.Name)]);
+
+        LapisType type;
+
+        try
+        {
+            type = CheckExpression(node.Entry, scope.Child());
+
+            foreach (var join in node.Joins)
+            {
+                var bodyType = CheckExpression(join.Body, scope.Child());
+                var joined = TypeRelations.Join(type, bodyType);
+
+                if (joined is null)
+                {
+                    _diagnostics.ReportError(
+                        DiagnosticCodes.IncompatibleBranches,
+                        join.Span,
+                        $"os caminhos do rótulo têm tipos incompatíveis: {type.ToDisplayString()} "
+                        + $"e {bodyType.ToDisplayString()}");
+                    return ErrorType.Instance;
+                }
+
+                type = joined;
+            }
+        }
+        finally
+        {
+            _labelGroups.RemoveAt(_labelGroups.Count - 1);
+        }
+
+        return type;
+    }
+
+    private void ReportDuplicateLabels(CoreLabeled node)
+    {
+        var seen = new Dictionary<string, CoreJoin>(StringComparer.Ordinal);
+
+        foreach (var join in node.Joins)
+        {
+            if (seen.TryGetValue(join.Name, out var previous))
+            {
+                _diagnostics.ReportError(
+                    DiagnosticCodes.DuplicateLabel,
+                    join.NameSpan,
+                    $"o rótulo '{join.Name}' já foi declarado neste bloco",
+                    new DiagnosticNote("declaração anterior", previous.NameSpan));
+            }
+            else
+            {
+                seen[join.Name] = join;
+            }
+        }
+    }
+
+    private void ResolveLabel(string label, SourceSpan span)
+    {
+        foreach (var group in _labelGroups)
+        {
+            if (group.Contains(label))
+            {
+                return;
+            }
+        }
+
+        if (_enclosingFunctionLabels.Contains(label))
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.LabelOutOfScope,
+                span,
+                $"o rótulo '{label}' pertence a uma função externa",
+                new DiagnosticNote("um salto não atravessa fronteira de função, assim como 'return'"));
+            return;
+        }
+
+        _diagnostics.ReportError(
+            DiagnosticCodes.UnknownLabel, span, $"o rótulo '{label}' não existe");
     }
 
     private LapisType CheckBinary(CoreBinary node, Scope scope)

@@ -26,6 +26,7 @@ public enum TokenKind
     IfKeyword,
     ElseKeyword,
     MatchKeyword,
+    GotoKeyword,
 
     // delimitadores
     OpenParen,
@@ -111,6 +112,7 @@ public static class TokenKindExtensions
         TokenKind.IfKeyword => "'if'",
         TokenKind.ElseKeyword => "'else'",
         TokenKind.MatchKeyword => "'match'",
+        TokenKind.GotoKeyword => "'goto'",
         TokenKind.OpenParen => "'('",
         TokenKind.CloseParen => "')'",
         TokenKind.OpenBrace => "'{'",

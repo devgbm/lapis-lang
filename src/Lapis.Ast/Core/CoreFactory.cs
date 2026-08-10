@@ -89,6 +89,15 @@ public sealed class CoreFactory
         SourceSpan typeNameSpan) =>
         new(Next(), span, typeName, typeArguments, fields) { TypeNameSpan = typeNameSpan };
 
+    public CoreGoto Goto(SourceSpan span, string label, SourceSpan labelSpan, bool isImplicit = false) =>
+        new(Next(), span, label) { LabelSpan = labelSpan, IsImplicit = isImplicit };
+
+    public CoreGotoIf GotoIf(SourceSpan span, string label, CoreExpr condition, SourceSpan labelSpan) =>
+        new(Next(), span, label, condition) { LabelSpan = labelSpan };
+
+    public CoreLabeled Labeled(SourceSpan span, CoreExpr entry, ImmutableArray<CoreJoin> joins) =>
+        new(Next(), span, entry, joins);
+
     public CoreProgram Program(CoreExpr body) => new(body, _nextNodeId);
 
     private int Next() => _nextNodeId++;

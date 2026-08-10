@@ -67,6 +67,20 @@ LapisLang capaz de não terminar — o evaluator aborta com `LAP0303`.
 É também a demonstração mais forte da tese: **um laço, que em qualquer outra
 linguagem é trabalho de compilador, aqui é seis linhas de `prelude.ls`.**
 
+> ⚠️ **Bloqueado desde o M6.** A expansão acima está sintaticamente correta e vai
+> executar — mas o laço **não avança**. Bindings são imutáveis e o corpo de um join
+> roda no ambiente do grupo, o mesmo em toda volta: `condition` vale o mesmo em
+> todas as iterações, então `@while` ou não roda, ou roda até o orçamento de saltos
+> acabar. Nunca itera "o número certo de vezes".
+>
+> Não é defeito de `goto`: é o resto da linguagem. Antes deste plano é preciso
+> escolher um caminho — **join com parâmetros** (`label L(x: Int)` / `goto L(x+1)`,
+> a forma da literatura, que mantém tudo imutável), **mutação** (`var`), ou **laço
+> por recursão** (derruba a Q8). A comparação está na spec de macros §10.6 e no
+> plano 16.
+>
+> `@unless` (§20.1) não é afetado: ele só salta para frente.
+
 ### 20.3 Por que `@if` e `@match` ficaram de fora
 
 A parte deste plano que vale ser lida com atenção, porque é uma decisão revertida
@@ -117,7 +131,8 @@ seria projetar no escuro.
 
 ### Por que `@while` entra e `@foreach` não
 
-`@while` precisa só de `goto` para trás, que o M6 entrega. `@foreach` precisa de um
+`@while` precisa só de `goto` para trás, que o M6 entrega — mas veja o aviso em
+§20.2: o M6 entregou o salto, e não o progresso. `@foreach` precisa de um
 protocolo de iteração sobre coleções — `length` mais índice, ou um iterador — que a
 0.2 não define. É trabalho de biblioteca, não de macro.
 
