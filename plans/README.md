@@ -60,6 +60,19 @@ critérios de conclusão satisfeitos.
 | 14 | [Partial Evaluator — análise e BCE](14-partial-evaluator-analysis-and-bce.md) | `Lapis.PartialEvaluator` | M8 |
 | 15 | [Ferramentas de pesquisa e tracing](15-research-tooling-and-tracing.md) | `Lapis.Cli` | M8 |
 
+### Metaprogramação (proposta)
+
+Especificação: [`../spec/lapislang-macros-0.1.md`](../spec/lapislang-macros-0.1.md).
+Ver Q19–Q22 no [Apêndice C](appendix-c-decisions.md) — quatro decisões aguardando o autor.
+
+| # | Plano | Projeto | Milestone |
+|---|---|---|---|
+| 16 | [`goto` e `label`](16-goto-and-labels.md) | `Lapis.Ast` … `Lapis.Evaluator` | M10 |
+| 17 | [Macro engine](17-macro-engine.md) | `Lapis.Macros` | M11 |
+| 18 | [`constraint`, `throw` e contexto](18-compile-time-evaluation.md) | `Lapis.Macros` + `Lapis.Cli` | M12 |
+| 19 | [Reflection](19-reflection.md) | `Lapis.Runtime` + `Lapis.TypeChecker` | M13 |
+| 20 | [Macros de controle e retirada de `If`/`Match`](20-macro-prelude.md) | `prelude.ls` | M14 |
+
 ### Apêndices normativos
 
 | Apêndice | Conteúdo |
@@ -85,6 +98,20 @@ critérios de conclusão satisfeitos.
 | **M7** | PE especialização | beta reduction, inlining, especialização de funções | 13 |
 | **M8** | PE análise | range analysis, bounds-check elimination, `lapis pe --trace` | 14, 15 |
 | **M9** | Equivalência | property-based: `eval(P,S) ≡ eval(PE(P,S),S)` | 11, 14 |
+| **M10** | `goto`/`label` | controle de fluxo explícito; `GotoForm_EquivalentToIf` verde | 16 |
+| **M11** | Macro engine | `@unless`, `@square`, `@foreach` expandindo; `lapis expand` | 17 |
+| **M12** | Compile time | `@post` com deduplicação de rota; `throw` e contexto | 18 |
+| **M13** | Reflection | `reflect(Color).variants` nas duas fases | 19 |
+| **M14** | Macros de controle | `@if`/`@match` no prelude; retirada **condicional** de `If`/`Match` | 20 |
+
+**Sobre a posição de M10–M14.** Estão depois do partial evaluator por uma razão
+prática: os planos 12–14 estão escritos contra `If` e `Match`, e trazer
+`goto`/`label` antes obrigaria a reescrevê-los contra o CFG.
+
+O contra-argumento é real e vale registrar: o plano 14 (bounds-check elimination)
+**quer** um CFG, e o M10 o entrega. Antecipar o M10 para antes do M6 é defensável —
+custa a reescrita dos planos 12–14 e economiza fazê-la duas vezes. É decisão do
+autor; a ordem acima é recomendação, não dependência técnica.
 
 **M1 é o marco crítico.** Nada de partial evaluation antes de M1 estar estável
 (spec §58, §60).
@@ -105,6 +132,8 @@ critérios de conclusão satisfeitos.
              11                                     (M5)
               ↓
         12 → 13 → 14 → 15                           (M6–M9)
+              ↓
+        16 → 17 → 18 → 19 → 20                      (M10–M14)
 ```
 
 Observação sobre a ordem da spec: a spec §43–§52 sugere construir o evaluator
@@ -156,8 +185,18 @@ spec**. O registro completo, com justificativa e consequências, está no
 | Q17 | função literal como argumento genérico colide com tipo de função | Só escrevível em posição de expressão; em posição de tipo, `fn(Int) Int` é um tipo |
 | Q18 | o que pode ser argumento const? | O que for resolvível em compilação. Um parâmetro const **é** constante e pode ser repassado, como constante simbólica |
 
-**Nenhuma lacuna segue aguardando decisão.** A spec foi atualizada de acordo — hoje
-está na **0.2.3**, com o changelog de cada decisão no topo do arquivo.
+**Nenhuma lacuna da 0.2 segue aguardando decisão.** A spec foi atualizada de acordo —
+hoje está na **0.2.3**, com o changelog de cada decisão no topo do arquivo.
+
+A proposta de metaprogramação abriu quatro novas, todas registradas no apêndice C e
+**aguardando o autor**:
+
+| # | Lacuna | Recomendação |
+|---|---|---|
+| Q19 | como se declara uma macro | `def x = macro ...`, por §2 — mas macro não é valor |
+| Q20 | `@match` custa `enumTag`/`enumPayload` | aceitar: 5 estruturas de C# saem, 2 nativas entram |
+| Q21 | que linguagem roda em `constraint` | a própria, no mesmo evaluator |
+| Q22 | `if`/`match` deixam de ser keywords? | decidido só depois dos 6 portões do plano 20 |
 
 ---
 

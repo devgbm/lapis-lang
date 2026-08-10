@@ -23,6 +23,10 @@ implementação.
 | Q16 | statements que terminam em bloco dispensam `;` | ✅ decidido · implementado |
 | Q17 | função literal como argumento genérico só em posição de expressão | ✅ decidido · implementado |
 | Q18 | argumento const tem de ser resolvível em tempo de compilação | ✅ decidido · implementado |
+| Q19 | macro declarada por `def x = macro ...` | ⏳ aguardando |
+| Q20 | `@match` exige `enumTag`/`enumPayload` — a conta de "runtime mínimo" | ⏳ aguardando |
+| Q21 | `constraint` roda na própria LapisLang, no mesmo evaluator | 🟡 proposto |
+| Q22 | `if`/`match` deixam de ser keywords quando `@if`/`@match` funcionarem | ⏳ aguardando |
 
 **A spec 0.2 precisa ser atualizada** em quatro pontos por causa destas decisões:
 §15/§16/§22 (variantes qualificadas), §44 (tokens `!`, `&&`, `\|\|`), §14/§24
@@ -477,6 +481,114 @@ conhecida da regra, e o PE do M6 a fecha sem mudar nada aqui.
 construído dentro de um corpo genérico carrega o argumento simbólico
 (`Boxed<Int, N>`) nos seus `TypeArguments`. Isso não afeta igualdade nem
 formatação, que olham definição e campos; quem fecha esses tipos é o PE.
+
+---
+
+## Q19 ⏳ — Como se declara uma macro
+
+**Problema.** A proposta de macros escrevia `macro unless match ... expand { };` —
+uma declaração nomeada. A 0.2 §2 é categórica: *"não existem declarações nomeadas
+específicas para funções, tipos ou enums"*, e *"a forma única de introduzir um nome
+é `def name = expression;`"*.
+
+**Proposta.** `def unless = macro match ... expand { ... };`, como `fn`, `type` e
+`enum`. Uma regra só para o idioma inteiro, e escopo, sombreamento e diagnósticos
+de `def` valem de graça.
+
+**A ressalva honesta.** Uma macro **não é um valor de runtime**: `print(m)` sobre
+uma macro não faz sentido. O tipo dela seria `MacroType`, interno de compile time, e
+usá-la em posição de valor seria `LAP0510`. Não é conceito novo — é o mesmo
+tratamento que `MetaType` já dá a `type`/`enum` — mas é uma assimetria real entre
+"o que `def` liga" e "o que é valor".
+
+**Alternativa.** Manter `macro nome ...` como declaração à parte, aceitando a exceção
+ao §2. Mais honesto quanto à natureza não-valor da macro, menos uniforme.
+
+**Recomendação:** `def x = macro ...`. **Precisa de confirmação do autor**, porque é
+sintaxe visível em todo programa que declarar macro.
+
+---
+
+## Q20 ⏳ — `@match` custa duas nativas; vale a pena?
+
+**Problema.** Para `@match` ser macro, ele precisa de duas primitivas que
+`goto`/`label` não dão: `enumTag(valor)` e `enumPayload(valor, índice)`. O
+comentário em `CoreNodes.cs` rejeitou exatamente isso no M3:
+
+> desugará-lo exigiria primitivas `enum_tag` e `enum_payload`, aumentando o
+> runtime — contra a spec §58 ("runtime mínimo")
+
+**A conta, agora com os dois lados:**
+
+| Sai | Entra |
+|---|---|
+| `CoreMatch`, `CorePattern` e família | `enumTag` |
+| `TryMatch` do evaluator | `enumPayload` |
+| `MatchCoverage` e a exaustividade do checker | |
+| `CoreIf` | |
+
+Cinco estruturas de C# contra duas nativas. **A conta favorece as macros.**
+
+**O obstáculo que decide o cronograma.** O tipo de `enumPayload` depende da
+variante: em `Result.Ok(v)`, `v` é `T`; em `Result.Err(e)`, `e` é `E`. Uma
+assinatura `fn(Any, Int) Any` perderia isso, e um `@match` expandido seria **menos**
+tipado que o `Match` de hoje — o oposto do objetivo.
+
+A saída é `enumPayload` ser intrínseco do checker, com tipo derivado da variante
+testada no caminho de controle. Isso exige que o checker ganhe **noção de fluxo**, e
+o checker de hoje é uma travessia única dirigida por sintaxe (§47).
+
+**Recomendação:** aceitar as duas nativas, e tratar o refinamento por fluxo como o
+trabalho real do M14 — não como detalhe. **Precisa de confirmação**, porque reverte
+uma decisão tomada no M3.
+
+---
+
+## Q21 🟡 — `constraint` roda na própria LapisLang
+
+**Problema.** Que linguagem roda dentro de `constraint`? Uma linguagem de macro
+separada (como `macro_rules!` do Rust) ou a própria linguagem?
+
+**Decisão.** A própria, no **mesmo evaluator** do plano 08. O que muda entre as
+fases é só o ambiente: nativas e escopo.
+
+**Justificativa.** O princípio §58.3 diz que o evaluator é a implementação de
+referência da semântica. Uma segunda linguagem precisaria de segundo lexer, parser,
+checker e evaluator, todos com o mesmo dever de correção, e a divergência entre as
+duas seria fonte permanente de bugs.
+
+**Consequência boa:** o partial evaluator do M6–M9 roda em `constraint` também,
+porque é o mesmo Core. Uma constraint cara pode ser especializada pela mesma máquina
+que especializa o programa.
+
+**Consequência a administrar:** `Lapis.Macros` passaria a depender de `TypeChecker` e
+`Evaluator`, fechando um ciclo. A saída é a mesma do plano 09 (`PreludeScope` dado no
+Runtime, `PreludeLoader` carga no Cli): `Lapis.Macros` declara uma interface
+`IConstraintRunner` e o `Lapis.Cli` a implementa.
+
+---
+
+## Q22 ⏳ — `if` e `match` deixam de ser palavras reservadas?
+
+**Problema.** Se `@if` e `@match` funcionarem, `if`/`match` viram macros do prelude e
+deixam de ser keywords. Todo programa passa a escrever `@if`.
+
+**É o ponto de maior impacto ergonômico de toda a proposta**, e vale destacá-lo em
+vez de deixá-lo implícito num plano.
+
+| A favor | Contra |
+|---|---|
+| a Core encolhe de 19 para 16 nós | todo programa fica mais verboso |
+| a análise de fluxo entende **uma** forma de controle | `@if` é estranho para quem vem de C |
+| `@while` vira `prelude.ls`, não trabalho de compilador | os exemplos da spec 0.2 precisam ser reescritos |
+| `if`/`match` viram nomes sombreáveis, como `Result` | |
+
+**Decisão do autor, já registrada:** `If` e `Match` **permanecem** na Core até que
+`@if` e `@match` estejam funcionais. O plano 20 §20.5 transforma isso em critério de
+saída objetivo — seis portões, todos verdes, ou os nós ficam.
+
+O que **ainda** precisa de decisão é o passo seguinte: quando os portões passarem,
+retira-se de fato? Ou as duas formas coexistem, com `if` como açúcar de `@if`?
 
 ---
 

@@ -7,6 +7,10 @@
 **Paradigma:** expression-oriented, statically typed, functional-oriented
 **Objetivo:** pesquisa de avaliação e partial evaluation
 
+> **Extensão em proposta:** [`lapislang-macros-0.1.md`](lapislang-macros-0.1.md) —
+> macros, reflection e `goto`/`label`. Não faz parte da 0.2; as decisões que ela
+> ainda precisa estão em Q19–Q22 do apêndice C.
+>
 > Changelog 0.2.2 → 0.2.3 — decisões do autor sobre as lacunas Q16, Q17 e Q18.
 >
 > - **Todo argumento const tem de ser resolvível em tempo de compilação** (Q18), e só isso: um literal, um `def` ligado a um literal, ou o parâmetro const de um genérico envolvente. Um valor de execução nunca serve. Seção §13.
