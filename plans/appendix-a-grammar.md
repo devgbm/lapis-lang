@@ -126,8 +126,7 @@ type_expr      = "type" generic_params? "{" field_decl* "}" ;
 field_decl     = IDENT ":" type ";" ;
 
 enum_expr      = "enum" generic_params? "{" ( variant ( "," variant )* ","? )? "}" ;
-variant        = IDENT ( "(" payload ( "," payload )* ")" )? ;
-payload        = ( IDENT ":" )? type ;      (* nome opcional — Q23 *)
+variant        = IDENT ( "(" type ( "," type )* ")" )? ;
 ```
 
 O tipo de retorno de `fn` é opcional; ausente ⇒ `Void` (spec §6).
@@ -315,10 +314,6 @@ label_stmt     = "label" IDENT ";" ;
 (* compile time — plano 18 *)
 throw_expr     = "throw" expression ;
 
-(* braço de @match — plano 20; sem `=>`, sem padrão.
-   Nome distinto do `match_arm` de §A.4, que sai com a keyword `match` (Q22). *)
-macro_match_arm = ( variant_path | literal | "_" ) block ;
-variant_path    = IDENT "." IDENT ;
 ```
 
 `macro_tokens` **não é uma produção da gramática**: a invocação é delimitada por
@@ -328,13 +323,11 @@ de macros — "macros definem sua própria sintaxe": `@foreach user in users { }
 parseia com a gramática da linguagem, e não deveria.
 
 Categorias de captura: `Expression`, `Statement`, `Block`, `Type`, `Identifier`,
-`Literal`, `Int`, `Float`, `Str`, `Bool`, `Pattern`. **A proposta original usava
-`String`**; o primitivo se chama `Str` desde a 0.2.
+`Literal`, `Int`, `Float`, `Str`, `Bool`. **A proposta original usava `String`**; o
+primitivo se chama `Str` desde a 0.2.
 
-`Pattern` captura o cabeçalho de um braço — `Enum.Variante`, um literal ou `_` — e
-existe porque as categorias primitivas não o cobrem: `_` não é expressão. A
-repetição de **grupo** (`(Pattern:a Block:b)*`) é o que evita inventar uma categoria
-`MatchArm` privilegiada só para `@match`.
+A repetição de **grupo** (`(Identifier:a Type:b)*`) existe para itens compostos e é
+o que evita inventar categorias sob medida para cada macro.
 
 Rótulos são `IDENT` comuns. **A proposta original escrevia `$end`**, que não lexa:
 identificadores são `[A-Za-z_][A-Za-z0-9_]*` (spec §7).
@@ -372,19 +365,13 @@ def  fn  type  enum  return  true  false  if  else  match
 ```
 
 A proposta de macros acrescenta `macro`, `constraint`, `expand`, `goto`, `label` e
-`throw`, e **remove `match`** (Q22): `match` vira macro do prelude, e a palavra passa
-a ser usada só dentro de `macro`, onde inicia uma regra.
+`throw`. **Nada sai:** `if` e `match` continuam construções do compilador (Q22), e
+`match` é reaproveitada dentro de `macro`, onde inicia uma regra — sem ambiguidade,
+porque ali só pode ser isso.
 
-`if` **continua reservada**, mas só dentro de `goto ... if ...` — o salto
-condicional a partir do qual `@if`, `@while` e `@match` são construídos; derivá-lo
-do próprio `if` seria circular.
+`if` aparece também em `goto ... if ...`, o salto condicional a partir do qual
+`@unless` e `@while` são construídos.
 
-Saldo: entram seis, sai uma.
-
-**Carga nomeada (Q23).** `variant` passa a aceitar `Ok(value: T)` além de `Ok(T)`. O
-nome é opcional e só é exigido para ler a carga por campo (`result.value`); todo
-programa 0.2 continua válido. Nomes de carga são únicos dentro do enum
-(`LAP0523`), porque é o campo que determina a variante.
 
 `Int`, `Float`, `Bool`, `Str`, `Void`, `Result`, `IndexError`, `Option`, `print`,
 `array_length` **não** são reservadas — são bindings do prelude ou nomes

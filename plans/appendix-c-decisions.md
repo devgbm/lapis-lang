@@ -24,11 +24,10 @@ implementação.
 | Q17 | função literal como argumento genérico só em posição de expressão | ✅ decidido · implementado |
 | Q18 | argumento const tem de ser resolvível em tempo de compilação | ✅ decidido · implementado |
 | Q19 | macro é declaração nomeada, não valor ligado por `def` | ✅ decidido |
-| Q20 | `@match` compara variantes; sem `enumTag`/`enumPayload` | ✅ decidido |
+| Q20 | `@match` compara variantes; sem `enumTag`/`enumPayload` | 🅿️ estacionada com `@match` |
 | Q21 | `constraint` roda na própria LapisLang, no mesmo evaluator | ✅ decidido |
-| Q22 | `if`, `while` e `match` viram macros do prelude | ✅ decidido |
-| Q23 | como a carga de uma variante é lida sem desestruturação | ✅ decidido |
-| Q25 | mecanismo que garante a variante no acesso à carga | 🟡 proposto |
+| Q22 | `if` e `match` **continuam** no compilador; `@while` entra no prelude | ✅ decidido |
+| Q23 | construção de linguagem para ler carga de variante com segurança | ⏳ adiada, com requisito escrito |
 | Q24 | `goto` pode saltar para trás; fim da terminação por construção | ✅ decidido |
 
 **A spec 0.2 precisa ser atualizada** em quatro pontos por causa destas decisões:
@@ -523,7 +522,7 @@ porque `@log` e `log` nunca se confundem. Usar uma macro em posição de valor �
 
 ---
 
-## Q20 ✅ — `@match` compara variantes, e não custa nativa nenhuma
+## Q20 🅿️ — `@match` compara variantes (estacionada junto com `@match`)
 
 **Problema.** Para `@match` ser macro, ele precisa de duas primitivas que
 `goto`/`label` não dão: `enumTag(valor)` e `enumPayload(valor, índice)`. O
@@ -565,9 +564,11 @@ A única adição é uma regra de tipo estreita: comparar um valor de enum com u
 `r == Result.Ok` tem tipo `Bool`. Uma regra e uma linha no evaluator, contra duas
 nativas e uma análise de fluxo.
 
-**O que a decisão custa** está em Q23: a ligação de carga (`Result.Ok(value) => ...`)
-deixa de existir, e `examples/result.ls` não é expressável sem uma resposta para
-ela.
+**O que a decisão custa** foi o que a estacionou. A ligação de carga
+(`Result.Ok(value) => ...`) deixa de existir, e nenhuma das saídas examinadas em Q23
+se sustentou. `@match` saiu do escopo, e esta decisão fica guardada: **quando ele
+voltar, a comparação por variante continua sendo a forma certa de despachar.** O que
+falta não é o despacho — é ler a carga.
 
 ---
 
@@ -595,69 +596,78 @@ Runtime, `PreludeLoader` carga no Cli): `Lapis.Macros` declara uma interface
 
 ---
 
-## Q22 ✅ — `if`, `while` e `match` viram macros do prelude
+## Q22 ✅ — `if` e `match` continuam no compilador
 
-**Problema.** Se `@if` e `@match` funcionarem, `if`/`match` viram macros do prelude e
-deixam de ser keywords. Todo programa passa a escrever `@if`.
+**Problema.** Se `@if` e `@match` funcionarem, `if`/`match` viram macros do prelude
+e deixam de ser keywords. Todo programa passa a escrever `@if`.
 
-**É o ponto de maior impacto ergonômico de toda a proposta**, e vale destacá-lo em
-vez de deixá-lo implícito num plano.
+**Primeira decisão do autor:** sim, viram prelude.
 
-| A favor | Contra |
-|---|---|
-| a Core encolhe de 19 para 16 nós | todo programa fica mais verboso |
-| a análise de fluxo entende **uma** forma de controle | `@if` é estranho para quem vem de C |
-| `@while` vira `prelude.ls`, não trabalho de compilador | os exemplos da spec 0.2 precisam ser reescritos |
-| `if`/`match` viram nomes sombreáveis, como `Result` | |
+**Decisão final, depois da análise de Q23:** **não.** `if` e `match` permanecem
+construções do compilador; entram no prelude apenas construções que a linguagem
+**não** tem — `@unless` e `@while`.
 
-**✅ Decidido pelo autor:** `if`, `while` e `match` viram macros do prelude.
-`match` deixa de ser palavra reservada.
+**O que mudou entre as duas.** `@if` sozinho é trivial. `@match` precisa ler a carga
+de uma variante, e as três saídas examinadas caíram (Q23). O padrão comum:
+**extrair carga com segurança é problema de linguagem, não de macro** — uma macro
+transforma sintaxe, e não tem como estabelecer que um valor é da variante `Ok` no
+ponto do acesso.
 
-**O token `if` sobrevive** — mas só dentro de `goto ... if ...`, o salto condicional
-a partir do qual as três são construídas. Derivá-lo do próprio `if` seria circular.
-O saldo de palavras reservadas é praticamente neutro: entram `macro`, `constraint`,
-`expand`, `goto`, `label` e `throw`; sai `match`.
+**E `@if` sem `@match` é pior que nenhum dos dois:** metade do controle vira prelude
+e metade fica no compilador, e a análise de fluxo do plano 14 passa a ter **duas**
+formas a entender em vez de uma. O ganho declarado — "uma forma só de controle" —
+some se a substituição for parcial.
 
-A retirada continua **gated** pelos portões do plano 20 §20.5 — e um deles agora é
-Q23, porque sem ligação de carga `Match` não pode sair inteiro.
+**Consequências:**
+
+- `if` e `match` seguem palavras reservadas; `CoreIf` e `CoreMatch` seguem na Core;
+- a desestruturação por padrão (`Result.Ok(value) => ...`) segue sendo como se lê
+  uma carga;
+- o saldo de palavras reservadas passa a ser **só de entrada**: `macro`,
+  `constraint`, `expand`, `goto`, `label`, `throw`. Nada sai;
+- o plano 20 deixa de retirar nada, e nenhum programa existente muda de
+  comportamento.
+
+**Volta à mesa** quando Q23 tiver resposta.
 
 ---
 
-## Q23 ✅ — A carga é um campo do escrutinado
+## Q23 ⏳ — Construção para ler carga de variante com segurança
 
-**Problema.** Q20 decidiu que `@match` compara variantes e não desestrutura. Isso
-elimina `enumTag`/`enumPayload` — mas eliminaria junto a forma de ler a carga, e
-`examples/result.ls` deixaria de ser expressável.
+**Problema.** Para `@match` ser macro, é preciso ler a carga de uma variante fora do
+`match` da Core. Três saídas foram examinadas, e **as três caíram**:
 
-**✅ Decidido pelo autor.** O braço nomeia só a variante; a carga é **campo do
-escrutinado**:
+| Saída | Por que caiu |
+|---|---|
+| `enumTag`/`enumPayload` como nativas | o tipo da carga depende da variante; `fn(Any, Int) Any` tornaria `@match` **menos** tipado que o `Match` de hoje |
+| Carga como campo (`result.value`), com nome na declaração | o **tipo** sai fácil — o nome do campo determina a variante —, mas nada garante que a variante seja a certa: `r.value` sobre um `Err` é indefensável, e §30 proíbe exceção de runtime |
+| Campo + análise de dominância sobre o grafo de `Labeled` | funciona, e a análise até se paga (é a mesma do plano 14, para bounds-check elimination) — mas fazer a segurança de uma construção **básica** depender de análise de fluxo é peso demais para o que se ganha |
 
-```c
-@match result {
-    Result.Ok  { return result.value },
-    Result.Err { return result.error }
-}
-```
+O padrão comum às três é o mesmo, e é o achado que fechou a questão:
 
-**Por que é a resposta certa:** a carga cai na **máquina de campos que o M3 já
-construiu** para `type`. Ler `result.value` é a mesma operação que ler `user.name` —
-mesma resolução, mesmo `FieldResolution`, mesmo caminho no evaluator. Zero primitiva
-nova.
+> **Extrair carga com segurança é problema de linguagem, não de macro.**
 
-**Duas consequências que a decisão traz junto:**
+Uma macro transforma sintaxe. Ela não tem como estabelecer que um valor é da
+variante `Ok` no ponto do acesso — isso é papel de uma construção da linguagem, com
+regra de tipo própria.
 
-1. **A carga precisa de nome na declaração**, como um `type`:
-   ```c
-   def Result = enum<T, E> { Ok(value: T), Err(error: E) };
-   ```
-   O nome é opcional — `Ok(T)` continua válido e apenas não é legível por campo —,
-   então nenhum programa 0.2 quebra. O prelude passa a nomear as cargas de `Result`
-   e `Option`.
+**✅ Decidido pelo autor: adiar, e resolver com uma palavra reservada.** A
+funcionalidade será atacada criando uma construção própria para acessar a carga com
+segurança. `if` e `match` continuam no compilador até lá (Q22).
 
-2. **Nomes de carga são únicos dentro do enum** (`LAP0523`). É o que faz o campo
-   determinar a variante sozinho: `result.value` só pode ser `Ok`. Com isso o
-   **tipo** do acesso sai sem análise de fluxo — só a **segurança** precisa dela,
-   que é Q25.
+**O requisito, sem projetar a solução:**
+
+- entregar o **tipo** da carga, derivado da variante nomeada no ponto do acesso;
+- entregar a **garantia** de que a variante é aquela, sem depender de análise de
+  fluxo;
+- ter caminho definido quando não é — sem exceção de runtime (§30, Q9).
+
+Especificar a forma antes de precisar dela seria projetar no escuro. O que está
+registrado é o requisito e o que **não** funciona — que é a parte cara de descobrir.
+
+**Quando houver resposta**, a conta de §58.2 fecha: saem `CoreMatch`, `CorePattern`
+e família, o `TryMatch` do evaluator e a máquina de exaustividade; entra uma
+construção só. E Q20 sai do estacionamento.
 
 ---
 
@@ -686,44 +696,6 @@ recursão.
 
 **O que não se perde:** a pilha de C#. Um salto para trás é mais uma volta do laço
 que consome completions no evaluator, não uma chamada recursiva.
-
----
-
-## Q25 🟡 — Como o checker garante a variante no acesso à carga
-
-**Problema.** `result.value` tem tipo conhecido (Q23). Falta a outra metade:
-garantir que a variante *seja* `Ok` ali. Fora de um braço o acesso é indefensável:
-
-```c
-def r: Result<Int, IndexError> = xs[0];
-print(r.value);        // e se for Err?
-```
-
-Não decidir isso deixa a linguagem numa de duas posições ruins: acesso inseguro
-(contra o princípio §58.3 — exceção de C# é bug da implementação), ou acesso
-devolvendo `Result` aninhado, que anula a ergonomia que Q23 comprou.
-
-**Proposta.** O acesso só é aceito quando **dominado** por uma comparação que fixa a
-variante. É uma consulta de dominância sobre o grafo que `Labeled` já expõe: um join
-alcançado **apenas** por arestas guardadas por `x == E.V` pode assumir a variante.
-Não sendo, é `LAP0524`.
-
-**Por que não é custo extra.** É a mesma análise que o plano 14 constrói para
-*bounds-check elimination* — a pesquisa que motiva o projeto. Ela chega um milestone
-antes e se paga duas vezes: elimina a checagem de limites **e** torna a leitura de
-carga segura.
-
-**Alternativas, se ela escorregar:**
-
-| Alternativa | Custo | Problema |
-|---|---|---|
-| `r.value` devolve `Result<T, VariantError>` | zero análise | anula a ergonomia de Q23; exige match dentro do match |
-| aceitar sem checar, abortando em runtime | zero análise | contraria §30 e §58.3 |
-| manter `Match` da Core para casos com carga | zero trabalho | contraria Q22 pela metade |
-
-**A terceira é o comportamento padrão enquanto a análise não existir** — e é o
-critério de saída que o autor já estabeleceu: o nó só sai quando o substituto
-estiver funcional.
 
 ---
 

@@ -18,7 +18,7 @@ somente leitura**, disponíveis tanto em compile time quanto em runtime.
 fontes de metadados (sintática e resolvida).
 
 **Fica de fora:** reflection sobre funções (`FunctionInfo`) e sobre AST — a
-primeira versão prioriza `type` e `enum`, que é o que `@match` precisa.
+primeira versão prioriza `type` e `enum`.
 
 ---
 
@@ -36,15 +36,10 @@ def FieldInfo = type {
     typeName: Str;
 };
 
-def PayloadInfo = type {
-    name: Str;          // vazio quando a carga não é nomeada
-    typeName: Str;
-};
-
 def VariantInfo = type {
     name: Str;
     arity: Int;
-    payload: PayloadInfo[];
+    payloadTypeNames: Str[];
 };
 
 def TypeInfo = type {
@@ -95,7 +90,7 @@ if (IsReflectIntrinsic(node.Callee))
 ```
 
 Um `MetaType` **genérico não instanciado** é aceito: `reflect(Result)` descreve a
-declaração, com `typeParameterNames = ["T", "E"]`. É o que `@match` precisa —
+declaração, com `typeParameterNames = ["T", "E"]`. É o que uma `constraint` precisa —
 nomes e aridade de variantes, não os argumentos de uma instância.
 
 ### 19.3 As duas fontes de metadados
@@ -110,9 +105,8 @@ checker ainda não rodou. `reflect(Box)` numa `constraint` devolve
 `typeName: "T"` para o campo `value`; em runtime, depois de `Box<Int>`, devolve
 `"Int"`.
 
-Para o que a expansão precisa — **nomes de variantes e aridade de carga** — a
-informação sintática basta, e é exatamente por isso que `@match` funciona
-(plano 20).
+Para o que uma `constraint` precisa — **nomes de variantes, campos e aridade** — a
+informação sintática basta.
 
 **Tabela de declarações**, construída antes da expansão:
 
@@ -181,7 +175,7 @@ uma tabela que outra fase construiu. Quem transforma é macro.
 
 ### Por que não `FunctionInfo` já
 
-`@match` não precisa, e funções trazem perguntas que tipos não trazem: reflectir uma
+Não há consumidor ainda, e funções trazem perguntas que tipos não trazem: reflectir uma
 closure expõe o ambiente capturado? Uma função genérica reflete a assinatura
 genérica ou a instanciada? Perguntas boas, sem consumidor ainda.
 
@@ -198,8 +192,7 @@ genérica ou a instanciada? Perguntas boas, sem consumidor ainda.
 | `Reflect_Struct_HasNoVariants` | `reflect(User).variants` | vazio |
 | `Reflect_Enum_Variants` | `reflect(Color).variants` | `Red`, `Green`, `Blue` |
 | `Reflect_Enum_VariantArity` | `Result` | `Ok` e `Err` com aridade 1 |
-| `Reflect_Enum_PayloadNames` | `Result` | `Ok.payload[0].name == "value"` |
-| `Reflect_Enum_UnnamedPayload` | `enum { Wrap(Int) }` | nome vazio |
+| `Reflect_Enum_PayloadTypes` | `Result` | `Ok.payloadTypeNames == ["T"]` |
 | `Reflect_Generic_TypeParameterNames` | `reflect(Result)` | `["T", "E"]` |
 | `Reflect_Kind` | struct vs. enum | `TypeKind.Struct` / `TypeKind.Enum` |
 

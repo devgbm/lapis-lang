@@ -42,7 +42,7 @@ lapis hello.ls
 | M5 — suíte de conformidade | ⏳ próximo |
 | M6 — `goto`/`label` | 📋 planejado |
 | M7 — PE núcleo (folding e propagação) | 📋 planejado |
-| M8–M11 — macros, `constraint`, reflection, `@if`/`@while`/`@match` | 📋 planejado |
+| M8–M11 — macros, `constraint`, reflection, `@unless`/`@while` | 📋 planejado |
 | M12–M14 — PE: especialização, análise, equivalência | ⬜ |
 
 **890 testes** cobrindo lexer, parser, desugar, type checker, runtime, evaluator

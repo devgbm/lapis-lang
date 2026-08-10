@@ -9,8 +9,8 @@
 
 ## Objetivo
 
-Dar à linguagem a primitiva de controle de fluxo sobre a qual `@if`, `@unless` e
-`@match` serão construídos (plano 20), sem quebrar nada do que existe.
+Dar à linguagem a primitiva de controle de fluxo sobre a qual `@unless` e `@while`
+serão construídos (plano 20), sem quebrar nada do que existe.
 
 Este plano é **independente do sistema de macros**. `goto`/`label` são úteis
 sozinhos: eles dão ao partial evaluator um grafo de fluxo explícito, que é o que
@@ -32,9 +32,7 @@ os planos 14 (bounds-check elimination) e 15 (tracing) querem analisar.
 - salto entre funções — um `label` é local à função, como `return`;
 - salto para dentro de um bloco ainda não aberto;
 - remoção de `If`/`Match` da Core — plano 20, e só quando as macros funcionarem;
-- construção de um CFG explícito — plano 14 já o quer, e passa a tê-lo de graça;
-  o mesmo grafo é o que o plano 20 usa para garantir a variante no acesso à carga
-  (Q25).
+- construção de um CFG explícito — plano 14 já o quer, e passa a tê-lo de graça.
 
 ---
 
@@ -74,8 +72,8 @@ sealed class CoreLabeled : CoreExpr
 ```
 
 **19 nós.** `CoreGotoIf` é primitivo em vez de desugarar para `If(cond, Goto, ())`
-porque o objetivo declarado é construir `@if` a partir de `goto`: derivar o salto
-condicional do `if` seria circular.
+porque uma macro de controle construída sobre `goto` não pode depender do `if` da
+linguagem — a construção seria circular.
 
 ### 16.3 Lexer e parser
 
@@ -283,8 +281,9 @@ expressão elimina a pergunta sem precisar de regra.
 | `Goto_TerminatesOrAborts` | property: todo programa termina **ou** reporta `LAP0303` |
 | `GotoForm_EquivalentToIf` | property: `if c { a }` ≡ a forma com `goto`, mesma saída |
 
-O último é o teste que **justifica o plano 20**: se as duas formas não são
-observacionalmente iguais, `@if` não pode substituir `If`.
+O último não é formalidade: ele é a evidência de que `goto`/`label` expressam o
+mesmo que `If` expressa. Sem ela, nenhuma macro de controle construída sobre `goto`
+merece confiança.
 
 ---
 
@@ -292,7 +291,7 @@ observacionalmente iguais, `@if` não pode substituir `If`.
 
 - [ ] `goto`/`label` parseiam, desugaram, tipam e executam.
 - [ ] Round-trip do `CoreSourcePrinter` verde para programas com rótulos.
-- [ ] `GotoForm_EquivalentToIf` verde — pré-requisito do plano 20.
+- [ ] `GotoForm_EquivalentToIf` verde — evidência de que `goto` expressa o mesmo que `If`.
 - [ ] Salto fora de escopo e rótulo desconhecido rejeitados com código e span.
 - [ ] Laço infinito abortando com `LAP0303`, sem stack overflow.
 - [ ] `ReturnAnalysis` cobrindo `Labeled`.

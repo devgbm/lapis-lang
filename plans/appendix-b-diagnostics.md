@@ -220,12 +220,11 @@ apontando o ponto dentro da macro.
 | `LAP0520` | error | rótulo `{0}` não existe nesta função |
 | `LAP0521` | error | rótulo `{0}` está fora do escopo deste `goto` |
 | `LAP0522` | error | rótulo `{0}` declarado mais de uma vez |
-| `LAP0523` | error | nome de carga `{0}` repetido em `{1}`: cada nome identifica uma variante |
-| `LAP0524` | error | `{0}` só é legível onde a variante `{1}` está garantida |
 
-`LAP0523` é o que faz o campo determinar a variante sozinho (`result.value` só pode
-ser `Ok`), e com isso o **tipo** do acesso não precisa de análise de fluxo — só a
-**segurança** precisa, e é `LAP0524` quem a cobra.
+`LAP0523` em diante estão **livres**: foram esboçados para a leitura de carga por
+campo, que Q23 descartou por ser insegura. Como nunca chegaram a ser publicados —
+não há implementação —, os números voltam ao pool. A construção que Q23 vier a
+definir alocará os seus.
 
 Salto **para trás é permitido** (decisão do autor): é o que viabiliza `@while`.
 `LAP0521` cobre só o salto que sai do escopo — para outra função, ou para dentro de

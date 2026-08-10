@@ -63,8 +63,10 @@ critérios de conclusão satisfeitos.
 ### Metaprogramação (proposta)
 
 Especificação: [`../spec/lapislang-macros-0.1.md`](../spec/lapislang-macros-0.1.md).
-Q19–Q24 decididas; segue em proposta apenas **Q25** (o mecanismo que garante a
-variante no acesso à carga) no [Apêndice C](appendix-c-decisions.md).
+Q19, Q21, Q22 e Q24 decididas. **Q23** — a construção de linguagem para ler carga de
+variante com segurança — foi **adiada**, e com ela `@if`/`@match` saíram do escopo:
+`if` e `match` continuam no compilador. Detalhes no
+[Apêndice C](appendix-c-decisions.md).
 
 | # | Plano | Projeto | Milestone |
 |---|---|---|---|
@@ -72,7 +74,7 @@ variante no acesso à carga) no [Apêndice C](appendix-c-decisions.md).
 | 17 | [Macro engine](17-macro-engine.md) | `Lapis.Macros` | M8 |
 | 18 | [`constraint`, `throw` e contexto](18-compile-time-evaluation.md) | `Lapis.Macros` + `Lapis.Cli` | M9 |
 | 19 | [Reflection](19-reflection.md) | `Lapis.Runtime` + `Lapis.TypeChecker` | M10 |
-| 20 | [Macros de controle e retirada de `If`/`Match`](20-macro-prelude.md) | `prelude.ls` | M11 |
+| 20 | [Macros de controle no prelude](20-macro-prelude.md) | `prelude.ls` | M11 |
 
 ### Apêndices normativos
 
@@ -100,7 +102,7 @@ variante no acesso à carga) no [Apêndice C](appendix-c-decisions.md).
 | **M8** | Macro engine | `@unless`, `@square` expandindo; `lapis expand` | 17 |
 | **M9** | Compile time | `@post` com deduplicação de rota; `throw` e contexto | 18 |
 | **M10** | Reflection | `reflect(Color).variants` nas duas fases | 19 |
-| **M11** | Macros de controle | `@if`/`@while`/`@match` no prelude; retirada **condicional** de `Match` | 20 |
+| **M11** | Macros de controle | `@unless` e `@while` no prelude; **nada é retirado** da Core | 20 |
 | **M12** | PE especialização | beta reduction, inlining, especialização de funções | 13 |
 | **M13** | PE análise | range analysis, bounds-check elimination, `lapis pe --trace` | 14, 15 |
 | **M14** | Equivalência | property-based: `eval(P,S) ≡ eval(PE(P,S),S)` | 11, 14 |
@@ -198,21 +200,21 @@ spec**. O registro completo, com justificativa e consequências, está no
 **Nenhuma lacuna da 0.2 segue aguardando decisão.** A spec foi atualizada de acordo —
 hoje está na **0.2.3**, com o changelog de cada decisão no topo do arquivo.
 
-A proposta de metaprogramação abriu sete novas. **Seis decididas:**
+A proposta de metaprogramação abriu seis novas:
 
 | # | Lacuna | Decisão |
 |---|---|---|
 | Q19 | como se declara uma macro | `macro <nome> match ... expand { };` — macro não é first-class citizen |
-| Q20 | `@match` desestrutura carga? | Não: compara variantes. Dissolve a necessidade de `enumTag`/`enumPayload` |
+| Q20 | `@match` desestrutura carga? | Não: compara variantes. 🅿️ estacionada junto com `@match` |
 | Q21 | que linguagem roda em `constraint` | a própria, no mesmo evaluator |
-| Q22 | `if`/`while`/`match` viram prelude? | Sim. `match` deixa de ser keyword; `if` sobrevive só em `goto ... if ...` |
-| Q23 | como a carga é lida | **campo do escrutinado**: `result.value`. Cai na máquina de campos do M3 |
+| Q22 | `if`/`match` viram prelude? | **Não.** Continuam no compilador; só entram construções que a linguagem não tem |
+| Q23 | como se lê a carga de uma variante | ⏳ adiada: exige construção de linguagem própria, com o requisito escrito |
 | Q24 | `goto` salta para trás? | Sim, sem sair do escopo. Traz `@while` — e o fim da terminação por construção |
 
-**Em proposta, uma:** **Q25** — o mecanismo que garante a variante no ponto do
-acesso. A spec adota análise de dominância sobre o grafo de `Labeled`, que é a mesma
-que o plano 14 constrói para bounds-check elimination. Enquanto ela não existir,
-`Match` permanece na Core para os casos com carga.
+**Q23 é o nó.** Três saídas foram examinadas e caíram, e o padrão comum às três é o
+achado que fechou a questão: **extrair carga com segurança é problema de linguagem,
+não de macro.** Enquanto ela não tiver resposta, `if`, `match` e a desestruturação
+por padrão ficam exatamente onde estão.
 
 ---
 

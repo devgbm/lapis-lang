@@ -184,7 +184,7 @@ Cada expansão recebe uma **marca** (um inteiro crescente). Um identificador que
 aparece no `expand` e **não** vem de captura é renomeado para `nome@marca`.
 
 ```c
-def example = macro
+macro example
     match Block:body
     expand { def temp = 10; body; };
 ```
