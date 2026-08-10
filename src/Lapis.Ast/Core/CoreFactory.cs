@@ -33,11 +33,18 @@ public sealed class CoreFactory
 
     public CoreLambda Lambda(
         SourceSpan span,
+        ImmutableArray<CoreTypeParameter> typeParameters,
         ImmutableArray<CoreParameter> parameters,
         TypeSyntax? returnType,
         CoreExpr body,
         SourceSpan bodyEndSpan) =>
-        new(Next(), span, parameters, returnType, body) { BodyEndSpan = bodyEndSpan };
+        new(Next(), span, typeParameters, parameters, returnType, body) { BodyEndSpan = bodyEndSpan };
+
+    public CoreInstantiate Instantiate(
+        SourceSpan span,
+        CoreExpr target,
+        ImmutableArray<CoreGenericArgument> arguments) =>
+        new(Next(), span, target, arguments);
 
     public CoreCall Call(SourceSpan span, CoreExpr callee, ImmutableArray<CoreExpr> arguments) =>
         new(Next(), span, callee, arguments);
@@ -61,7 +68,7 @@ public sealed class CoreFactory
 
     public CoreEnumDef EnumDef(
         SourceSpan span,
-        ImmutableArray<string> typeParameters,
+        ImmutableArray<CoreTypeParameter> typeParameters,
         ImmutableArray<CoreVariantDecl> variants) =>
         new(Next(), span, typeParameters, variants);
 
@@ -70,14 +77,14 @@ public sealed class CoreFactory
 
     public CoreTypeDef TypeDef(
         SourceSpan span,
-        ImmutableArray<string> typeParameters,
+        ImmutableArray<CoreTypeParameter> typeParameters,
         ImmutableArray<CoreFieldDecl> fields) =>
         new(Next(), span, typeParameters, fields);
 
     public CoreConstruct Construct(
         SourceSpan span,
         string typeName,
-        ImmutableArray<TypeSyntax> typeArguments,
+        ImmutableArray<CoreGenericArgument> typeArguments,
         ImmutableArray<CoreFieldInit> fields,
         SourceSpan typeNameSpan) =>
         new(Next(), span, typeName, typeArguments, fields) { TypeNameSpan = typeNameSpan };

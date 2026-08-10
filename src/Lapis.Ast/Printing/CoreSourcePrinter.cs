@@ -29,6 +29,39 @@ public static class CoreSourcePrinter
     }
 
     /// <summary>
+    /// A mesma expressão numa linha só. Usada para argumentos genéricos, que vivem
+    /// dentro de <c>&lt;...&gt;</c> e ficariam ilegíveis quebrados em várias linhas —
+    /// e para a identidade estrutural de um argumento de função
+    /// (<see cref="Types.ConstFunctionArgument"/>), que assim não depende da
+    /// indentação do ponto onde a função foi escrita.
+    /// </summary>
+    public static string PrintExpressionCompact(CoreExpr expression)
+    {
+        var text = PrintExpression(expression);
+        var builder = new StringBuilder(text.Length);
+        var pendingSpace = false;
+
+        foreach (var c in text)
+        {
+            if (char.IsWhiteSpace(c))
+            {
+                pendingSpace = builder.Length > 0;
+                continue;
+            }
+
+            if (pendingSpace)
+            {
+                builder.Append(' ');
+                pendingSpace = false;
+            }
+
+            builder.Append(c);
+        }
+
+        return builder.ToString();
+    }
+
+    /// <summary>
     /// Imprime uma cadeia de <c>Let</c> como statements. No topo, sem chaves; em
     /// posição de expressão, o chamador já abriu o bloco.
     /// </summary>
@@ -121,6 +154,11 @@ public static class CoreSourcePrinter
                 }
 
                 builder.Append(')');
+                break;
+
+            case CoreInstantiate n:
+                Print(builder, n.Target, indent, Precedence.Postfix);
+                builder.Append(CoreSExprPrinter.PrintGenericArguments(n.Arguments));
                 break;
 
             case CoreReturn n:
@@ -222,16 +260,9 @@ public static class CoreSourcePrinter
                 break;
 
             case CoreConstruct n:
-                builder.Append('.').Append(n.TypeName);
-
-                if (!n.TypeArguments.IsDefaultOrEmpty)
-                {
-                    builder.Append('<')
-                           .Append(string.Join(", ", n.TypeArguments.Select(SurfaceSExprPrinter.PrintType)))
-                           .Append('>');
-                }
-
-                builder.Append(" { ");
+                builder.Append('.').Append(n.TypeName)
+                       .Append(CoreSExprPrinter.PrintGenericArguments(n.TypeArguments))
+                       .Append(" { ");
 
                 for (var i = 0; i < n.Fields.Length; i++)
                 {
@@ -254,14 +285,7 @@ public static class CoreSourcePrinter
 
     private static void PrintTypeDef(StringBuilder builder, CoreTypeDef node, int indent)
     {
-        builder.Append("type");
-
-        if (!node.TypeParameters.IsDefaultOrEmpty)
-        {
-            builder.Append('<').Append(string.Join(", ", node.TypeParameters)).Append('>');
-        }
-
-        builder.AppendLine(" {");
+        builder.Append("type").Append(CoreSExprPrinter.PrintTypeParameters(node.TypeParameters)).AppendLine(" {");
 
         foreach (var field in node.Fields)
         {
@@ -276,14 +300,7 @@ public static class CoreSourcePrinter
 
     private static void PrintEnumDef(StringBuilder builder, CoreEnumDef node, int indent)
     {
-        builder.Append("enum");
-
-        if (!node.TypeParameters.IsDefaultOrEmpty)
-        {
-            builder.Append('<').Append(string.Join(", ", node.TypeParameters)).Append('>');
-        }
-
-        builder.AppendLine(" {");
+        builder.Append("enum").Append(CoreSExprPrinter.PrintTypeParameters(node.TypeParameters)).AppendLine(" {");
 
         for (var i = 0; i < node.Variants.Length; i++)
         {
@@ -307,7 +324,7 @@ public static class CoreSourcePrinter
 
     private static void PrintLambda(StringBuilder builder, CoreLambda lambda, int indent)
     {
-        builder.Append("fn(");
+        builder.Append("fn").Append(CoreSExprPrinter.PrintTypeParameters(lambda.TypeParameters)).Append('(');
 
         for (var i = 0; i < lambda.Parameters.Length; i++)
         {

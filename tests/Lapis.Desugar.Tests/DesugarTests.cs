@@ -397,7 +397,47 @@ public sealed class ArrayAndEnumDesugarTests : DesugarTestBase
         var program = Compile("def R = enum<T, E> { Ok(T), Err(E) };");
 
         var enumDef = program.Body.ShouldBeOfType<CoreLet>().Value.ShouldBeOfType<CoreEnumDef>();
-        enumDef.TypeParameters.ShouldBe(["T", "E"]);
+        enumDef.TypeParameters.Select(p => p.Name).ShouldBe(["T", "E"]);
         enumDef.Variants.Select(v => v.Name).ShouldBe(["Ok", "Err"]);
+    }
+
+    [Fact]
+    public void Lambda_PreservesGenericParameters()
+    {
+        var program = Compile("def f = fn<T, N: Int>(v: T) T { return v; };");
+
+        var lambda = program.Body.ShouldBeOfType<CoreLet>().Value.ShouldBeOfType<CoreLambda>();
+        lambda.TypeParameters.Select(p => p.Name).ShouldBe(["T", "N"]);
+        lambda.TypeParameters.Select(p => p.IsConst).ShouldBe([false, true]);
+    }
+
+    /// <summary>
+    /// A instanciação <b>não</b> é achatada na chamada: o partial evaluator
+    /// precisa ver onde cada especialização foi pedida (plano 02 §2.2).
+    /// </summary>
+    [Fact]
+    public void Instantiate_SurvivesTheDesugar()
+    {
+        var program = Compile("f<Int>(1);");
+
+        var call = program.Body.ShouldBeOfType<CoreLet>().Value.ShouldBeOfType<CoreCall>();
+        var instantiate = call.Callee.ShouldBeOfType<CoreInstantiate>();
+
+        instantiate.Target.ShouldBeOfType<CoreVariable>().Name.ShouldBe("f");
+        instantiate.Arguments.ShouldHaveSingleItem().ShouldBeOfType<CoreNameArgument>().Name.ShouldBe("Int");
+    }
+
+    /// <summary>Um argumento const literal chega à Core como expressão, não como tipo.</summary>
+    [Fact]
+    public void Instantiate_ConstArgumentBecomesAnExpression()
+    {
+        var program = Compile("f<3>(1);");
+
+        var instantiate = program.Body.ShouldBeOfType<CoreLet>().Value
+            .ShouldBeOfType<CoreCall>().Callee.ShouldBeOfType<CoreInstantiate>();
+
+        instantiate.Arguments.ShouldHaveSingleItem()
+            .ShouldBeOfType<CoreValueArgument>()
+            .Value.ShouldBeOfType<CoreLiteral>().Value.ShouldBe(new ConstInt(3));
     }
 }

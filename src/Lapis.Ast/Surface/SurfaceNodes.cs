@@ -61,11 +61,24 @@ public sealed record IfExpression(Expression Condition, BlockExpression Then, Ex
 public sealed record ReturnExpression(Expression? Value) : Expression;
 
 public sealed record FunctionExpression(
+    ImmutableArray<TypeParameterSyntax> TypeParameters,
     ImmutableArray<ParameterSyntax> Parameters,
     TypeSyntax? ReturnType,
     BlockExpression Body) : Expression;
 
 public sealed record CallExpression(Expression Callee, ImmutableArray<Expression> Arguments) : Expression;
+
+/// <summary>
+/// <c>alvo&lt;A, B&gt;</c> — aplicação de argumentos genéricos em posição de
+/// expressão: <c>identity&lt;Int&gt;</c>, <c>Result&lt;Int, IndexError&gt;</c>.
+///
+/// É pós-fixo e independente da chamada, o que faz uma única produção cobrir os
+/// dois usos: <c>identity&lt;Int&gt;(10)</c> é <c>Call(Instantiate(...))</c> e
+/// <c>Result&lt;Int, E&gt;.Ok(1)</c> é <c>Call(Member(Instantiate(...)))</c>.
+/// </summary>
+public sealed record InstantiateExpression(
+    Expression Target,
+    ImmutableArray<GenericArgumentSyntax> Arguments) : Expression;
 
 public sealed record ArrayExpression(ImmutableArray<Expression> Elements) : Expression;
 
@@ -102,7 +115,7 @@ public sealed record TypeExpression(
 /// </summary>
 public sealed record ConstructExpression(
     string TypeName,
-    ImmutableArray<TypeSyntax> TypeArguments,
+    ImmutableArray<GenericArgumentSyntax> TypeArguments,
     ImmutableArray<FieldInitSyntax> Fields) : Expression
 {
     public required SourceSpan TypeNameSpan { get; init; }
@@ -155,13 +168,38 @@ public sealed record VariantPattern(
 
 public sealed record LiteralPattern(ConstantValue Value) : Pattern;
 
-public sealed record TypeParameterSyntax(string Name) : SurfaceNode;
+// --------------------------------------------------------------- generics
+
+/// <summary>
+/// Parâmetro genérico de uma declaração (Q1). <c>ConstType</c> ausente significa
+/// parâmetro de tipo (<c>T</c>); presente, parâmetro const (<c>N: Int</c>).
+/// </summary>
+public sealed record TypeParameterSyntax(string Name, TypeSyntax? ConstType) : SurfaceNode
+{
+    public static TypeParameterSyntax OfType(string name, SourceSpan span) =>
+        new(name, null) { Span = span };
+}
+
+/// <summary>
+/// Argumento genérico escrito no código. Sintaticamente, um argumento pode ser um
+/// tipo ou um valor — e um identificador nu é <b>os dois</b>, porque
+/// <c>Foo&lt;N&gt;</c> não diz se <c>N</c> nomeia um tipo ou uma constante.
+/// A decisão é do checker, que conhece o escopo (Apêndice A §A.7).
+/// </summary>
+public abstract record GenericArgumentSyntax : SurfaceNode;
+
+public sealed record TypeArgumentSyntax(TypeSyntax Type) : GenericArgumentSyntax;
+
+public sealed record ValueArgumentSyntax(Expression Value) : GenericArgumentSyntax;
+
+/// <summary>Um identificador nu, ainda sem decidir se é tipo ou constante.</summary>
+public sealed record NameArgumentSyntax(string Name) : GenericArgumentSyntax;
 
 // ------------------------------------------------------------ tipos (sintaxe)
 
 public abstract record TypeSyntax : SurfaceNode;
 
-public sealed record NamedTypeSyntax(string Name, ImmutableArray<TypeSyntax> Arguments) : TypeSyntax
+public sealed record NamedTypeSyntax(string Name, ImmutableArray<GenericArgumentSyntax> Arguments) : TypeSyntax
 {
     public static NamedTypeSyntax Of(string name, SourceSpan span) => new(name, []) { Span = span };
 }

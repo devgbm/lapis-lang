@@ -27,7 +27,7 @@ public sealed class TypeDefinition
     public TypeDefinition(
         string name,
         TypeDefinitionKind kind,
-        ImmutableArray<TypeParameterType> typeParameters,
+        ImmutableArray<GenericParameter> typeParameters,
         SourceSpan span)
     {
         Id = Interlocked.Increment(ref _nextId);
@@ -48,7 +48,7 @@ public sealed class TypeDefinition
 
     public TypeDefinitionKind Kind { get; }
 
-    public ImmutableArray<TypeParameterType> TypeParameters { get; }
+    public ImmutableArray<GenericParameter> TypeParameters { get; }
 
     public SourceSpan Span { get; }
 

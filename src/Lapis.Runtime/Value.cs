@@ -78,7 +78,7 @@ public sealed record EnumValue(
     TypeDefinition Definition,
     int VariantIndex,
     ImmutableArray<Value> Payload,
-    ImmutableArray<LapisType> TypeArguments) : Value
+    ImmutableArray<GenericArgument> TypeArguments) : Value
 {
     public VariantInfo Variant => Definition.Variants[VariantIndex];
 
@@ -109,7 +109,7 @@ public sealed record EnumValue(
 public sealed record StructValue(
     TypeDefinition Definition,
     ImmutableArray<Value> Fields,
-    ImmutableArray<LapisType> TypeArguments) : Value
+    ImmutableArray<GenericArgument> TypeArguments) : Value
 {
     public override LapisType Type => new NamedType(Definition, TypeArguments);
 
@@ -150,7 +150,7 @@ public sealed record VariantConstructorValue(
     TypeDefinition Definition,
     int VariantIndex,
     FunctionType Signature,
-    ImmutableArray<LapisType> TypeArguments) : Value
+    ImmutableArray<GenericArgument> TypeArguments) : Value
 {
     public override LapisType Type => Signature;
 

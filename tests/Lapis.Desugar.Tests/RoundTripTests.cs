@@ -68,6 +68,18 @@ public sealed class RoundTripTests : DesugarTestBase
     [InlineData("def u = .Box<Int> { value: 1 };")]
     [InlineData("def u = .A { inner: .B { v: 1 } };")]
     [InlineData("def v = .P { x: 1 }.x;")]
+    [InlineData("def f = fn<T>(v: T) T { return v; };")]
+    [InlineData("def f = fn<T, N: Int>(v: T) T { return v; };")]
+    [InlineData("def f = fn<Make: fn() Int>() Int { return Make(); };")]
+    [InlineData("def x = identity<Int>(10);")]
+    [InlineData("def x = f<Int, Str>(a, b);")]
+    [InlineData("def x = Result<Int, IndexError>.Ok(1);")]
+    [InlineData("def T = type<A, N: Int> { first: A; };")]
+    [InlineData("def x: FixedArray<Int, 3> = y;")]
+    [InlineData("def x: Tagged<-1> = y;")]
+    [InlineData("def x: Labeled<\"v\"> = y;")]
+    [InlineData("def t = SomeType<\"value\", 1, true, Int, fn() Int { return 1; }>;")]
+    [InlineData("def u = .Boxed<Int, 3> { value: 1 };")]
     public void PrintThenReparse_ProducesTheSameCore(string source)
     {
         var original = Print(source);

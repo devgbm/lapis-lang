@@ -91,7 +91,7 @@ public sealed class EnumParseTests : ParserTestBase
 
     [Fact]
     public void Enum_Generic() =>
-        ShouldPrintAs("enum<T, E> { Ok(T), Err(E) };", "(enum<T E> (variant Ok T) (variant Err E))");
+        ShouldPrintAs("enum<T, E> { Ok(T), Err(E) };", "(enum<T, E> (variant Ok T) (variant Err E))");
 
     [Fact]
     public void Enum_Def_FromSpecSection16()
@@ -129,7 +129,9 @@ public sealed class GenericTypeSyntaxTests : ParserTestBase
             .Statements.ShouldHaveSingleItem().ShouldBeOfType<DefStatement>();
 
         var outer = def.Annotation.ShouldBeOfType<NamedTypeSyntax>();
-        outer.Arguments.ShouldHaveSingleItem().ShouldBeOfType<NamedTypeSyntax>().Name.ShouldBe("Box");
+        outer.Arguments.ShouldHaveSingleItem()
+            .ShouldBeOfType<TypeArgumentSyntax>()
+            .Type.ShouldBeOfType<NamedTypeSyntax>().Name.ShouldBe("Box");
     }
 
     [Fact]

@@ -29,6 +29,64 @@ public sealed class EndToEndTests
         stdout.ShouldBe("6\n50\n5\n");
     }
 
+    /// <summary>
+    /// Todo exemplo declara sua saída num comentário <c>// Saída esperada:</c>, e é
+    /// essa declaração que este teste confere. Assim um exemplo desatualizado
+    /// quebra a suíte em vez de virar documentação mentirosa.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(ExampleFiles))]
+    public void Example_PrintsWhatItsHeaderPromises(string fileName)
+    {
+        var path = CliRunner.ExamplePath(fileName);
+        var expected = ExpectedOutputOf(path);
+
+        expected.ShouldNotBeEmpty($"{fileName} não declara '// Saída esperada:'");
+
+        var (exit, stdout, stderr) = CliRunner.Run(path);
+
+        exit.ShouldBe(ExitCodes.Success, stderr);
+        stdout.ShouldBe(expected);
+    }
+
+    public static TheoryData<string> ExampleFiles() =>
+        [.. Directory.EnumerateFiles(Path.Combine(RepoLayout.Root, "examples"), "*.ls")
+            .Select(Path.GetFileName)
+            .OfType<string>()
+            .Order(StringComparer.Ordinal)];
+
+    /// <summary>
+    /// Lê as linhas de saída do cabeçalho, nas duas formas em uso: na mesma linha
+    /// (<c>// Saída esperada: 30</c>) ou indentadas nas linhas seguintes.
+    /// </summary>
+    private static string ExpectedOutputOf(string path)
+    {
+        const string Marker = "// Saída esperada:";
+        var lines = File.ReadAllLines(path);
+        var index = Array.FindIndex(lines, l => l.StartsWith(Marker, StringComparison.Ordinal));
+
+        if (index < 0)
+        {
+            return string.Empty;
+        }
+
+        var inline = lines[index][Marker.Length..].Trim();
+
+        if (inline.Length > 0)
+        {
+            return inline + "\n";
+        }
+
+        var expected = new List<string>();
+
+        for (var i = index + 1; i < lines.Length && lines[i].StartsWith("//   ", StringComparison.Ordinal); i++)
+        {
+            expected.Add(lines[i]["//   ".Length..]);
+        }
+
+        return expected.Count == 0 ? string.Empty : string.Join("\n", expected) + "\n";
+    }
+
     [Fact]
     public void BareFile_IsEquivalentToRun()
     {

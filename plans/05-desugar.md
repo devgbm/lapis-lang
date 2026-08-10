@@ -255,7 +255,9 @@ Snapshots via `CoreSExprPrinter`.
 | `Desugar_Match_ReturnInArm` | `Ok(v) => return v` ⇒ `Arm(_, Return(v))` |
 | `Desugar_TypeDef_PreservesFields` | snapshot |
 | `Desugar_EnumDef_PreservesVariants` | snapshot |
-| `Desugar_GenericParams_Preserved` | `fn<T, N: Int>` ⇒ 2 params na Core |
+| `Lambda_PreservesGenericParameters` | `fn<T, N: Int>` ⇒ 2 params na Core, um const |
+| `Instantiate_SurvivesTheDesugar` | `f<Int>(1)` ⇒ `Call(Instantiate(...))`, não achatado |
+| `Instantiate_ConstArgumentBecomesAnExpression` | `f<3>(1)` ⇒ o `3` vira `CoreLiteral` |
 
 ### Spans e invariantes globais
 

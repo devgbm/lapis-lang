@@ -35,7 +35,7 @@ Uma closure em tempo de PE tem ambiente **estático**, não de runtime:
 sealed record PEClosure(
     CoreLambda Lambda,
     StaticEnvironment Captured,
-    ImmutableArray<SemanticGenericArg> GenericArguments,
+    ImmutableArray<GenericArgument> GenericArguments,
     string? OriginName)                  // para nomear a especialização
     : PEValue;
 ```
@@ -112,7 +112,7 @@ Componentes:
 sealed record SpecializationKey(
     CoreLambda Lambda,                                  // identidade da origem
     ImmutableArray<PEValue> ArgumentBindingTimes,       // Known(v) exato ou Unknown(T)
-    ImmutableArray<SemanticGenericArg> GenericArguments,
+    ImmutableArray<GenericArgument> GenericArguments,
     StaticEnvironmentFingerprint CapturedFingerprint);  // parte estática do ambiente capturado
 
 sealed class SpecializationCache

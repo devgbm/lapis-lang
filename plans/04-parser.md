@@ -21,7 +21,7 @@ sem jamais executar código (spec §36).
 | A | literais, identificadores, `def`, blocos, binários/unários, `fn`, chamada, `return`, `if`/`else`, `()` | M1 |
 | B | arrays, indexação, acesso a membro | M2 |
 | C | `type`, `enum`, `match`, construção `.Nome { }` | M3 |
-| D | generics: parâmetros e argumentos, incluindo const generics | M4 |
+| D | generics: parâmetros e argumentos, incluindo const generics | M4 ✅ |
 
 Cada fase entrega parser + testes de snapshot antes da próxima começar.
 
@@ -82,22 +82,31 @@ Consequência (spec §9): `{ print("x"); }` tem `Tail == null` ⇒ valor `Void`;
 
 Ao ver `<` em posição pós-fixa depois de uma expressão, o parser:
 
-1. `mark = tokens.Mark()`
-2. tenta parsear uma lista de argumentos genéricos até `>`;
-3. **só aceita** se o parse teve sucesso **e** o token imediatamente após `>` é
-   `(`. Caso contrário, `tokens.Reset(mark)` e `<` é tratado como operador binário.
+1. `mark = tokens.Mark()`;
+2. tenta consumir uma lista de argumentos genéricos até `>`, com os diagnósticos
+   suprimidos — a tentativa pode falhar de propósito;
+3. **aceita** se o parse teve sucesso **e** o token imediatamente após `>` é `(`,
+   é `.`, ou não pode iniciar uma expressão. Caso contrário, `tokens.Reset(mark)`
+   e `<` volta a ser o operador binário.
+
+O terceiro gatilho não é uma heurística solta: se o token seguinte não inicia
+expressão, a leitura relacional ficaria sem operando à direita e não existe. É o
+que faz `def t = SomeType<"v", 1>;` (spec §13) parsear.
 
 Consequências documentadas na gramática:
 
 - `identity<Int>(10)` ⇒ chamada genérica.
+- `Result<Int, E>.Ok(1)` ⇒ variante de enum genérico.
 - `a < b > (c)` ⇒ também vira chamada genérica. É o preço de não ter turbofish;
   o programa continua expressável como `(a < b) > (c)`. Registrado como
   limitação conhecida em [Apêndice C](appendix-c-decisions.md).
+- `a < b > c` ⇒ continua relacional: as duas leituras existem e a relacional vence.
 - Em **posição de tipo** (`x: Result<Int, IndexError>`) não há ambiguidade
   alguma: a gramática de tipos não tem operador `<`.
 
-O backtracking é limitado (nunca aninha mais de um nível de tentativa) e a
-profundidade máxima é registrada em teste para evitar regressão exponencial.
+O backtracking é limitado — a tentativa consome no máximo os tokens da lista e
+nunca reinicia — então o custo é linear no tamanho do arquivo, o que
+`Backtracking_IsLinear` trava.
 
 #### (b) ~~`if cond { ... }` vs. construção de struct~~ — resolvida por Q2
 
@@ -109,10 +118,13 @@ reconhecer `.` em posição de primária.
 
 #### (c) `fn(Int) Int` (tipo) vs. `fn(a: Int) Int { ... }` (valor)
 
-Ocorre apenas dentro de argumentos genéricos (§13 permite uma função literal como
-argumento). Discriminador: um **tipo** de função nunca tem corpo `{`. O parser
-tenta o tipo; se após o tipo de retorno vier `{`, faz `Reset` e reparseia como
-literal de função.
+Ocorre apenas dentro de argumentos genéricos **em posição de expressão** (§13
+permite uma função literal como argumento). Discriminador: um **tipo** de função
+nunca tem corpo `{`. O parser tenta o tipo; se após o tipo de retorno não vier
+`,` nem `>`, faz `Reset` e reparseia como literal de função.
+
+Em posição de **tipo**, `fn` é sempre um tipo de função e não há tentativa
+alguma — Q17 no [Apêndice C](appendix-c-decisions.md).
 
 ### 4.5 Recuperação de erro
 
@@ -227,23 +239,36 @@ Predominantemente **snapshots de AST** (spec §45), via `SurfaceSExprPrinter` +
 | `Parse_Block_NotConfusedWithConstruct` | `if p { }` — `p` é identificador, `{}` é o `then` |
 | `Parse_Construct_DotIsRequired` | `Point { x: 1 };` ⇒ erro (é `Point` seguido de bloco) |
 
-### Fase D — generics (M4)
+### Fase D — generics (M4) ✅
+
+Em `tests/Lapis.Parser.Tests/GenericsParseTests.cs`.
 
 | Teste | Fonte | Esperado |
 |---|---|---|
-| `Parse_GenericFn_Decl` | `fn<T>(v: T) T { return v; }` | um `TypeParameterSyntax` |
-| `Parse_GenericFn_ConstParam` | `fn<T, N: Int>(...)` | um type + um const param |
-| `Parse_GenericType_Decl` | `type<T> { value: T; }` | snapshot |
-| `Parse_GenericEnum_Decl` | `enum<T, E> { Ok(T), Err(E) }` | snapshot |
-| `Parse_GenericCall_Explicit` | `identity<Int>(10);` | `CallExpression` com 1 arg genérico |
-| `Parse_GenericCall_Omitted_IsCheckerError` | `identity(10);` | parseia; o erro (`LAP0290`) é do checker (Q7) |
-| `Parse_GenericCall_Multiple` | `f<Int, Str>(a, b);` | 2 args |
-| `Parse_GenericType_InAnnotation` | `x: Result<Int, IndexError>` | snapshot |
-| `Parse_GenericType_Nested` | `Box<Box<Int>>` | sem `>>`, aninhado corretamente |
-| `Parse_ConstGenericArgs_Mixed` | spec §13: `SomeType<"value", 1, true, Int, fn() Int { return 1; }>` | 5 args, tipos corretos de nó |
-| `Parse_LessThan_NotGeneric` | `a < b;` | `BinaryExpression` |
-| `Parse_LessThan_Ambiguous` | `a < b > (c);` | vira chamada genérica **e** o teste documenta isso |
-| `Parse_Generic_Backtrack_NoQuadraticBlowup` | 50 `<` seguidos | termina em < 100ms |
+| `GenericFn_Declaration` | `fn<T>(v: T) T { return v; }` | um `TypeParameterSyntax` sem `ConstType` |
+| `GenericFn_ConstParameter` | `fn<T, N: Int>(...)` | um type + um const param |
+| `GenericFn_ConstParameterOfFunctionType` | `fn<Make: fn() Int>(...)` | `ConstType` é `FunctionTypeSyntax` |
+| `GenericType_Declaration` | `type<T> { value: T; }` | snapshot |
+| `GenericType_ConstParameter` | `type<T, N: Int> { values: T[]; }` | snapshot |
+| `GenericEnum_Declaration` | `enum<T, E> { Ok(T), Err(E) }` | snapshot |
+| `TypeParameter_WithoutName_IsError` | `fn<1>(...)` | `LAP0112` |
+| `GenericCall_Explicit` | `identity<Int>(10);` | `Call(Instantiate(...))` |
+| `GenericCall_Multiple` | `f<Int, Str>(a, b);` | 2 args |
+| `GenericCall_Omitted_ParsesAsPlainCall` | `identity(10);` | parseia; o erro (`LAP0290`) é do checker (Q7) |
+| `GenericVariant_Access` | `Result<Int, IndexError>.Ok(1);` | `Call(Member(Instantiate(...)))` |
+| `ConstGenericArguments_Mixed` | spec §13: `SomeType<"value", 1, true, Int, fn() Int { return 1; }>` | 5 args, tipos corretos de nó |
+| `ConstGenericArgument_NegativeLiteral` | `Tagged<-1>` | o sinal entra no literal |
+| `FunctionArgument_TypeVersusValue` | `F<fn(Int) Int, fn(a: Int) Int { return a; }>` | tipo e valor distinguidos pelo `{` |
+| `GenericType_InAnnotation` | `x: Result<Int, IndexError>` | 2 args |
+| `ConstGenericArgument_InAnnotation` | `x: FixedArray<Int, 3>` | o `3` é um `ValueArgumentSyntax` |
+| `GenericType_Nested` | `Box<Box<Int>>` | sem `>>`, aninhado corretamente |
+| `LessThan_IsNotGeneric` | `a < b;` | `BinaryExpression` |
+| `LessThanChain_KeepsRelationalReading` | `a < b + 1;` | parse limpo |
+| `LessThanGreaterThanParen_BecomesGenericCall` | `a < b > (c);` | vira chamada genérica **e** o teste documenta isso |
+| `GreaterThanIdentifier_KeepsRelationalReading` | `(a < b) > c;` | parse limpo |
+| `FailedSpeculation_ReportsNothing` | `a < b;` | zero diagnósticos vindos da tentativa |
+| `Backtracking_IsLinear` | 50 `<` seguidos | termina em < 1s |
+| `EmptyGenericArgumentList_InTypePosition_IsError` | `x: Box<>` | `LAP0116` |
 
 ### Recuperação de erro e robustez
 
@@ -272,8 +297,8 @@ Predominantemente **snapshots de AST** (spec §45), via `SurfaceSExprPrinter` +
 
 ## Critérios de conclusão
 
-- [ ] Toda a gramática do Apêndice A implementada e coberta por snapshot.
-- [ ] `examples/hello.ls` produz o snapshot esperado (âncora do M1).
-- [ ] Os três casos de ambiguidade (§4.4) testados nos dois sentidos.
-- [ ] `Parser_NeverThrows` e `Parser_AlwaysTerminates` verdes.
-- [ ] `Lapis.Parser` não referencia `Lapis.Runtime` (teste de arquitetura).
+- [x] Toda a gramática do Apêndice A implementada e coberta por snapshot.
+- [x] `examples/hello.ls` produz o snapshot esperado (âncora do M1).
+- [x] Os três casos de ambiguidade (§4.4) testados nos dois sentidos.
+- [x] `Parser_NeverThrows` e `Parser_AlwaysTerminates` verdes.
+- [x] `Lapis.Parser` não referencia `Lapis.Runtime` (teste de arquitetura).

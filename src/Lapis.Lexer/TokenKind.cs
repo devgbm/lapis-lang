@@ -66,6 +66,34 @@ public enum TokenKind
 
 public static class TokenKindExtensions
 {
+    /// <summary>
+    /// Este token pode <b>iniciar</b> uma expressão? (Apêndice A §A.4.)
+    ///
+    /// É o que permite ao parser desempatar <c>&lt;</c> sem inventar regras: se
+    /// depois do <c>&gt;</c> vem algo que não começa expressão, a leitura
+    /// relacional está quebrada de qualquer forma e a genérica é a única possível
+    /// (Q5).
+    /// </summary>
+    public static bool CanBeginExpression(this TokenKind kind) => kind is
+        TokenKind.Identifier
+        or TokenKind.IntegerLiteral
+        or TokenKind.FloatLiteral
+        or TokenKind.StringLiteral
+        or TokenKind.TrueKeyword
+        or TokenKind.FalseKeyword
+        or TokenKind.FnKeyword
+        or TokenKind.TypeKeyword
+        or TokenKind.EnumKeyword
+        or TokenKind.MatchKeyword
+        or TokenKind.IfKeyword
+        or TokenKind.ReturnKeyword
+        or TokenKind.OpenParen
+        or TokenKind.OpenBrace
+        or TokenKind.OpenBracket
+        or TokenKind.Dot
+        or TokenKind.Minus
+        or TokenKind.Bang;
+
     /// <summary>Texto para mensagens de diagnóstico.</summary>
     public static string Describe(this TokenKind kind) => kind switch
     {

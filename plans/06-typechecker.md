@@ -28,7 +28,7 @@ O checker é responsável por três coisas que nenhuma outra fase faz:
 | A | escopos, primitivos, funções, chamadas, `if`, `return` + análise de caminhos | M1 |
 | B | arrays, indexação ⇒ `Result<T, IndexError>`, prelude | M2 |
 | C | `type`, `enum`, `match` + exaustividade, campos, variantes | M3 |
-| D | generics de tipo + inferência de 1ª ordem + const generics | M4 |
+| D | generics de tipo + const generics (sem inferência, Q7) | M4 ✅ |
 
 ---
 
@@ -180,7 +180,18 @@ Parâmetros de tipo entram no escopo como `TypeParameterType`; parâmetros const
 entram como valores do tipo declarado, utilizáveis em posição de expressão e em
 posição de argumento genérico.
 
-**Uso**: `identity<Int>(10)`, `FixedArray<Int, 3>`.
+**Uso**: `identity<Int>(10)`, `FixedArray<Int, 3>`, `Result<Int, IndexError>.Ok(1)`.
+
+`alvo<A, B>` é um nó próprio (`Instantiate`), não parte da chamada — uma única
+forma cobre função, `type` e `enum`. Sobre uma `FunctionType` genérica produz a
+assinatura substituída; sobre um `MetaType` produz o mesmo tipo com os argumentos
+aplicados, e é dele que `.Ok` extrai um construtor já instanciado.
+
+Um argumento genérico escrito como identificador nu (`Foo<N>`) é ambíguo por
+construção: só o parâmetro correspondente diz se `N` era para ser tipo ou
+constante. `GenericArguments` é o ponto único onde isso — e toda a faixa
+`LAP0290`–`LAP0295` — é decidido, compartilhado entre posição de tipo
+(`TypeResolver`) e posição de expressão (`TypeChecker`).
 
 **Verificações** (spec §26, último item):
 
@@ -192,6 +203,7 @@ posição de argumento genérico.
 | const de tipo errado (`N: Int` recebendo `"a"`) | `LAP0293` |
 | argumento const não é constante em tempo de compilação | `LAP0294` |
 | tipo genérico usado sem argumentos | `LAP0295` |
+| variante de enum genérico sem instanciar (`Result.Ok(1)`) | `LAP0298` |
 
 **Instanciação:** por substituição. `identity<Int>` produz uma `FunctionType(Int)
 Int`. `Box<Int>` produz `NamedType(Box, [TypeArg(Int)])`. O checker **não**
@@ -202,6 +214,31 @@ e essa divisão é exatamente o objeto de pesquisa do projeto.
 `identity<Int>(10)` é válido; `identity(10)` é `LAP0290`. Não há casamento de
 tipos formais contra reais — a única máquina de generics do checker é a
 substituição (`TypeSubstitution`).
+
+**Parâmetros const no corpo.** `N` é um valor do tipo declarado, visível como
+qualquer binding. Em execução, quem o liga é o nó `Instantiate`, estendendo o
+ambiente da closure.
+
+**Argumento const tem de ser resolvível em compilação (Q18).** É a regra única, e
+o que a satisfaz é: um literal, uma função literal, um `def` ligado a um dos dois
+(direta ou por cadeia de `def`s), ou um **parâmetro const** de um genérico
+envolvente. Qualquer outra coisa é `LAP0294`.
+
+O caso do parâmetro é o que não é óbvio: `N` dentro de `fn<N: Int>` *é* constante,
+porque esta mesma regra garante que ele só recebeu valor conhecido em compilação.
+Não conhecer o valor ainda o torna **simbólico**, não variável — daí
+`ConstParameterArgument`, o análogo de `TypeParameterType` no mundo dos valores.
+`BindingInfo.Constant` é onde essa informação viaja, e a substituição fecha o
+símbolo quando a instanciação de fora acontece.
+
+A lacuna conhecida é `def n = 1 + 2;`: o checker **propaga** constantes mas não as
+**dobra**, porque dobrar exigiria replicar a aritmética de `Primitives` e mantê-la
+em sincronia (spec §58). O PE do M6 fecha isso sem mudar nada aqui.
+
+**Identidade de tipo.** Argumentos const entram na identidade nominal:
+`FixedArray<Int, 3>` e `FixedArray<Int, 4>` são tipos distintos. Um argumento que
+é função literal tem identidade **estrutural**, dada pelo código-fonte
+normalizado — sem isso o tipo seria impossível de escrever duas vezes.
 
 Consequência sobre `print`: ele **não é genérico**. Sua assinatura é
 `fn(Any) Void`, com `Any` sendo um tipo top interno que nenhuma sintaxe produz.
@@ -350,7 +387,9 @@ Todo teste negativo assevera **código + span**, nunca a mensagem.
 | `Match_LiteralPattern_OnInt` | `1 => "a"` tipa; exaustividade exige `_` |
 | `Match_ArmScope_DoesNotLeak` | binding do padrão não visível fora do braço |
 
-### Generics (Fase D)
+### Generics (Fase D) ✅
+
+Em `tests/Lapis.TypeChecker.Tests/GenericsTests.cs`.
 
 | Teste | Fonte | Esperado |
 |---|---|---|
@@ -367,10 +406,29 @@ Todo teste negativo assevera **código + span**, nunca a mensagem.
 | `Const_Generic_WrongKind_TypeForConst` | `FixedArray<Int, Str>` | `LAP0292` |
 | `Const_Generic_WrongKind_ConstForType` | `FixedArray<3, 3>` | `LAP0291` |
 | `Const_Generic_WrongConstType` | `FixedArray<Int, "a">` | `LAP0293` |
-| `Const_Generic_NonConstant` | `FixedArray<Int, x>` com `x` runtime | `LAP0294` |
+| `Const_Generic_NonConstant` | `FixedArray<Int, n>` com `n = 1 + 2` | `LAP0294` — propaga, não dobra |
+| `Const_Generic_FromDefBoundToLiteral` | `def n = 3; FixedArray<Int, n>` | tipa |
+| `Const_Generic_PropagatesThroughDefChain` | `def n = 3; def m = n;` | tipa |
+| `Const_Generic_FunctionValueFromDef` | `def make = fn() Int {...}; Wrapper<make>` | tipa |
+| `Const_Generic_RuntimeValue_IsError` | parâmetro comum como argumento | `LAP0294` |
+| `ConstParameter_CanBeForwarded` | `fn<M: Int>` passando `M` a `fn<N: Int>` | tipa (Q18) |
+| `ConstParameter_CanBeForwardedToAGenericType` | `Boxed<Int, N>` dentro de `fn<N: Int>` | tipa |
+| `ConstParameter_IsClosedByInstantiation` | retorno de `make<4>` é `Boxed<Int, 4>` | `LAP0210` contra `Boxed<Int, 5>` |
+| `ConstParameter_Forwarded_MustMatchTheReceivingType` | `fn<L: Str>` passando `L` a `N: Int` | `LAP0293` |
+| `TypeParameter_IsNotAConstArgument` | `fn<T>` passando `T` a `N: Int` | `LAP0292` |
 | `Const_Generic_Missing` | `FixedArray<Int>` | `LAP0290` |
 | `Const_Generic_MixedArgs` | spec §13 `SomeType<"value",1,true,Int,fn() Int {return 1;}>` | tipa — **teste central da spec §13** |
-| `Const_Generic_FunctionValueArg` | `fn() Int { return 1; }` como argumento genérico | aceito, `ConstFunction` |
+| `Const_Generic_FunctionValueArg` | `fn() Int { return 1; }` como argumento genérico | aceito, `ConstFunctionArgument` |
+| `Const_Generic_FunctionValueArg_IsStructural` | duas funções escritas igual | mesmo tipo; corpo diferente ⇒ tipo diferente |
+| `ConstParameter_IsAValueInTheBody` | `fn<N: Int>(x: Int) Int { return x * N; }` | tipa |
+| `ConstParameter_HasItsDeclaredType` | `fn<Label: Str>() Int { return Label; }` | `LAP0270` |
+| `GenericVariant_WithoutArguments_IsError` | `Result.Ok(1)` | `LAP0298` |
+| `GenericVariant_WithArguments_Typechecks` | `Result<Int, IndexError>.Ok(1)` | `Result<Int, IndexError>` |
+| `GenericVariant_Nullary_Typechecks` | `Option<Int>.None` | `Option<Int>` |
+| `GenericVariant_PayloadIsSubstituted` | `Result<Int, IndexError>.Ok("s")` | `LAP0222` |
+| `TypeParameter_DoesNotEscapeTheDeclaration` | `T` fora da função genérica | `LAP0204` |
+| `DuplicateTypeParameter_IsError` | `fn<T, T>(...)` | `LAP0202` |
+| `Instantiating_NonGeneric_IsError` | `f<Int>(1)` com `f` não genérica | `LAP0290` |
 | `Generic_DistinctInstantiations_AreDistinctTypes` | `Box<Int>` ≠ `Box<Str>` |
 | `Generic_ConstArgs_AffectTypeIdentity` | `FixedArray<Int,3>` ≠ `FixedArray<Int,4>` |
 
@@ -389,10 +447,10 @@ Todo teste negativo assevera **código + span**, nunca a mensagem.
 
 ## Critérios de conclusão
 
-- [ ] Todos os itens da lista da spec §26 têm diagnóstico e teste.
-- [ ] `def r = [1,2,3][0];` tipa como `Result<Int, IndexError>`.
-- [ ] Análise de `return` cobrindo `if`, `match`, blocos aninhados e lambdas
+- [x] Todos os itens da lista da spec §26 têm diagnóstico e teste.
+- [x] `def r = [1,2,3][0];` tipa como `Result<Int, IndexError>`.
+- [x] Análise de `return` cobrindo `if`, `match`, blocos aninhados e lambdas
       aninhadas.
-- [ ] Exemplo de const generics da spec §13 tipando.
-- [ ] `TypedProgram` com tipo para 100% dos nós.
-- [ ] Zero cascatas: um erro de origem gera exatamente um diagnóstico.
+- [x] Exemplo de const generics da spec §13 tipando.
+- [x] `TypedProgram` com tipo para 100% dos nós.
+- [x] Zero cascatas: um erro de origem gera exatamente um diagnóstico.

@@ -37,39 +37,59 @@ lapis hello.ls
 | **M1** — `lapis hello.ls` de ponta a ponta | ✅ concluído |
 | **M2** — arrays, indexação e `Result` | ✅ concluído |
 | **M3** — `match`, tipos definidos pelo usuário | ✅ concluído |
-| M4 — generics escritos pelo programador | ⏳ próximo |
-| M5 — suíte de conformidade | ⬜ |
+| **M4** — generics escritos pelo programador | ✅ concluído |
+| M5 — suíte de conformidade | ⏳ próximo |
 | M6–M9 — partial evaluator | ⬜ |
 
-**785 testes** cobrindo lexer, parser, desugar, type checker, runtime, evaluator
+**890 testes** cobrindo lexer, parser, desugar, type checker, runtime, evaluator
 e CLI.
 
 A linguagem já roda programas de verdade: funções de primeira classe com
 closures, `return` explícito com verificação de "retorna em todos os caminhos",
 arrays com indexação segura, enums, `match` exaustivo, tipos definidos pelo
-usuário, e um prelude escrito na própria linguagem.
+usuário, generics (inclusive const generics) e um prelude escrito na própria
+linguagem.
 
 ```c
 def numbers = [10, 20, 30];
 
-def unwrapOr = fn(r: Result<Int, IndexError>, fallback: Int) Int {
+def unwrapOr = fn<T>(r: Result<T, IndexError>, fallback: T) T {
     match r {
         Result.Ok(value) => return value,
         Result.Err(error) => return fallback
     }
 };
 
-print(unwrapOr(numbers[1], 0));    // 20
-print(unwrapOr(numbers[9], 0));    // 0
+print(unwrapOr<Int>(numbers[1], 0));    // 20
+print(unwrapOr<Int>(numbers[9], 0));    // 0
 ```
 
 Indexar **sempre** devolve `Result` (spec §21): a falha aparece no tipo, e o
-acesso fora de limites nunca lança. E `match` deve ser exaustivo, porque é uma
-expressão e precisa produzir um valor em toda execução.
+acesso fora de limites nunca lança. `match` deve ser exaustivo, porque é uma
+expressão e precisa produzir um valor em toda execução. E argumentos genéricos
+são **sempre explícitos** — não há inferência na 0.2 (decisão Q7), o que mantém o
+type checker previsível e deixa a porta aberta para inferência depois.
 
-O que falta (M4 em diante): generics escritos pelo programador (`fn<T>`), const
-generics e o partial evaluator. O roteiro completo está em
-[`plans/`](plans/README.md).
+Const generics são o caso interessante para a pesquisa: `N` é conhecido no ponto
+da instanciação mesmo quando o resto só existe em execução. Um argumento const
+tem de ser resolvível em tempo de compilação — e um parâmetro const **é**
+constante, então pode ser repassado adiante como constante simbólica.
+
+```c
+def scale = fn<N: Int>(x: Int) Int {
+    return x * N;
+};
+
+def twice = fn<M: Int>(x: Int) Int {
+    return scale<M>(x) + scale<M>(x);
+};
+
+print(scale<3>(5));    // 15
+print(twice<3>(5));    // 30
+```
+
+O que falta (M5 em diante): a suíte de conformidade e o partial evaluator. O
+roteiro completo está em [`plans/`](plans/README.md).
 
 ```bash
 $ lapis examples/hello.ls

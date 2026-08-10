@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Text;
 using Lapis.Ast.Surface;
 
@@ -151,8 +152,14 @@ public static class SurfaceSExprPrinter
             case FunctionExpression n:
                 var parameters = string.Join(" ", n.Parameters.Select(p => $"({p.Name} {PrintType(p.Type)})"));
                 var returnType = n.ReturnType is null ? "Void" : PrintType(n.ReturnType);
-                Open(builder, indent, $"fn ({parameters}) {returnType}");
+                Open(builder, indent, $"fn{PrintTypeParameters(n.TypeParameters)} ({parameters}) {returnType}");
                 PrintExpression(builder, n.Body, indent + 1);
+                Close(builder, indent);
+                break;
+
+            case InstantiateExpression n:
+                Open(builder, indent, $"instantiate {PrintGenericArguments(n.Arguments)}");
+                PrintExpression(builder, n.Target, indent + 1);
                 Close(builder, indent);
                 break;
 
@@ -193,10 +200,7 @@ public static class SurfaceSExprPrinter
                 break;
 
             case EnumExpression n:
-                var typeParameters = n.TypeParameters.IsDefaultOrEmpty
-                    ? string.Empty
-                    : "<" + string.Join(" ", n.TypeParameters.Select(p => p.Name)) + ">";
-                Open(builder, indent, $"enum{typeParameters}");
+                Open(builder, indent, $"enum{PrintTypeParameters(n.TypeParameters)}");
 
                 foreach (var variant in n.Variants)
                 {
@@ -224,10 +228,7 @@ public static class SurfaceSExprPrinter
                 break;
 
             case TypeExpression n:
-                var typeParams = n.TypeParameters.IsDefaultOrEmpty
-                    ? string.Empty
-                    : "<" + string.Join(" ", n.TypeParameters.Select(p => p.Name)) + ">";
-                Open(builder, indent, $"type{typeParams}");
+                Open(builder, indent, $"type{PrintTypeParameters(n.TypeParameters)}");
 
                 foreach (var field in n.Fields)
                 {
@@ -238,10 +239,7 @@ public static class SurfaceSExprPrinter
                 break;
 
             case ConstructExpression n:
-                var typeArgs = n.TypeArguments.IsDefaultOrEmpty
-                    ? string.Empty
-                    : "<" + string.Join(", ", n.TypeArguments.Select(PrintType)) + ">";
-                Open(builder, indent, $"construct {n.TypeName}{typeArgs}");
+                Open(builder, indent, $"construct {n.TypeName}{PrintGenericArguments(n.TypeArguments)}");
 
                 foreach (var field in n.Fields)
                 {
@@ -270,10 +268,47 @@ public static class SurfaceSExprPrinter
         _ => "<?>",
     };
 
+    /// <summary>
+    /// Parâmetros genéricos de uma declaração (Q1): <c>&lt;T, N: Int&gt;</c>. Vazio
+    /// quando não há nenhum, para não poluir a saída do caso comum.
+    /// </summary>
+    public static string PrintTypeParameters(ImmutableArray<TypeParameterSyntax> parameters) =>
+        parameters.IsDefaultOrEmpty
+            ? string.Empty
+            : "<" + string.Join(", ", parameters.Select(PrintTypeParameter)) + ">";
+
+    public static string PrintTypeParameter(TypeParameterSyntax parameter) =>
+        parameter.ConstType is null ? parameter.Name : $"{parameter.Name}: {PrintType(parameter.ConstType)}";
+
+    public static string PrintGenericArguments(ImmutableArray<GenericArgumentSyntax> arguments) =>
+        arguments.IsDefaultOrEmpty
+            ? string.Empty
+            : "<" + string.Join(", ", arguments.Select(PrintGenericArgument)) + ">";
+
+    /// <summary>
+    /// Um argumento genérico impresso como <b>código-fonte</b>, e não como
+    /// S-expression: é assim que ele reaparece dentro de um tipo, e é o que mantém
+    /// a saída do <c>CoreSourcePrinter</c> re-parseável (plano 02 §2.8).
+    /// </summary>
+    public static string PrintGenericArgument(GenericArgumentSyntax argument) => argument switch
+    {
+        TypeArgumentSyntax a => PrintType(a.Type),
+        NameArgumentSyntax a => a.Name,
+        ValueArgumentSyntax { Value: IntLiteral v } => new ConstInt(v.Value).ToDisplayString(),
+        ValueArgumentSyntax { Value: FloatLiteral v } => new ConstFloat(v.Value).ToDisplayString(),
+        ValueArgumentSyntax { Value: BoolLiteral v } => new ConstBool(v.Value).ToDisplayString(),
+        ValueArgumentSyntax { Value: StrLiteral v } => new ConstStr(v.Value).ToDisplayString(),
+
+        // Uma função literal como argumento só é escrevível em posição de
+        // expressão (Q17), onde quem imprime é o CoreSourcePrinter, a partir da
+        // Core. Aqui ela nunca chega.
+        _ => "<?>",
+    };
+
     public static string PrintType(TypeSyntax type) => type switch
     {
         NamedTypeSyntax { Arguments.IsDefaultOrEmpty: true } n => n.Name,
-        NamedTypeSyntax n => $"{n.Name}<{string.Join(", ", n.Arguments.Select(PrintType))}>",
+        NamedTypeSyntax n => $"{n.Name}{PrintGenericArguments(n.Arguments)}",
         ArrayTypeSyntax n => PrintType(n.Element) + "[]",
         FunctionTypeSyntax n =>
             $"fn({string.Join(", ", n.Parameters.Select(PrintType))}) {PrintType(n.Return)}",

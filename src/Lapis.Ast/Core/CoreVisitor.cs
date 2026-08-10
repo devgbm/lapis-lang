@@ -12,6 +12,7 @@ public abstract class CoreVisitor<TResult>
         CoreLet n => VisitLet(n),
         CoreLambda n => VisitLambda(n),
         CoreCall n => VisitCall(n),
+        CoreInstantiate n => VisitInstantiate(n),
         CoreReturn n => VisitReturn(n),
         CoreIf n => VisitIf(n),
         CoreBinary n => VisitBinary(n),
@@ -35,6 +36,8 @@ public abstract class CoreVisitor<TResult>
     protected abstract TResult VisitLambda(CoreLambda node);
 
     protected abstract TResult VisitCall(CoreCall node);
+
+    protected abstract TResult VisitInstantiate(CoreInstantiate node);
 
     protected abstract TResult VisitReturn(CoreReturn node);
 
@@ -89,6 +92,19 @@ public abstract class CoreWalker
                 foreach (var argument in n.Arguments)
                 {
                     Visit(argument);
+                }
+
+                break;
+
+            case CoreInstantiate n:
+                Visit(n.Target);
+
+                foreach (var argument in n.Arguments)
+                {
+                    if (argument is CoreValueArgument value)
+                    {
+                        Visit(value.Value);
+                    }
                 }
 
                 break;
@@ -150,6 +166,14 @@ public abstract class CoreWalker
                 break;
 
             case CoreConstruct n:
+                foreach (var argument in n.TypeArguments)
+                {
+                    if (argument is CoreValueArgument value)
+                    {
+                        Visit(value.Value);
+                    }
+                }
+
                 foreach (var field in n.Fields)
                 {
                     Visit(field.Value);

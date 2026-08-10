@@ -72,7 +72,7 @@ unary          = ( "-" | "!" ) unary
 postfix        = primary postfix_op* ;
 
 postfix_op     = "(" arg_list? ")"                      (* chamada *)
-               | generic_args "(" arg_list? ")"         (* chamada genérica — ver A.7 *)
+               | generic_args                           (* instanciação — ver A.7 *)
                | "[" expression "]"                     (* indexação *)
                | "." IDENT ;                            (* acesso a membro *)
 
@@ -158,9 +158,17 @@ generic_param  = IDENT                       (* parâmetro de tipo:   <T>      *
 
 generic_args   = "<" generic_arg ( "," generic_arg )* ","? ">" ;
 generic_arg    = fn_expr                     (* valor de função     *)
-               | INT | FLOAT | STRING | "true" | "false"   (* valor const *)
+               | "-"? ( INT | FLOAT ) | STRING | "true" | "false"   (* valor const *)
                | type ;                      (* tipo, ou IDENT ambíguo *)
 ```
+
+`generic_args` é um pós-fixo **independente da chamada**: `identity<Int>` é uma
+expressão por si só, e uma única produção cobre `identity<Int>(10)`
+(`Call(Instantiate(...))`) e `Result<Int, E>.Ok(1)`
+(`Call(Member(Instantiate(...)))`).
+
+O sinal de `-1` é absorvido no literal, como no desugar de `-10`: um argumento
+const é uma constante, não uma expressão a avaliar.
 
 **Q1 — declaração vs. uso.** A spec §13/§14 mostra a forma de *uso*
 (`type<"value", 1, true, Int, ...>`) na posição de *declaração*. Isso é
@@ -173,20 +181,38 @@ def FixedArray = type<T, N: Int> { values: T[]; };   // declaração
 def a: FixedArray<Int, 3> = ...;                     // uso
 ```
 
-**Q5 — ambiguidade `<`.** Em `postfix_op`, a alternativa
-`generic_args "(" ...` só é aceita se, após consumir os argumentos genéricos, o
-token seguinte for `(`. Caso contrário o parser faz backtrack e trata `<` como
-operador relacional. Consequência conhecida: `a < b > (c)` parseia como chamada
-genérica. Contornável com `(a < b) > (c)`.
+**Q5 — ambiguidade `<`.** Em `postfix_op`, a alternativa `generic_args` só é
+aceita se, após consumir os argumentos genéricos, o token seguinte for:
+
+| Token | Por quê |
+|---|---|
+| `(` | chamada genérica: `identity<Int>(10)` |
+| `.` | variante de enum genérico: `Result<Int, E>.Ok(1)` |
+| qualquer token que **não** inicie expressão | a leitura relacional ficaria sem operando à direita, então não há ambiguidade: `def t = SomeType<"v", 1>;` |
+
+Caso contrário o parser faz backtrack e trata `<` como operador relacional.
+
+O terceiro caso é o que faz o exemplo de const generics da spec §13 parsear —
+ele termina em `>` seguido de `;`. Os tokens que iniciam expressão são exatamente
+os que abrem `primary` (§A.4) mais `-` e `!`.
+
+Consequência conhecida: `a < b > (c)` parseia como chamada genérica, porque `(c)`
+serve às duas leituras e Q5 decide pela genérica. Contornável com
+`(a < b) > (c)`.
 
 **Ambiguidade `IDENT` em `generic_arg`.** `Int` e `N` casam tanto com "tipo"
-quanto com "valor const". O parser produz `AmbiguousArgumentSyntax(name)` e o
-checker decide pelo que o nome designa no escopo (`LAP0291`/`LAP0292` se não
-bater com a posição esperada).
+quanto com "valor const". O parser produz `NameArgumentSyntax(name)` e o checker
+decide pelo parâmetro correspondente na declaração: `LAP0291` se um valor apareceu
+onde se esperava tipo, `LAP0292` no contrário, `LAP0294` se o nome designa algo
+que não é resolvível em tempo de compilação (Q18).
 
 **Ambiguidade `fn` em `generic_arg`.** `fn(Int) Int` é um tipo; `fn(a: Int) Int
 { ... }` é um valor. Discriminador: só o valor tem corpo `{`. O parser tenta o
 tipo e faz backtrack se encontrar `{` após o tipo de retorno.
+
+A ambiguidade só existe em **posição de expressão**. Dentro de um `type`
+(`x: Foo<fn(Int) Int>`), `fn` é sempre um tipo de função, e uma função literal
+não é escrevível ali — registrado como Q17 no [Apêndice C](appendix-c-decisions.md).
 
 ---
 
@@ -271,7 +297,7 @@ block_comment  = "/*" ... "*/" ;              (* não aninha *)
 | 5 | `+` `-` | esquerda |
 | 6 | `*` `/` | esquerda |
 | 7 | `-` `!` unários | prefixo |
-| 8 | `()` `[]` `.` `<>()` | esquerda |
+| 8 | `()` `[]` `.` `<>` | esquerda |
 
 ---
 

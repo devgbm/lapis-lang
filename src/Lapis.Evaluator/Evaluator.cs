@@ -92,6 +92,7 @@ public sealed class Evaluator
         CoreLet n => EvaluateLet(n, environment),
         CoreLambda n => EvaluateLambda(n, environment),
         CoreCall n => EvaluateCall(n, environment),
+        CoreInstantiate n => EvaluateInstantiate(n, environment),
         CoreReturn n => EvaluateReturn(n, environment),
         CoreIf n => EvaluateIf(n, environment),
         CoreBinary n => EvaluateBinary(n, environment),
@@ -146,6 +147,74 @@ public sealed class Evaluator
         var signature = (FunctionType)_program.TypeOf(node);
 
         return Completion.Normal(new ClosureValue(node, environment, signature));
+    }
+
+    /// <summary>
+    /// <c>alvo&lt;A, B&gt;</c>. Argumentos de <b>tipo</b> não têm efeito em execução:
+    /// o checker já substituiu, e o valor não muda. Argumentos <b>const</b> têm:
+    /// dentro do corpo, um parâmetro const é um valor de verdade (spec §13), e é
+    /// aqui que ele entra no ambiente da closure.
+    /// </summary>
+    private Completion EvaluateInstantiate(CoreInstantiate node, Environment environment)
+    {
+        var target = Evaluate(node.Target, environment);
+
+        if (!target.IsNormal)
+        {
+            return target;
+        }
+
+        if (_program.ResolutionOf<InstantiateResolution>(node) is not { } resolution
+            || !resolution.Parameters.Any(p => p.IsConst))
+        {
+            return target;
+        }
+
+        if (target.Value is not ClosureValue closure)
+        {
+            throw new InternalCompilerException(
+                "parâmetros const sobre algo que não é uma closure", node.Span);
+        }
+
+        var bindings = new List<(string, Value)>();
+
+        for (var i = 0; i < resolution.Parameters.Length && i < node.Arguments.Length; i++)
+        {
+            if (!resolution.Parameters[i].IsConst)
+            {
+                continue;
+            }
+
+            // Escrito como literal ou função literal, o argumento é uma expressão a
+            // avaliar; escrito como nome (Q18), é um `def` que o checker já provou
+            // constante, e basta buscá-lo no ambiente.
+            var value = node.Arguments[i] switch
+            {
+                CoreValueArgument argument => Evaluate(argument.Value, environment),
+
+                CoreNameArgument named when environment.TryLookup(named.Name, out var bound) =>
+                    Completion.Normal(bound),
+
+                _ => throw new InternalCompilerException(
+                    $"argumento const de '{resolution.Parameters[i].Name}' sem valor em execução",
+                    node.Span),
+            };
+
+            if (!value.IsNormal)
+            {
+                return value;
+            }
+
+            bindings.Add((resolution.Parameters[i].Name, value.Value));
+        }
+
+        var signature = (FunctionType)_program.TypeOf(node);
+
+        return Completion.Normal(closure with
+        {
+            Captured = closure.Captured.ExtendAll(bindings),
+            Signature = signature,
+        });
     }
 
     private Completion EvaluateReturn(CoreReturn node, Environment environment)
@@ -306,16 +375,18 @@ public sealed class Evaluator
         var definition = resolution.Enum;
         var variant = definition.Variants[resolution.VariantIndex];
 
+        var arguments = resolution.TypeArguments;
+
         // Variante nulária já é o valor; com carga, é um construtor a ser chamado.
         if (variant.Payload.IsDefaultOrEmpty)
         {
-            return Completion.Normal(new EnumValue(definition, resolution.VariantIndex, [], []));
+            return Completion.Normal(new EnumValue(definition, resolution.VariantIndex, [], arguments));
         }
 
-        var signature = FunctionType.Of(variant.Payload, new NamedType(definition, []));
+        var signature = (FunctionType)_program.TypeOf(node);
 
         return Completion.Normal(
-            new VariantConstructorValue(definition, resolution.VariantIndex, signature, []));
+            new VariantConstructorValue(definition, resolution.VariantIndex, signature, arguments));
     }
 
     private Completion EvaluateEnumDef(CoreEnumDef node) => EvaluateDefinition(node);

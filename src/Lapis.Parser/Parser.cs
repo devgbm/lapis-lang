@@ -23,6 +23,7 @@ public sealed class Parser
     private readonly TokenStream _tokens;
     private readonly DiagnosticBag _diagnostics;
     private int _depth;
+    private int _speculating;
 
     private Parser(TokenStream tokens, DiagnosticBag diagnostics)
     {
@@ -327,10 +328,97 @@ public sealed class Parser
                     expression = ParseMember(expression);
                     continue;
 
+                case TokenKind.Less when TryParseInstantiation(out var arguments):
+                    expression = new InstantiateExpression(expression, arguments)
+                    {
+                        Span = SourceSpan.FromBounds(expression.Span.Start, PreviousEnd()),
+                    };
+                    continue;
+
                 default:
                     return expression;
             }
         }
+    }
+
+    /// <summary>
+    /// Q5 — a ambiguidade entre <c>f&lt;Int&gt;(x)</c> e <c>a &lt; b</c>.
+    ///
+    /// O parser tenta consumir uma lista de argumentos genéricos e aceita quando o
+    /// token seguinte ao <c>&gt;</c> de fechamento é:
+    ///
+    /// <list type="bullet">
+    /// <item><c>(</c> — uma chamada: <c>identity&lt;Int&gt;(10)</c>;</item>
+    /// <item><c>.</c> — uma variante: <c>Result&lt;Int, E&gt;.Ok(1)</c>;</item>
+    /// <item>qualquer token que <b>não</b> inicia uma expressão — aí a leitura
+    /// relacional não teria operando à direita e só resta a genérica, que é o que
+    /// faz <c>def t = SomeType&lt;"v", 1&gt;;</c> (spec §13) parsear.</item>
+    /// </list>
+    ///
+    /// Caso contrário devolve o cursor e <c>&lt;</c> volta a ser o operador
+    /// relacional. A tentativa consome no máximo os tokens da lista, então o custo
+    /// é linear: <c>a &lt; b &lt; c</c> falha no segundo token e não recomeça.
+    /// </summary>
+    private bool TryParseInstantiation(out ImmutableArray<GenericArgumentSyntax> arguments)
+    {
+        var mark = _tokens.Mark();
+
+        _speculating++;
+        var parsed = TryConsumeGenericArguments(out arguments);
+        _speculating--;
+
+        if (parsed
+            && (Current.Kind is TokenKind.OpenParen or TokenKind.Dot
+                || !Current.Kind.CanBeginExpression()))
+        {
+            return true;
+        }
+
+        _tokens.Reset(mark);
+        arguments = [];
+        return false;
+    }
+
+    /// <summary>
+    /// Consome <c>&lt;A, B&gt;</c> sem recuperação de erro: qualquer desvio devolve
+    /// <c>false</c> e o chamador restaura o cursor.
+    /// </summary>
+    private bool TryConsumeGenericArguments(out ImmutableArray<GenericArgumentSyntax> arguments)
+    {
+        arguments = [];
+        _tokens.Advance(); // '<'
+
+        var builder = ImmutableArray.CreateBuilder<GenericArgumentSyntax>();
+
+        while (Current.Kind != TokenKind.Greater)
+        {
+            if (_tokens.AtEnd)
+            {
+                return false;
+            }
+
+            var before = _tokens.Mark();
+            builder.Add(ParseGenericArgument(typePosition: false));
+
+            // Nenhum token consumido significa que não havia argumento algum.
+            if (_tokens.Mark() == before)
+            {
+                return false;
+            }
+
+            if (!_tokens.Match(TokenKind.Comma))
+            {
+                break;
+            }
+        }
+
+        if (builder.Count == 0 || !_tokens.Match(TokenKind.Greater))
+        {
+            return false;
+        }
+
+        arguments = builder.ToImmutable();
+        return true;
     }
 
     private Expression ParseIndex(Expression target)
@@ -650,36 +738,10 @@ public sealed class Parser
         }
 
         _tokens.Advance();
-        var typeArguments = ImmutableArray<TypeSyntax>.Empty;
 
-        if (Current.Kind == TokenKind.Less)
-        {
-            _tokens.Advance();
-            var builder = ImmutableArray.CreateBuilder<TypeSyntax>();
-
-            while (Current.Kind != TokenKind.Greater && !_tokens.AtEnd)
-            {
-                var before = _tokens.Mark();
-                builder.Add(ParseType());
-
-                if (!_tokens.Match(TokenKind.Comma))
-                {
-                    break;
-                }
-
-                if (_tokens.Mark() == before)
-                {
-                    _tokens.Advance();
-                }
-            }
-
-            if (!_tokens.Match(TokenKind.Greater))
-            {
-                Report(DiagnosticCodes.UnexpectedToken, Current.Span, "esperado '>' nos argumentos genéricos");
-            }
-
-            typeArguments = builder.ToImmutable();
-        }
+        var typeArguments = Current.Kind == TokenKind.Less
+            ? ParseGenericArgumentList(typePosition: false)
+            : ImmutableArray<GenericArgumentSyntax>.Empty;
 
         var fields = ImmutableArray.CreateBuilder<FieldInitSyntax>();
 
@@ -981,8 +1043,8 @@ public sealed class Parser
     }
 
     /// <summary>
-    /// Parâmetros genéricos de uma declaração: sempre <b>nomeados</b> (Q1). Const
-    /// generics (<c>N: Int</c>) chegam no M4.
+    /// Parâmetros genéricos de uma <b>declaração</b>: sempre nomeados (Q1).
+    /// <c>T</c> é parâmetro de tipo; <c>N: Int</c> é parâmetro const (spec §13).
     /// </summary>
     private ImmutableArray<TypeParameterSyntax> ParseTypeParameterList()
     {
@@ -997,16 +1059,22 @@ public sealed class Parser
         while (Current.Kind != TokenKind.Greater && !_tokens.AtEnd)
         {
             var before = _tokens.Mark();
+            var start = Current.Span.Start;
+            var name = "?";
 
             if (Current.Kind == TokenKind.Identifier)
             {
-                parameters.Add(new TypeParameterSyntax(Current.Text) { Span = Current.Span });
+                name = Current.Text;
                 _tokens.Advance();
             }
             else
             {
                 Report(DiagnosticCodes.ExpectedIdentifier, Current.Span, "esperado o nome do parâmetro genérico");
             }
+
+            var constType = _tokens.Match(TokenKind.Colon) ? ParseType() : null;
+
+            parameters.Add(new TypeParameterSyntax(name, constType) { Span = SpanFrom(start) });
 
             if (!_tokens.Match(TokenKind.Comma))
             {
@@ -1025,6 +1093,156 @@ public sealed class Parser
         }
 
         return parameters.ToImmutable();
+    }
+
+    /// <summary>
+    /// Argumentos genéricos de um <b>uso</b>, com recuperação de erro. A versão
+    /// especulativa é <see cref="TryConsumeGenericArguments"/>.
+    /// </summary>
+    private ImmutableArray<GenericArgumentSyntax> ParseGenericArgumentList(bool typePosition)
+    {
+        _tokens.Advance(); // '<'
+
+        var arguments = ImmutableArray.CreateBuilder<GenericArgumentSyntax>();
+
+        while (Current.Kind != TokenKind.Greater && !_tokens.AtEnd)
+        {
+            var before = _tokens.Mark();
+            arguments.Add(ParseGenericArgument(typePosition));
+
+            if (!_tokens.Match(TokenKind.Comma))
+            {
+                break;
+            }
+
+            if (_tokens.Mark() == before)
+            {
+                _tokens.Advance();
+            }
+        }
+
+        if (arguments.Count == 0)
+        {
+            Report(DiagnosticCodes.EmptyGenericArgumentList, Current.Span, "lista de argumentos genéricos vazia");
+        }
+
+        if (!_tokens.Match(TokenKind.Greater))
+        {
+            Report(DiagnosticCodes.UnexpectedToken, Current.Span, "esperado '>' nos argumentos genéricos");
+        }
+
+        return arguments.ToImmutable();
+    }
+
+    /// <summary>
+    /// Um argumento genérico é um tipo ou um valor constante (spec §13). Um
+    /// identificador nu é os dois ao mesmo tempo — <c>Foo&lt;N&gt;</c> não diz se
+    /// <c>N</c> nomeia um tipo ou uma constante — e sai daqui como
+    /// <see cref="NameArgumentSyntax"/> para o checker desempatar pelo escopo.
+    ///
+    /// Em posição de <b>tipo</b>, <c>fn(Int) Int</c> é sempre um tipo de função:
+    /// uma função literal só é escrevível como argumento em posição de expressão
+    /// (Q17).
+    /// </summary>
+    private GenericArgumentSyntax ParseGenericArgument(bool typePosition)
+    {
+        var token = Current;
+
+        switch (token.Kind)
+        {
+            case TokenKind.IntegerLiteral:
+            case TokenKind.FloatLiteral:
+            case TokenKind.StringLiteral:
+            case TokenKind.TrueKeyword:
+            case TokenKind.FalseKeyword:
+            case TokenKind.Minus:
+                return ParseConstArgument();
+
+            case TokenKind.FnKeyword when !typePosition:
+                return ParseFunctionArgument();
+
+            // Só um IDENT sozinho é ambíguo: `Foo<Bar>` e `Int[]` são tipos.
+            case TokenKind.Identifier when _tokens.Peek(1).Kind is TokenKind.Comma or TokenKind.Greater:
+                _tokens.Advance();
+                return new NameArgumentSyntax(token.Text) { Span = token.Span };
+
+            default:
+                var type = ParseType();
+                return new TypeArgumentSyntax(type) { Span = type.Span };
+        }
+    }
+
+    /// <summary>
+    /// Literal em posição de argumento genérico. O sinal é absorvido no literal,
+    /// como no desugar de <c>-10</c>: assim <c>Foo&lt;-1&gt;</c> carrega uma
+    /// constante, e não uma expressão a avaliar.
+    /// </summary>
+    private GenericArgumentSyntax ParseConstArgument()
+    {
+        var start = Current.Span.Start;
+        var negated = _tokens.Match(TokenKind.Minus);
+        var token = Current;
+
+        Func<SourceSpan, Expression>? literal = null;
+
+        switch (token.Kind)
+        {
+            case TokenKind.IntegerLiteral:
+                _tokens.Advance();
+                var integer = negated ? -token.IntegerValue : token.IntegerValue;
+                literal = span => new IntLiteral(integer, token.Text) { Span = span };
+                break;
+
+            case TokenKind.FloatLiteral:
+                _tokens.Advance();
+                var real = negated ? -token.FloatValue : token.FloatValue;
+                literal = span => new FloatLiteral(real, token.Text) { Span = span };
+                break;
+
+            case TokenKind.StringLiteral when !negated:
+                _tokens.Advance();
+                literal = span => new StrLiteral(token.StringValue) { Span = span };
+                break;
+
+            case TokenKind.TrueKeyword or TokenKind.FalseKeyword when !negated:
+                _tokens.Advance();
+                var flag = token.Kind == TokenKind.TrueKeyword;
+                literal = span => new BoolLiteral(flag) { Span = span };
+                break;
+        }
+
+        if (literal is null)
+        {
+            Report(DiagnosticCodes.ExpectedExpression, token.Span, "esperado um literal numérico após '-'");
+            return new TypeArgumentSyntax(NamedTypeSyntax.Of("?", token.Span)) { Span = SpanFrom(start) };
+        }
+
+        var argumentSpan = SpanFrom(start);
+
+        return new ValueArgumentSyntax(literal(argumentSpan)) { Span = argumentSpan };
+    }
+
+    /// <summary>
+    /// <c>fn(Int) Int</c> é um tipo; <c>fn() Int { return 1; }</c> é um valor
+    /// (spec §13). O discriminador é o corpo: só o valor tem <c>{</c>.
+    /// </summary>
+    private GenericArgumentSyntax ParseFunctionArgument()
+    {
+        var mark = _tokens.Mark();
+
+        _speculating++;
+        var type = ParseType();
+        _speculating--;
+
+        if (Current.Kind is TokenKind.Comma or TokenKind.Greater)
+        {
+            return new TypeArgumentSyntax(type) { Span = type.Span };
+        }
+
+        _tokens.Reset(mark);
+        var value = ParseFunction();
+
+        return new ValueArgumentSyntax(value) { Span = value.Span };
     }
 
     private BlockExpression ParseBlock()
@@ -1091,6 +1309,7 @@ public sealed class Parser
         var start = Current.Span.Start;
         _tokens.Advance(); // 'fn'
 
+        var typeParameters = ParseTypeParameterList();
         var parameters = ParseParameterList();
         TypeSyntax? returnType = null;
 
@@ -1111,7 +1330,7 @@ public sealed class Parser
             body = new BlockExpression([], null) { Span = Current.Span };
         }
 
-        return new FunctionExpression(parameters, returnType, body) { Span = SpanFrom(start) };
+        return new FunctionExpression(typeParameters, parameters, returnType, body) { Span = SpanFrom(start) };
     }
 
     private ImmutableArray<ParameterSyntax> ParseParameterList()
@@ -1280,44 +1499,10 @@ public sealed class Parser
     private TypeSyntax ParseNamedType()
     {
         var token = _tokens.Advance();
-        var arguments = ImmutableArray<TypeSyntax>.Empty;
 
-        if (Current.Kind == TokenKind.Less)
-        {
-            _tokens.Advance();
-            var builder = ImmutableArray.CreateBuilder<TypeSyntax>();
-
-            while (Current.Kind != TokenKind.Greater && !_tokens.AtEnd)
-            {
-                var before = _tokens.Mark();
-                builder.Add(ParseType());
-
-                if (!_tokens.Match(TokenKind.Comma))
-                {
-                    break;
-                }
-
-                if (_tokens.Mark() == before)
-                {
-                    _tokens.Advance();
-                }
-            }
-
-            if (builder.Count == 0)
-            {
-                Report(
-                    DiagnosticCodes.EmptyGenericArgumentList,
-                    Current.Span,
-                    "lista de argumentos genéricos vazia");
-            }
-
-            if (!_tokens.Match(TokenKind.Greater))
-            {
-                Report(DiagnosticCodes.UnexpectedToken, Current.Span, "esperado '>' nos argumentos genéricos");
-            }
-
-            arguments = builder.ToImmutable();
-        }
+        var arguments = Current.Kind == TokenKind.Less
+            ? ParseGenericArgumentList(typePosition: true)
+            : ImmutableArray<GenericArgumentSyntax>.Empty;
 
         return new NamedTypeSyntax(token.Text, arguments)
         {
@@ -1395,6 +1580,16 @@ public sealed class Parser
 
     private int PreviousEnd() => _tokens.Peek(-1).Span.End;
 
-    private void Report(string code, SourceSpan span, string message) =>
-        _diagnostics.ReportError(code, span, message);
+    /// <summary>
+    /// Durante uma tentativa especulativa (Q5) nada é reportado: o parse pode
+    /// falhar de propósito e o texto ainda ser um programa perfeitamente válido
+    /// sob a outra leitura.
+    /// </summary>
+    private void Report(string code, SourceSpan span, string message)
+    {
+        if (_speculating == 0)
+        {
+            _diagnostics.ReportError(code, span, message);
+        }
+    }
 }

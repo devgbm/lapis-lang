@@ -59,21 +59,31 @@ public abstract class TypeCheckerTestBase
     }
 
     /// <summary>Tipo do valor do <c>def</c> com o nome dado.</summary>
-    protected static LapisType TypeOfDef(string source, string name)
+    protected static LapisType TypeOfDef(string source, string name) => TypesOfDefs(source, name)[0];
+
+    /// <summary>
+    /// Tipos de vários <c>def</c>s de uma <b>única</b> checagem. Necessário para
+    /// comparar tipos entre si: <see cref="TypeDefinition"/> tem identidade de
+    /// referência, então duas checagens do mesmo texto produzem tipos distintos.
+    /// </summary>
+    protected static ImmutableArray<LapisType> TypesOfDefs(string source, params string[] names)
     {
         var program = Check(source);
-        var current = program.Program.Body;
+        var found = new Dictionary<string, LapisType>(StringComparer.Ordinal);
 
-        while (current is CoreLet let)
+        for (var current = program.Program.Body; current is CoreLet let; current = let.Body)
         {
-            if (!let.IsSynthetic && let.Name == name)
+            if (!let.IsSynthetic)
             {
-                return program.TypeOf(let.Value);
+                found[let.Name] = program.TypeOf(let.Value);
             }
-
-            current = let.Body;
         }
 
-        throw new InvalidOperationException($"'{name}' não encontrado no programa");
+        return
+        [
+            .. names.Select(name => found.TryGetValue(name, out var type)
+                ? type
+                : throw new InvalidOperationException($"'{name}' não encontrado no programa")),
+        ];
     }
 }
