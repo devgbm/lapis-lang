@@ -58,9 +58,14 @@ public static class Program
                 return ExitCodes.Success;
         }
 
-        var (command, path) = args switch
+        if (!TryParseOptions(args, stderr, out var options))
         {
-            ["run" or "check" or "tokens" or "ast" or "desugar", var file] => (args[0], file),
+            return ExitCodes.Usage;
+        }
+
+        var (command, path) = options.Positional switch
+        {
+            ["run" or "check" or "tokens" or "ast" or "desugar", var file] => (options.Positional[0], file),
             [var file] => ("run", file),
             _ => (null, null),
         };
@@ -72,6 +77,15 @@ public static class Program
             return ExitCodes.Usage;
         }
 
+        // `--source` só existe onde há um printer de fonte: a Core AST (plano 02
+        // §2.8). Não há printer de fonte da Surface, e fingir que há esconderia a
+        // diferença entre as duas árvores.
+        if (options.Source && command != "desugar")
+        {
+            stderr.WriteLine("lapis: '--source' só se aplica a 'desugar'.");
+            return ExitCodes.Usage;
+        }
+
         if (!TryReadSource(path, stderr, out var source))
         {
             return ExitCodes.Usage;
@@ -79,62 +93,116 @@ public static class Program
 
         return command switch
         {
-            "run" => RunProgram(source, stdout, stderr),
-            "check" => CheckProgram(source, stderr),
-            "tokens" => PrintStage(source, PipelineStage.Tokens, stdout, stderr),
-            "ast" => PrintStage(source, PipelineStage.Parse, stdout, stderr),
-            "desugar" => PrintStage(source, PipelineStage.Desugar, stdout, stderr),
+            "run" => RunProgram(source, options, stdout, stderr),
+            "check" => CheckProgram(source, options, stderr),
+            "tokens" => PrintStage(source, PipelineStage.Tokens, options, stdout, stderr),
+            "ast" => PrintStage(source, PipelineStage.Parse, options, stdout, stderr),
+            "desugar" => PrintStage(source, PipelineStage.Desugar, options, stdout, stderr),
             _ => ExitCodes.Usage,
         };
     }
 
+    /// <summary>
+    /// Flags globais, aceitas em qualquer posição. São poucas e ortogonais aos
+    /// comandos, então um laço explícito custa menos que uma dependência de
+    /// parsing de linha de comando.
+    /// </summary>
+    private static bool TryParseOptions(string[] args, TextWriter stderr, out CliOptions options)
+    {
+        var positional = new List<string>();
+        var json = false;
+        var noColor = false;
+        var sourceForm = false;
+
+        foreach (var arg in args)
+        {
+            switch (arg)
+            {
+                case "--json": json = true; break;
+                case "--no-color": noColor = true; break;
+                case "--source": sourceForm = true; break;
+
+                default:
+                    if (arg.StartsWith("--", StringComparison.Ordinal))
+                    {
+                        stderr.WriteLine($"lapis: opção desconhecida '{arg}'.");
+                        options = default;
+                        return false;
+                    }
+
+                    positional.Add(arg);
+                    break;
+            }
+        }
+
+        var color = ShouldUseColor(
+            noColor,
+            Console.IsErrorRedirected,
+            System.Environment.GetEnvironmentVariable("NO_COLOR"));
+
+        options = new CliOptions(positional.ToArray(), json, color && !json, sourceForm);
+        return true;
+    }
+
+    /// <summary>
+    /// Cor só quando alguém vai olhar: terminal de verdade, sem <c>--no-color</c>
+    /// e sem <c>NO_COLOR</c> (a convenção de no-color.org).
+    ///
+    /// Recebe o ambiente por parâmetro em vez de consultá-lo: é o que torna a
+    /// decisão testável sem mexer em variáveis do processo de teste.
+    /// </summary>
+    public static bool ShouldUseColor(bool noColor, bool errorRedirected, string? noColorVariable) =>
+        !noColor && !errorRedirected && string.IsNullOrEmpty(noColorVariable);
+
+    private readonly record struct CliOptions(string[] Positional, bool Json, bool Color, bool Source);
+
     // ------------------------------------------------------------- comandos
 
-    private static int RunProgram(SourceText source, TextWriter stdout, TextWriter stderr)
+    private static int RunProgram(SourceText source, CliOptions options, TextWriter stdout, TextWriter stderr)
     {
         var context = new RuntimeContext(new ConsoleOutput(stdout));
         var result = Pipeline.Compile(source, PipelineStage.Evaluate, context);
 
-        ReportDiagnostics(result, source, stderr);
+        ReportDiagnostics(result.Diagnostics, source, options, stderr);
 
-        if (result.HasErrors)
+        if (result.Evaluation is { Status: ExecutionStatus.Aborted } aborted)
         {
-            return ExitCodes.CompilationError;
-        }
-
-        var evaluation = result.Evaluation;
-
-        if (evaluation is { Status: ExecutionStatus.Aborted })
-        {
-            stderr.WriteLine(DiagnosticRenderer.Render(
-                Diagnostic.Error(
-                    evaluation.Code ?? "LAP0300",
-                    evaluation.Span ?? SourceSpan.Synthetic,
-                    evaluation.Message ?? "execução abortada"),
-                source));
-
-            return ExitCodes.RuntimeAbort;
+            ReportDiagnostics(
+                [
+                    Diagnostic.Error(
+                        aborted.Code ?? "LAP0300",
+                        aborted.Span ?? SourceSpan.Synthetic,
+                        aborted.Message ?? "execução abortada"),
+                ],
+                source,
+                options,
+                stderr);
         }
 
         // O valor final do programa não é impresso: a saída vem só de `print`
         // (spec §34 — a saída de hello.ls é apenas `30`).
-        return ExitCodes.Success;
+        return ExitCodes.For(result);
     }
 
-    private static int CheckProgram(SourceText source, TextWriter stderr)
+    private static int CheckProgram(SourceText source, CliOptions options, TextWriter stderr)
     {
         var result = Pipeline.Compile(source, PipelineStage.TypeCheck);
 
-        ReportDiagnostics(result, source, stderr);
+        ReportDiagnostics(result.Diagnostics, source, options, stderr);
 
-        return result.HasErrors ? ExitCodes.CompilationError : ExitCodes.Success;
+        return ExitCodes.For(result);
     }
 
-    private static int PrintStage(SourceText source, PipelineStage stage, TextWriter stdout, TextWriter stderr)
+    private static int PrintStage(
+        SourceText source,
+        PipelineStage stage,
+        CliOptions options,
+        TextWriter stdout,
+        TextWriter stderr)
     {
         var result = Pipeline.Compile(source, stage);
 
-        ReportDiagnostics(result, source, stderr);
+        ReportDiagnostics(result.Diagnostics, source, options, stderr);
 
         if (result.HasErrors)
         {
@@ -157,7 +225,9 @@ public static class Program
                 break;
 
             case PipelineStage.Desugar:
-                stdout.WriteLine(CoreSExprPrinter.Print(result.Core!));
+                stdout.Write(options.Source
+                    ? CoreSourcePrinter.Print(result.Core!)
+                    : CoreSExprPrinter.Print(result.Core!) + System.Environment.NewLine);
                 break;
         }
 
@@ -166,11 +236,17 @@ public static class Program
 
     // ------------------------------------------------------------ auxiliar
 
-    private static void ReportDiagnostics(CompilationResult result, SourceText source, TextWriter stderr)
+    private static void ReportDiagnostics(
+        IEnumerable<Diagnostic> diagnostics,
+        SourceText source,
+        CliOptions options,
+        TextWriter stderr)
     {
-        foreach (var diagnostic in result.Diagnostics)
+        foreach (var diagnostic in diagnostics)
         {
-            stderr.Write(DiagnosticRenderer.Render(diagnostic, source));
+            stderr.Write(options.Json
+                ? DiagnosticJson.Render(diagnostic, source) + System.Environment.NewLine
+                : DiagnosticRenderer.Render(diagnostic, source, options.Color));
         }
     }
 
@@ -217,6 +293,9 @@ public static class Program
         writer.WriteLine("  desugar <arquivo>.ls   imprime a Core AST");
         writer.WriteLine();
         writer.WriteLine("Opções:");
+        writer.WriteLine("  --json           diagnósticos em JSON, um por linha");
+        writer.WriteLine("  --no-color       desliga ANSI (idem NO_COLOR no ambiente)");
+        writer.WriteLine("  --source         em 'desugar', imprime '.ls' em vez de S-expression");
         writer.WriteLine("  -h, --help       mostra esta ajuda");
         writer.WriteLine("  -v, --version    mostra a versão");
     }

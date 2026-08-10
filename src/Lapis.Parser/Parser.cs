@@ -25,6 +25,14 @@ public sealed class Parser
     private int _depth;
     private int _speculating;
 
+    /// <summary>
+    /// Ligado quando <see cref="MaxDepth"/> estoura. As ~200 chamadas recursivas
+    /// que ainda vão desempilhar reportariam, cada uma, o seu <c>)</c> faltante —
+    /// uma cascata que enterra o único erro que o autor precisa ler. Desliga ao
+    /// voltar ao nível de statement, onde a análise volta a ser confiável.
+    /// </summary>
+    private bool _unwindingFromDepthLimit;
+
     private Parser(TokenStream tokens, DiagnosticBag diagnostics)
     {
         _tokens = tokens;
@@ -79,6 +87,8 @@ public sealed class Parser
 
     private Statement? ParseStatement()
     {
+        _unwindingFromDepthLimit = false;
+
         if (Current.Kind == TokenKind.DefKeyword)
         {
             return ParseDefStatement();
@@ -204,7 +214,11 @@ public sealed class Parser
                     break;
 
                 case TokenKind.CloseBrace or TokenKind.CloseParen or TokenKind.CloseBracket:
-                    depth--;
+                    // Nunca negativo: quando a recuperação começa já dentro de
+                    // parênteses, os fechamentos excedentes levariam o contador
+                    // abaixo de zero e nenhum `;` voltaria a contar como limite —
+                    // a recuperação engoliria o resto do arquivo.
+                    depth = Math.Max(0, depth - 1);
                     break;
             }
 
@@ -224,6 +238,7 @@ public sealed class Parser
                 Current.Span,
                 $"expressão aninhada profundamente demais (limite {MaxDepth})");
             RecoverToStatementBoundary();
+            _unwindingFromDepthLimit = true;
             return ErrorExpr(Current.Span);
         }
 
@@ -1583,11 +1598,12 @@ public sealed class Parser
     /// <summary>
     /// Durante uma tentativa especulativa (Q5) nada é reportado: o parse pode
     /// falhar de propósito e o texto ainda ser um programa perfeitamente válido
-    /// sob a outra leitura.
+    /// sob a outra leitura. Durante o desempilhamento do limite de profundidade
+    /// também não: ver <see cref="_unwindingFromDepthLimit"/>.
     /// </summary>
     private void Report(string code, SourceSpan span, string message)
     {
-        if (_speculating == 0)
+        if (_speculating == 0 && !_unwindingFromDepthLimit)
         {
             _diagnostics.ReportError(code, span, message);
         }

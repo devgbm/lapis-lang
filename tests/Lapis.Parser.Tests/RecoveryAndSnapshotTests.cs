@@ -51,6 +51,31 @@ public sealed class RecoveryTests : ParserTestBase
         codes.ShouldContain(DiagnosticCodes.ExpressionTooDeep);
     }
 
+    /// <summary>
+    /// Estourado o limite, cada uma das ~200 chamadas ainda no ar reportaria o seu
+    /// <c>)</c> faltante ao desempilhar — 201 erros para um problema só, com o
+    /// único útil enterrado no topo.
+    /// </summary>
+    [Fact]
+    public void DeepNesting_ReportsExactlyOneDiagnostic()
+    {
+        var source = new string('(', 500) + "1" + new string(')', 500) + ";";
+
+        Codes(source).ShouldHaveSingleItem().ShouldBe(DiagnosticCodes.ExpressionTooDeep);
+    }
+
+    /// <summary>
+    /// E a supressão termina no statement seguinte: silenciar o resto do arquivo
+    /// seria trocar uma cascata por uma omissão.
+    /// </summary>
+    [Fact]
+    public void AfterDeepNesting_NextStatementIsStillChecked()
+    {
+        var source = new string('(', 500) + "1" + new string(')', 500) + "; def a 1;";
+
+        Codes(source).ShouldBe([DiagnosticCodes.ExpressionTooDeep, DiagnosticCodes.ExpectedEquals]);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("   ")]

@@ -31,16 +31,58 @@ public sealed record ConstFloat(double Value) : ConstantValue
     public override LapisType Type => PrimitiveType.Float;
 
     /// <summary>
-    /// Sempre com ponto decimal: <c>1.0</c> nunca imprime como <c>1</c>, senão
-    /// a saída de <c>lapis desugar</c> deixaria de ser re-parseável como Float.
+    /// Sempre com ponto decimal e <b>nunca</b> em notação científica: a gramática
+    /// de float da 0.2 é <c>dígitos "." dígitos</c> (spec §6) e não tem expoente,
+    /// então <c>1E+20</c> seria uma saída que a própria linguagem não reparseia —
+    /// e o round-trip do <c>CoreSourcePrinter</c> é requisito, não conveniência
+    /// (plano 02 §2.8).
     /// </summary>
     public override string ToDisplayString()
     {
+        // "R" dá a forma mais curta que reconstrói o valor exatamente; expandir o
+        // expoente depois é manipulação de texto e preserva essa exatidão.
         var text = Value.ToString("R", CultureInfo.InvariantCulture);
 
-        return text.Contains('.') || text.Contains('E') || text.Contains("Inf") || text.Contains("NaN")
-            ? text
-            : text + ".0";
+        if (text.Contains("Inf", StringComparison.Ordinal) || text.Contains("NaN", StringComparison.Ordinal))
+        {
+            return text;
+        }
+
+        if (text.Contains('E', StringComparison.Ordinal))
+        {
+            return Expand(text);
+        }
+
+        return text.Contains('.', StringComparison.Ordinal) ? text : text + ".0";
+    }
+
+    /// <summary><c>1E+20</c> → <c>100000000000000000000.0</c>.</summary>
+    private static string Expand(string scientific)
+    {
+        var marker = scientific.IndexOf('E', StringComparison.Ordinal);
+        var exponent = int.Parse(scientific[(marker + 1)..], CultureInfo.InvariantCulture);
+        var mantissa = scientific[..marker];
+
+        var negative = mantissa.StartsWith('-');
+
+        if (negative)
+        {
+            mantissa = mantissa[1..];
+        }
+
+        var dot = mantissa.IndexOf('.', StringComparison.Ordinal);
+        var digits = dot < 0 ? mantissa : mantissa.Remove(dot, 1);
+
+        // Onde o ponto cai depois de aplicar o expoente.
+        var point = (dot < 0 ? mantissa.Length : dot) + exponent;
+
+        var expanded = point <= 0
+            ? "0." + new string('0', -point) + digits
+            : point >= digits.Length
+                ? digits + new string('0', point - digits.Length) + ".0"
+                : digits[..point] + "." + digits[point..];
+
+        return negative ? "-" + expanded : expanded;
     }
 }
 

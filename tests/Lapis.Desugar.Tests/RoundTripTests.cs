@@ -80,6 +80,9 @@ public sealed class RoundTripTests : DesugarTestBase
     [InlineData("def x: Labeled<\"v\"> = y;")]
     [InlineData("def t = SomeType<\"value\", 1, true, Int, fn() Int { return 1; }>;")]
     [InlineData("def u = .Boxed<Int, 3> { value: 1 };")]
+    [InlineData("def x = 100000000000000000000.0;")]
+    [InlineData("def x = 0.00001234;")]
+    [InlineData("def x = 0.000000000000000000000001;")]
     public void PrintThenReparse_ProducesTheSameCore(string source)
     {
         var original = Print(source);
@@ -149,4 +152,22 @@ public sealed class RoundTripTests : DesugarTestBase
 
     [Fact]
     public void Printer_KeepsFloatDecimalPoint() => PrintSource("def x = 1.0;").ShouldContain("1.0");
+
+    /// <summary>
+    /// A gramática de float da 0.2 é <c>dígitos "." dígitos</c> (spec §6) e não tem
+    /// expoente: imprimir <c>1E+20</c> daria código que a própria linguagem não
+    /// reparseia — e o round-trip acima é justamente o que não pode cair.
+    /// </summary>
+    [Theory]
+    [InlineData("def x = 100000000000000000000.0;", "100000000000000000000.0")]
+    [InlineData("def x = 0.00001234;", "0.00001234")]
+    [InlineData("def x = -1500.0;", "1500.0")]
+    public void Printer_NeverUsesScientificNotation(string source, string expected)
+    {
+        var printed = PrintSource(source);
+
+        printed.ShouldContain(expected);
+        printed.ShouldNotContain("E+");
+        printed.ShouldNotContain("E-");
+    }
 }

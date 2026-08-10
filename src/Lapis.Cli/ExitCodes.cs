@@ -1,3 +1,5 @@
+using Lapis.Evaluator;
+
 namespace Lapis.Cli;
 
 /// <summary>
@@ -20,4 +22,25 @@ public static class ExitCodes
 
     /// <summary>Erro interno da implementação (EX_SOFTWARE).</summary>
     public const int InternalError = 70;
+
+    /// <summary>
+    /// O código de saída de uma compilação executada até o fim.
+    ///
+    /// Mora aqui, e não no <c>Program</c>, porque a suíte de conformidade
+    /// (plano 11) precisa do <b>mesmo</b> critério: se ela reimplementasse a
+    /// decisão, testaria a si mesma em vez de testar o CLI.
+    /// </summary>
+    public static int For(CompilationResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        if (result.HasErrors)
+        {
+            return CompilationError;
+        }
+
+        return result.Evaluation is { Status: ExecutionStatus.Aborted }
+            ? RuntimeAbort
+            : Success;
+    }
 }

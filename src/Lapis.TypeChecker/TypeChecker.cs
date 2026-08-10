@@ -82,7 +82,12 @@ public sealed class TypeChecker
 
     // ------------------------------------------------------------ despacho
 
-    private LapisType CheckExpression(CoreExpr node, Scope scope)
+    /// <param name="expected">
+    /// Tipo que o contexto exige, quando há. É a <b>única</b> informação que flui
+    /// de cima para baixo neste checker (§47), e existe por um motivo estreito:
+    /// <c>[]</c> não tem como dizer sozinho o que carrega (spec §18).
+    /// </param>
+    private LapisType CheckExpression(CoreExpr node, Scope scope, LapisType? expected = null)
     {
         var type = node switch
         {
@@ -96,7 +101,7 @@ public sealed class TypeChecker
             CoreIf n => CheckIf(n, scope),
             CoreBinary n => CheckBinary(n, scope),
             CoreUnary n => CheckUnary(n, scope),
-            CoreArray n => CheckArray(n, scope),
+            CoreArray n => CheckArray(n, scope, expected),
             CoreIndex n => CheckIndex(n, scope),
             CoreField n => CheckField(n, scope),
             CoreEnumDef n => CheckEnumDef(n, scope),
@@ -132,7 +137,11 @@ public sealed class TypeChecker
 
     private LapisType CheckLet(CoreLet node, Scope scope)
     {
-        var valueType = CheckExpression(node.Value, scope);
+        // A anotação é resolvida antes do valor para poder descer até ele. Sem
+        // isso `def a: Int[] = [];` falharia — e a mensagem de LAP0241 mandaria
+        // fazer exatamente o que acabou de não funcionar.
+        var declared = node.Annotation is null ? null : _types.Resolve(node.Annotation, scope);
+        var valueType = CheckExpression(node.Value, scope, declared);
 
         // Um `type`/`enum` não tem nome próprio (spec §14, §15): ele recebe o nome
         // do `def` que o liga, e é esse nome que aparece em diagnósticos e na
@@ -142,10 +151,8 @@ public sealed class TypeChecker
             meta.Definition.Name = node.Name;
         }
 
-        if (node.Annotation is not null)
+        if (declared is not null)
         {
-            var declared = _types.Resolve(node.Annotation, scope);
-
             if (!TypeRelations.IsAssignableTo(valueType, declared))
             {
                 _diagnostics.ReportError(
@@ -760,15 +767,23 @@ public sealed class TypeChecker
 
     // ------------------------------------------- arrays, índice, enums
 
-    private LapisType CheckArray(CoreArray node, Scope scope)
+    private LapisType CheckArray(CoreArray node, Scope scope, LapisType? expected = null)
     {
         if (node.Elements.IsEmpty)
         {
-            // Sem anotação não há como saber o tipo do elemento (spec §18).
+            // Um array vazio não diz o que carrega; quem diz é a anotação, quando
+            // existe (spec §18).
+            if (expected is ArrayType)
+            {
+                return expected;
+            }
+
             _diagnostics.ReportError(
                 DiagnosticCodes.EmptyArrayNeedsAnnotation,
                 node.Span,
-                "array vazio requer anotação de tipo");
+                "array vazio requer anotação de tipo",
+                new DiagnosticNote("anote o `def`, por exemplo `def a: Int[] = [];`"));
+
             return ErrorType.Instance;
         }
 
@@ -1293,6 +1308,11 @@ public sealed class TypeChecker
                 pattern.Span,
                 $"variante '{variant.Name}' espera {variant.Payload.Length} argumentos, "
                 + $"fornecidos {pattern.Arguments.Length}");
+
+            // A variante conta como coberta mesmo com a aridade errada: o braço
+            // existe e a intenção é clara. Sem isto, um erro de aridade arrastaria
+            // um LAP0262 junto, e o autor consertaria dois problemas onde só há um.
+            coverage.Variants.Add(index);
             return true;
         }
 

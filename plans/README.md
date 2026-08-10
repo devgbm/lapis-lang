@@ -48,8 +48,8 @@ critérios de conclusão satisfeitos.
 | 07 | [Runtime (valores, ambiente, primitivas)](07-runtime.md) | `Lapis.Runtime` | M1–M2 ✅ |
 | 08 | [Evaluator](08-evaluator.md) | `Lapis.Evaluator` | M1–M4 ✅ |
 | 09 | [Prelude (`Result`, `IndexError`, `print`)](09-prelude.md) | `Lapis.Runtime` + `prelude.ls` | M2 ✅ |
-| 10 | [CLI `lapis`](10-cli.md) | `Lapis.Cli` | M1 ✅ · M5 ⬜ |
-| 11 | [Testes de integração e conformidade](11-integration-and-conformance-tests.md) | `tests/` | M1–M5 |
+| 10 | [CLI `lapis`](10-cli.md) | `Lapis.Cli` | M1–M5 ✅ |
+| 11 | [Testes de integração e conformidade](11-integration-and-conformance-tests.md) | `tests/` | M1–M5 ✅ |
 
 ### Pesquisa (Partial Evaluation)
 
@@ -96,7 +96,7 @@ variante com segurança — foi **adiada**, e com ela `@if`/`@match` saíram do 
 | **M2** ✅ | Arrays & Result | `[10,20,30][1] → Ok(20)`, `[..][3] → Err(OutOfBounds)` | 04, 06, 07, 08, 09 |
 | **M3** ✅ | Enums, match, tipos | `enum`, `match` exaustivo, `type` + construção + acesso a campo | 02, 04, 05, 06, 08 |
 | **M4** ✅ | Generics | `fn<T>` escritos pelo programador, sempre com argumentos explícitos (Q7) + const generics | 02, 04, 06, 08 |
-| **M5** | Conformidade | suíte golden `tests/conformance/**/*.ls`, `examples/` executando | 10, 11 |
+| **M5** ✅ | Conformidade | suíte golden `tests/conformance/**/*.ls`, `examples/` executando, subcomandos e flags do CLI | 10, 11 |
 | **M6** | `goto`/`label` | controle de fluxo explícito; `GotoForm_EquivalentToIf` verde | 16 |
 | **M7** | PE núcleo | constant folding, propagação, dead code, `lapis pe` | 12 |
 | **M8** | Macro engine | `@unless`, `@square` expandindo; `lapis expand` | 17 |

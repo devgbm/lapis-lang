@@ -123,8 +123,10 @@ saber. Lista inicial:
 
 ### 11.5 `examples/` como testes
 
-Todo arquivo em `examples/` é executado pela suíte com um `.expected` ao lado.
-Isso impede que a documentação apodreça.
+Todo arquivo em `examples/` é executado pela suíte, e a saída esperada mora no
+próprio arquivo, num cabeçalho `// Saída esperada:` — não num `.expected` ao
+lado. Um arquivo só continua sendo mais fácil de ler e impossível de esquecer de
+atualizar. Isso impede que a documentação apodreça.
 
 | Exemplo | Conteúdo |
 |---|---|
@@ -150,8 +152,24 @@ rodam sobre o corpus de conformidade.
 ### 11.7 Regressões
 
 `tests/conformance/regressions/` com um arquivo por bug encontrado, nomeado
-`issue-NNN-descricao.ls`. Regra do projeto: **todo bug corrigido entra aqui
-antes da correção**.
+`descricao.ls` (ou `issue-NNN-descricao.ls` quando houver issue). Regra do
+projeto: **todo bug corrigido entra aqui antes da correção**.
+
+### 11.8 Cobertura por diagnóstico, verificada
+
+`DiagnosticCoverageTests` fecha o critério "pelo menos um caso por diagnóstico"
+em teste, em vez de deixá-lo como intenção: lê o catálogo por reflexão, junta os
+códigos que os casos **não pulados** afirmam esperar, e reprova o que sobrar.
+
+Três guardas acompanham, porque uma lista de isenção sem manutenção vira ficção:
+
+- toda isenção traz motivo e é reprovada se o código passar a ter caso;
+- toda isenção precisa existir no catálogo;
+- todo código citado numa diretiva `// expect:` precisa existir no catálogo — um
+  erro de digitação faria o caso exigir algo impossível.
+
+Isenções de hoje: `LAP0205` (reservado, ainda não emitido) e `LAP0302`
+(inalcançável sem recursão — spec §8).
 
 ---
 
@@ -176,9 +194,24 @@ O runner é código e precisa de testes:
 
 ## Critérios de conclusão
 
-- [ ] Runner implementado e testado.
-- [ ] Todos os exemplos executáveis da spec com caso correspondente, verdes.
-- [ ] `examples/*.ls` executando com saída esperada.
-- [ ] Pelo menos um caso por diagnóstico do Apêndice B.
-- [ ] As 5 propriedades de §11.6 verdes.
-- [ ] Diretório `regressions/` criado e documentado no `README.md`.
+- [x] Runner implementado e testado.
+- [x] Todos os exemplos executáveis da spec com caso correspondente, verdes.
+- [x] `examples/*.ls` executando com saída esperada.
+- [x] Pelo menos um caso por diagnóstico do Apêndice B — verificado por
+      `DiagnosticCoverageTests` (§11.8), com as isenções nomeadas.
+- [x] As 5 propriedades de §11.6 verdes.
+- [x] Diretório `regressions/` criado e documentado no `README.md`.
+
+## O que a suíte encontrou
+
+O ponto da conformidade não é o número de casos verdes; é o que ela derruba ao
+ser escrita. No M5, seis bugs — todos com caso em `regressions/`:
+
+| Bug | Correção |
+|---|---|
+| literal float acima do intervalo virava `Infinity` em silêncio | lexer reporta `LAP0006` |
+| `ConstFloat` imprimia `1E+20`, forma que a linguagem não reparseia | `ToDisplayString` expande o expoente |
+| `LAP0264` (aridade de variante) cascateava em `LAP0262` | o braço conta como coberto ao falhar |
+| `def a: Int[] = [];` era rejeitado pelo próprio `LAP0241` que pedia a anotação | a anotação desce como tipo esperado |
+| limite de profundidade produzia 201 diagnósticos | o desempilhamento não reporta |
+| recuperação com fechamentos excedentes engolia o resto do arquivo | contador de aninhamento não fica negativo |

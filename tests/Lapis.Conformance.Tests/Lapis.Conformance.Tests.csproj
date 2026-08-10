@@ -17,4 +17,8 @@
     <ProjectReference Include="../../src/Lapis.Cli/Lapis.Cli.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Using Include="Lapis.Diagnostics" />
+  </ItemGroup>
+
 </Project>

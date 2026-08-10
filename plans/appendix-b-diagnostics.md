@@ -69,7 +69,7 @@ dispara, asseverando **código + span** — nunca a mensagem.
 | `LAP0202` | error | `'{0}'` já foi definido neste escopo |
 | ~~`LAP0203`~~ | — | **aposentado** (Q3): com variantes sempre qualificadas não há injeção no escopo, logo não há colisão possível |
 | `LAP0204` | error | tipo `'{0}'` não existe |
-| `LAP0205` | warning | `'{0}'` foi definido mas nunca usado |
+| `LAP0205` | warning | `'{0}'` foi definido mas nunca usado — **reservado**, nenhum milestone o emite ainda |
 
 ### Anotações e atribuição
 
@@ -263,7 +263,13 @@ um bloco ainda não aberto.
   faltantes (`LAP0262`) e local do `return` esperado (`LAP0272`).
 - **Códigos aposentados nunca são reciclados.** `LAP0203`, `LAP0296`, `LAP0297` e
   `LAP0301` saíram por causa de decisões do apêndice C e seus números ficam
-  permanentemente vagos.
+  permanentemente vagos. Aposentado significa **sem constante** em
+  `DiagnosticCodes`: fica só o comentário com o número e o motivo, para que
+  ninguém volte a emiti-lo por engano.
+- **Todo código com constante precisa de um caso de conformidade** que o produza
+  (`DiagnosticCoverageTests`, M5). A isenção existe, é nomeada e vem com motivo —
+  hoje só `LAP0205` (reservado, ainda não emitido) e `LAP0302` (inalcançável sem
+  recursão). Uma isenção que passou a ter caso quebra o teste e precisa sair.
 - `LAP0290` passou a cobrir também "função genérica chamada sem argumentos
   genéricos explícitos" (Q7), com nota indicando os parâmetros a escrever.
 - `LAP0202` é reportado pelo **desugar**, não pelo type checker (Q10).

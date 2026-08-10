@@ -38,10 +38,16 @@ public sealed record CompilationResult(
 /// </summary>
 public static class Pipeline
 {
+    /// <param name="prelude">
+    /// Prelude a usar. O padrão é o compartilhado — carregá-lo é caro e o
+    /// resultado é imutável. A suíte de conformidade passa um fresco em um teste,
+    /// para provar que nenhum estado atravessa compilações (plano 11 §11.2).
+    /// </param>
     public static CompilationResult Compile(
         SourceText source,
         PipelineStage stopAfter = PipelineStage.Evaluate,
-        RuntimeContext? context = null)
+        RuntimeContext? context = null,
+        PreludeScope? prelude = null)
     {
         ArgumentNullException.ThrowIfNull(source);
 
@@ -68,15 +74,15 @@ public static class Pipeline
             return Result(diagnostics, tokens, surface, core);
         }
 
-        var prelude = PreludeLoader.Load();
-        var typed = TypeChecker.TypeChecker.Check(core, prelude, diagnostics);
+        var scope = prelude ?? PreludeLoader.Load();
+        var typed = TypeChecker.TypeChecker.Check(core, scope, diagnostics);
 
         if (stopAfter == PipelineStage.TypeCheck || diagnostics.HasErrors)
         {
             return Result(diagnostics, tokens, surface, core, typed);
         }
 
-        var evaluation = Evaluator.Evaluator.Run(typed, prelude, context ?? new RuntimeContext(new StringOutput()));
+        var evaluation = Evaluator.Evaluator.Run(typed, scope, context ?? new RuntimeContext(new StringOutput()));
 
         return Result(diagnostics, tokens, surface, core, typed, evaluation);
     }

@@ -37,8 +37,13 @@ public static class DiagnosticCodes
     // LAP02xx — Type checker
     public const string UnknownVariable = "LAP0201";
     public const string DuplicateDefinition = "LAP0202";
-    public const string VariantNameCollision = "LAP0203";
+
+    // LAP0203 (colisão de nome de variante) foi aposentado: com variantes sempre
+    // qualificadas (Q3) não há injeção no escopo, logo não há colisão possível.
     public const string UnknownType = "LAP0204";
+
+    // LAP0205 (binding não usado) está reservado, não emitido: é um warning que
+    // ninguém produz ainda. Fica no catálogo para que o número não seja reusado.
     public const string UnusedBinding = "LAP0205";
 
     public const string TypeMismatch = "LAP0210";
@@ -83,9 +88,10 @@ public static class DiagnosticCodes
     public const string ConstArgumentTypeMismatch = "LAP0293";
     public const string GenericArgumentNotConstant = "LAP0294";
     public const string GenericTypeNeedsArguments = "LAP0295";
+
+    // LAP0296 e LAP0297 (inferência de argumento genérico) foram aposentados:
+    // nenhum argumento genérico é inferido (Q7), todos são escritos.
     public const string CannotDetermineGenericArguments = "LAP0298";
-    public const string ConstGenericNotInferred = "LAP0296";
-    public const string CannotInferGenericParameter = "LAP0297";
 
     // LAP03xx — Execução
     //

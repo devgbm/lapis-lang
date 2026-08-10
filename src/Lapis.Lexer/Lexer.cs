@@ -207,10 +207,17 @@ public sealed class Lexer
 
         if (isFloat)
         {
-            if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+            // `TryParse` devolve `true` com ±Infinity quando o literal estoura o
+            // Float, e um literal que vira Infinity em silêncio é surpresa dupla:
+            // o valor não é o que está escrito, e `Infinity` não é escrevível na
+            // linguagem — imprimi-lo produz texto que não reparseia.
+            if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
+                || double.IsInfinity(value))
             {
                 _diagnostics.ReportError(
-                    DiagnosticCodes.MalformedFloatLiteral, span, $"literal float malformado: '{text}'");
+                    DiagnosticCodes.MalformedFloatLiteral,
+                    span,
+                    $"literal float fora do intervalo de Float: '{text}'");
                 value = 0;
             }
 

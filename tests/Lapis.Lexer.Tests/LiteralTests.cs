@@ -39,6 +39,32 @@ public sealed class LiteralTests : LexerTestBase
     public void Float_IsParsed(string source, double expected) =>
         Single(source).FloatValue.ShouldBe(expected);
 
+    /// <summary>
+    /// <c>double.TryParse</c> devolve <c>true</c> com <c>Infinity</c> quando o
+    /// literal estoura o Float. Aceitar isso seria surpresa dupla: o valor não é
+    /// o que está escrito, e <c>Infinity</c> não é escrevível na linguagem — logo
+    /// imprimi-lo produziria texto que não reparseia.
+    /// </summary>
+    [Fact]
+    public void Float_Overflow_ReportsLap0006_WithoutBecomingInfinity()
+    {
+        var (tokens, diagnostics) = Lex("2" + new string('0', 308) + ".0");
+
+        diagnostics.ShouldHaveSingleItem().Code.ShouldBe(DiagnosticCodes.MalformedFloatLiteral);
+        tokens[0].Kind.ShouldBe(TokenKind.FloatLiteral);
+        tokens[0].FloatValue.ShouldBe(0);
+    }
+
+    /// <summary>No limite do intervalo ainda é um literal válido.</summary>
+    [Fact]
+    public void Float_AtMaxValue_IsAccepted()
+    {
+        var (tokens, diagnostics) = Lex("17976931348623157" + new string('0', 292) + ".0");
+
+        diagnostics.ShouldBeEmpty();
+        tokens[0].FloatValue.ShouldBe(double.MaxValue);
+    }
+
     [Fact]
     public void NegativeFloat_IsTwoTokens() =>
         Kinds("-0.5").ShouldBe([TokenKind.Minus, TokenKind.FloatLiteral]);

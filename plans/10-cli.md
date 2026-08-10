@@ -83,11 +83,16 @@ Flags globais:
 |---|---|
 | `--json` | diagnósticos em JSON (uma linha por diagnóstico) para consumo por ferramentas |
 | `--no-color` | desliga ANSI; também respeita `NO_COLOR` do ambiente |
-| `--source` | em `ast`/`desugar`, imprime código `.ls` em vez de S-expression (usa `CoreSourcePrinter`) |
+| `--source` | em `desugar`, imprime código `.ls` em vez de S-expression (usa `CoreSourcePrinter`) — não existe printer de fonte da Surface, então em qualquer outro comando é erro de uso (exit 64) |
 | `--version` | versão + versão da spec implementada |
 
-Parsing de argumentos com `System.CommandLine`. **Compatibilidade:** invocar sem
+As flags são globais e aceitas em qualquer posição. O parsing é um laço explícito
+sobre `args`, não `System.CommandLine`: são quatro flags ortogonais aos comandos,
+e a dependência custaria mais do que resolve. **Compatibilidade:** invocar sem
 subcomando (`lapis f.ls`) continua sendo `run` — a spec exige essa forma.
+
+`--json` desliga a cor por construção: a saída é para máquina, e sequências ANSI
+no meio de JSON não servem a ninguém.
 
 ### 10.4 Renderização de diagnósticos
 
@@ -187,8 +192,8 @@ códigos de saída).
 
 ## Critérios de conclusão
 
-- [ ] `lapis examples/hello.ls` imprime `30` e sai 0 (spec §60).
-- [ ] Todos os códigos de saída implementados e testados.
-- [ ] Subcomandos da spec §56 (exceto `pe`, plano 15) funcionando.
-- [ ] Diagnósticos com linha, coluna, código, trecho e cursor.
-- [ ] Nenhum stack trace C# visível, exceto no exit 70.
+- [x] `lapis examples/hello.ls` imprime `30` e sai 0 (spec §60).
+- [x] Todos os códigos de saída implementados e testados.
+- [x] Subcomandos da spec §56 (exceto `pe`, plano 15) funcionando.
+- [x] Diagnósticos com linha, coluna, código, trecho e cursor.
+- [x] Nenhum stack trace C# visível, exceto no exit 70.

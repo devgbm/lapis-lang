@@ -39,14 +39,16 @@ lapis hello.ls
 | **M2** — arrays, indexação e `Result` | ✅ concluído |
 | **M3** — `match`, tipos definidos pelo usuário | ✅ concluído |
 | **M4** — generics escritos pelo programador | ✅ concluído |
-| M5 — suíte de conformidade | ⏳ próximo |
-| M6 — `goto`/`label` | 📋 planejado |
+| **M5** — suíte de conformidade e subcomandos do CLI | ✅ concluído |
+| M6 — `goto`/`label` | ⏳ próximo |
 | M7 — PE núcleo (folding e propagação) | 📋 planejado |
 | M8–M11 — macros, `constraint`, reflection, `@unless`/`@while` | 📋 planejado |
 | M12–M14 — PE: especialização, análise, equivalência | ⬜ |
 
-**890 testes** cobrindo lexer, parser, desugar, type checker, runtime, evaluator
-e CLI.
+**1087 testes** cobrindo lexer, parser, desugar, type checker, runtime,
+evaluator e CLI — entre eles uma **suíte de conformidade** de 118 programas
+`.ls` que é a especificação executável do projeto: cada afirmação testável da
+spec é um arquivo, e o nome do teste que falha já é o arquivo a abrir.
 
 A linguagem já roda programas de verdade: funções de primeira classe com
 closures, `return` explícito com verificação de "retorna em todos os caminhos",
@@ -92,7 +94,7 @@ print(scale<3>(5));    // 15
 print(twice<3>(5));    // 30
 ```
 
-O que falta (M5 em diante): a suíte de conformidade e o partial evaluator. O
+O que falta (M6 em diante): `goto`/`label`, macros e o partial evaluator. O
 roteiro completo está em [`plans/`](plans/README.md).
 
 ```bash
@@ -103,7 +105,16 @@ $ lapis desugar examples/hello.ls     # Core AST
 $ lapis ast examples/hello.ls         # Surface AST
 $ lapis check examples/hello.ls       # só diagnósticos
 $ lapis tokens examples/hello.ls      # tokens com posição
+
+$ lapis desugar --source examples/hello.ls   # Core AST de volta como `.ls`
+$ lapis check --json programa.ls             # diagnósticos para ferramentas
+$ lapis check --no-color programa.ls         # sem ANSI (idem NO_COLOR=1)
 ```
+
+A saída de `desugar --source` é código `.ls` que reparseia para a mesma Core AST.
+Não é conveniência: é a propriedade que o partial evaluator vai precisar para
+emitir um programa residual executável — e ela é verificada sobre o corpus
+inteiro a cada execução da suíte.
 
 ---
 
