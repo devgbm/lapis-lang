@@ -10,6 +10,8 @@ investigar.
 | `LAP02xx` | Type Checker |
 | `LAP03xx` | Evaluator (runtime da linguagem) |
 | `LAP04xx` | Partial Evaluator |
+| `LAP05xx` | Macros e controle de fluxo |
+| `LAP06xx` | Reflection |
 | `LAP09xx` | CLI / uso |
 
 **Regra de estabilidade:** um código, uma vez publicado, nunca é reciclado com
@@ -169,6 +171,11 @@ Não são diagnósticos de compilação: são relatados na saída de execução 
 |---|---|---|
 | ~~`LAP0301`~~ | — | **aposentado** (Q9): a divisão inteira por zero produz o maior `Int`, então a operação é total |
 | `LAP0302` | abort | profundidade de chamada excedida (limite {0}) |
+| `LAP0303` | abort | limite de saltos excedido (limite {0}) |
+
+`LAP0303` chega com o `goto` para trás (plano 16). Até o M4 todo programa terminava
+por construção — sem recursão (Q8) e sem laços; `goto` para trás acaba com isso, e
+este é o diagnóstico que troca um travamento por uma mensagem.
 
 ---
 
@@ -180,6 +187,57 @@ Não são diagnósticos de compilação: são relatados na saída de execução 
 | `LAP0402` | warning | limite de {0} atingido; especialização interrompida |
 | `LAP0403` | error | binding `'{0}'` de `--dynamic` não existe no programa |
 | `LAP0404` | error | tipo inválido em `--dynamic`: `{0}` |
+
+---
+
+## LAP05xx — Macros e controle de fluxo
+
+Introduzidos pela [spec de macros](../spec/lapislang-macros-0.1.md). Planos 16–20.
+
+### Macros
+
+| Código | Severidade | Mensagem |
+|---|---|---|
+| `LAP0501` | error | nenhum padrão de `@{0}` corresponde a esta invocação |
+| `LAP0502` | error | padrões ambíguos para `@{0}`: {1} regras correspondem |
+| `LAP0503` | error | *(mensagem do `throw` da constraint)* |
+| `LAP0504` | error | categoria sintática `{0}` não existe |
+| `LAP0505` | error | expansão de macro profunda demais (limite {0}) |
+| `LAP0506` | error | `expand` produziu statements onde se esperava uma expressão |
+| `LAP0507` | error | `throw` só é válido dentro de `constraint` |
+| `LAP0508` | error | `throw` espera Str, encontrado `{0}` |
+| `LAP0509` | error | macro `{0}` não existe |
+| `LAP0510` | error | uma macro não é um valor e não pode ser usada em posição de expressão |
+
+`LAP0503` é o único código cuja mensagem vem do programa: é o texto que a
+`constraint` passou a `throw`. O span é sempre o da **invocação**, com nota
+apontando o ponto dentro da macro.
+
+### Controle de fluxo
+
+| Código | Severidade | Mensagem |
+|---|---|---|
+| `LAP0520` | error | rótulo `{0}` não existe nesta função |
+| `LAP0521` | error | rótulo `{0}` está fora do escopo deste `goto` |
+| `LAP0522` | error | rótulo `{0}` declarado mais de uma vez |
+
+`LAP0523` em diante estão **livres**: foram esboçados para a leitura de carga por
+campo, que Q23 descartou por ser insegura. Como nunca chegaram a ser publicados —
+não há implementação —, os números voltam ao pool. A construção que Q23 vier a
+definir alocará os seus.
+
+Salto **para trás é permitido** (decisão do autor): é o que viabiliza `@while`.
+`LAP0521` cobre só o salto que sai do escopo — para outra função, ou para dentro de
+um bloco ainda não aberto.
+
+---
+
+## LAP06xx — Reflection
+
+| Código | Severidade | Mensagem |
+|---|---|---|
+| `LAP0601` | error | `reflect` espera um tipo, encontrado `{0}` |
+| `LAP0602` | error | tipo `{0}` não foi declarado neste ponto |
 
 ---
 
@@ -209,6 +267,9 @@ Não são diagnósticos de compilação: são relatados na saída de execução 
 - `LAP0290` passou a cobrir também "função genérica chamada sem argumentos
   genéricos explícitos" (Q7), com nota indicando os parâmetros a escrever.
 - `LAP0202` é reportado pelo **desugar**, não pelo type checker (Q10).
+- Diagnósticos sobre código que veio de um `expand` carregam **dois** spans: o da
+  invocação (onde apontam) e o do ponto dentro da macro (em nota). Quem lê o erro
+  escreveu a invocação, não a macro.
 - `LAP0294` traz nota com o que *serve* como argumento const (Q18): literal, ou
   `def` ligado a literal. Um parâmetro const de um genérico envolvente também
   serve e não produz diagnóstico algum.

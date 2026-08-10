@@ -1,6 +1,6 @@
 # 12 — Partial Evaluator: Núcleo
 
-**Milestone:** M6 · **Depende de:** M5 completo · **Projeto:** `Lapis.PartialEvaluator`
+**Milestone:** M7 · **Depende de:** M6 (`goto`/`label`) e M5 completo · **Projeto:** `Lapis.PartialEvaluator`
 
 Corresponde à spec §37–§40, §52 (primeiro bloco) e §53.
 
@@ -10,6 +10,16 @@ Corresponde à spec §37–§40, §52 (primeiro bloco) e §53.
 > testa contra um alvo móvel.
 
 ---
+
+> **Este plano é o "PE básico" de que as macros dependem.** Uma `constraint`
+> (plano 18) recebe capturas sintáticas e precisa reduzi-las a valores para decidir —
+> dobrar `"route." + path`, avaliar `arrayLength(faltando) > 0`. Isso é exatamente o
+> folding e a propagação desta fatia, e é por isso que o M7 vem antes do M8 mesmo
+> com a decisão de tratar macros antes do partial evaluator.
+>
+> A fatia que as macros exigem é **só** folding e propagação. Especialização (13) e
+> análise (14) continuam depois, onde já enfrentam laços (Q24).
+
 
 ## Objetivo
 

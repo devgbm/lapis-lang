@@ -60,6 +60,22 @@ critérios de conclusão satisfeitos.
 | 14 | [Partial Evaluator — análise e BCE](14-partial-evaluator-analysis-and-bce.md) | `Lapis.PartialEvaluator` | M8 |
 | 15 | [Ferramentas de pesquisa e tracing](15-research-tooling-and-tracing.md) | `Lapis.Cli` | M8 |
 
+### Metaprogramação (proposta)
+
+Especificação: [`../spec/lapislang-macros-0.1.md`](../spec/lapislang-macros-0.1.md).
+Q19, Q21, Q22 e Q24 decididas. **Q23** — a construção de linguagem para ler carga de
+variante com segurança — foi **adiada**, e com ela `@if`/`@match` saíram do escopo:
+`if` e `match` continuam no compilador. Detalhes no
+[Apêndice C](appendix-c-decisions.md).
+
+| # | Plano | Projeto | Milestone |
+|---|---|---|---|
+| 16 | [`goto` e `label`](16-goto-and-labels.md) | `Lapis.Ast` … `Lapis.Evaluator` | M6 |
+| 17 | [Macro engine](17-macro-engine.md) | `Lapis.Macros` | M8 |
+| 18 | [`constraint`, `throw` e contexto](18-compile-time-evaluation.md) | `Lapis.Macros` + `Lapis.Cli` | M9 |
+| 19 | [Reflection](19-reflection.md) | `Lapis.Runtime` + `Lapis.TypeChecker` | M10 |
+| 20 | [Macros de controle no prelude](20-macro-prelude.md) | `prelude.ls` | M11 |
+
 ### Apêndices normativos
 
 | Apêndice | Conteúdo |
@@ -81,10 +97,29 @@ critérios de conclusão satisfeitos.
 | **M3** ✅ | Enums, match, tipos | `enum`, `match` exaustivo, `type` + construção + acesso a campo | 02, 04, 05, 06, 08 |
 | **M4** ✅ | Generics | `fn<T>` escritos pelo programador, sempre com argumentos explícitos (Q7) + const generics | 02, 04, 06, 08 |
 | **M5** | Conformidade | suíte golden `tests/conformance/**/*.ls`, `examples/` executando | 10, 11 |
-| **M6** | PE núcleo | constant folding, propagação, dead code, `lapis pe` | 12 |
-| **M7** | PE especialização | beta reduction, inlining, especialização de funções | 13 |
-| **M8** | PE análise | range analysis, bounds-check elimination, `lapis pe --trace` | 14, 15 |
-| **M9** | Equivalência | property-based: `eval(P,S) ≡ eval(PE(P,S),S)` | 11, 14 |
+| **M6** | `goto`/`label` | controle de fluxo explícito; `GotoForm_EquivalentToIf` verde | 16 |
+| **M7** | PE núcleo | constant folding, propagação, dead code, `lapis pe` | 12 |
+| **M8** | Macro engine | `@unless`, `@square` expandindo; `lapis expand` | 17 |
+| **M9** | Compile time | `@post` com deduplicação de rota; `throw` e contexto | 18 |
+| **M10** | Reflection | `reflect(Color).variants` nas duas fases | 19 |
+| **M11** | Macros de controle | `@unless` e `@while` no prelude; **nada é retirado** da Core | 20 |
+| **M12** | PE especialização | beta reduction, inlining, especialização de funções | 13 |
+| **M13** | PE análise | range analysis, bounds-check elimination, `lapis pe --trace` | 14, 15 |
+| **M14** | Equivalência | property-based: `eval(P,S) ≡ eval(PE(P,S),S)` | 11, 14 |
+
+**Por que as macros vêm antes do partial evaluator** (decisão do autor), e por que
+o **M7 é a exceção**:
+
+Uma `constraint` recebe capturas sintáticas e precisa reduzi-las a valores para
+decidir — dobrar `"route." + path`, avaliar `arrayLength(faltando) > 0`. Isso é
+exatamente constant folding e propagação, ou seja, o **núcleo do plano 12**.
+
+Por isso o M7 antecipa a *fatia mínima* do PE — folding e propagação —, e só ela.
+Especialização (13) e análise (14) continuam depois das macros, onde já enfrentam
+**laços**, que o `goto` para trás do M6 trouxe (Q24).
+
+O M6 vir primeiro também paga uma dívida: o plano 14 (bounds-check elimination)
+**quer** um CFG, e agora o encontra pronto em vez de precisar inventá-lo.
 
 **M1 é o marco crítico.** Nada de partial evaluation antes de M1 estar estável
 (spec §58, §60).
@@ -104,7 +139,13 @@ critérios de conclusão satisfeitos.
               ↓
              11                                     (M5)
               ↓
-        12 → 13 → 14 → 15                           (M6–M9)
+             16                                     (M6)
+              ↓
+             12  (fatia mínima: folding + propagação) (M7)
+              ↓
+        17 → 18 → 19 → 20                           (M8–M11)
+              ↓
+        13 → 14 → 15                                (M12–M14)
 ```
 
 Observação sobre a ordem da spec: a spec §43–§52 sugere construir o evaluator
@@ -156,8 +197,24 @@ spec**. O registro completo, com justificativa e consequências, está no
 | Q17 | função literal como argumento genérico colide com tipo de função | Só escrevível em posição de expressão; em posição de tipo, `fn(Int) Int` é um tipo |
 | Q18 | o que pode ser argumento const? | O que for resolvível em compilação. Um parâmetro const **é** constante e pode ser repassado, como constante simbólica |
 
-**Nenhuma lacuna segue aguardando decisão.** A spec foi atualizada de acordo — hoje
-está na **0.2.3**, com o changelog de cada decisão no topo do arquivo.
+**Nenhuma lacuna da 0.2 segue aguardando decisão.** A spec foi atualizada de acordo —
+hoje está na **0.2.3**, com o changelog de cada decisão no topo do arquivo.
+
+A proposta de metaprogramação abriu seis novas:
+
+| # | Lacuna | Decisão |
+|---|---|---|
+| Q19 | como se declara uma macro | `macro <nome> match ... expand { };` — macro não é first-class citizen |
+| Q20 | `@match` desestrutura carga? | Não: compara variantes. 🅿️ estacionada junto com `@match` |
+| Q21 | que linguagem roda em `constraint` | a própria, no mesmo evaluator |
+| Q22 | `if`/`match` viram prelude? | **Não.** Continuam no compilador; só entram construções que a linguagem não tem |
+| Q23 | como se lê a carga de uma variante | ⏳ adiada: exige construção de linguagem própria, com o requisito escrito |
+| Q24 | `goto` salta para trás? | Sim, sem sair do escopo. Traz `@while` — e o fim da terminação por construção |
+
+**Q23 é o nó.** Três saídas foram examinadas e caíram, e o padrão comum às três é o
+achado que fechou a questão: **extrair carga com segurança é problema de linguagem,
+não de macro.** Enquanto ela não tiver resposta, `if`, `match` e a desestruturação
+por padrão ficam exatamente onde estão.
 
 ---
 

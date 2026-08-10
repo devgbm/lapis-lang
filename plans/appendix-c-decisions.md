@@ -23,6 +23,12 @@ implementação.
 | Q16 | statements que terminam em bloco dispensam `;` | ✅ decidido · implementado |
 | Q17 | função literal como argumento genérico só em posição de expressão | ✅ decidido · implementado |
 | Q18 | argumento const tem de ser resolvível em tempo de compilação | ✅ decidido · implementado |
+| Q19 | macro é declaração nomeada, não valor ligado por `def` | ✅ decidido |
+| Q20 | `@match` compara variantes; sem `enumTag`/`enumPayload` | 🅿️ estacionada com `@match` |
+| Q21 | `constraint` roda na própria LapisLang, no mesmo evaluator | ✅ decidido |
+| Q22 | `if` e `match` **continuam** no compilador; `@while` entra no prelude | ✅ decidido |
+| Q23 | construção de linguagem para ler carga de variante com segurança | ⏳ adiada, com requisito escrito |
+| Q24 | `goto` pode saltar para trás; fim da terminação por construção | ✅ decidido |
 
 **A spec 0.2 precisa ser atualizada** em quatro pontos por causa destas decisões:
 §15/§16/§22 (variantes qualificadas), §44 (tokens `!`, `&&`, `\|\|`), §14/§24
@@ -477,6 +483,219 @@ conhecida da regra, e o PE do M6 a fecha sem mudar nada aqui.
 construído dentro de um corpo genérico carrega o argumento simbólico
 (`Boxed<Int, N>`) nos seus `TypeArguments`. Isso não afeta igualdade nem
 formatação, que olham definição e campos; quem fecha esses tipos é o PE.
+
+---
+
+## Q19 ✅ — Como se declara uma macro
+
+**Problema.** A proposta de macros escrevia `macro unless match ... expand { };` —
+uma declaração nomeada. A 0.2 §2 é categórica: *"não existem declarações nomeadas
+específicas para funções, tipos ou enums"*, e *"a forma única de introduzir um nome
+é `def name = expression;`"*.
+
+**Proposta.** `def unless = macro match ... expand { ... };`, como `fn`, `type` e
+`enum`. Uma regra só para o idioma inteiro, e escopo, sombreamento e diagnósticos
+de `def` valem de graça.
+
+**A ressalva honesta.** Uma macro **não é um valor de runtime**: `print(m)` sobre
+uma macro não faz sentido. O tipo dela seria `MacroType`, interno de compile time, e
+usá-la em posição de valor seria `LAP0510`. Não é conceito novo — é o mesmo
+tratamento que `MetaType` já dá a `type`/`enum` — mas é uma assimetria real entre
+"o que `def` liga" e "o que é valor".
+
+**Alternativa.** Manter `macro nome ...` como declaração à parte, aceitando a exceção
+ao §2. Mais honesto quanto à natureza não-valor da macro, menos uniforme.
+
+**✅ Decidido pelo autor: `macro <nome> match ... expand { ... };`** — a forma da
+proposta original, mantida.
+
+**Justificativa dele, que fecha a questão:** uma macro **não é first-class
+citizen**. `def` liga valores; macro não é valor. Não existe em runtime, não é
+argumento, não é retorno. Forçá-la a passar por `def` exigiria um `MacroType` que
+só existe para proibir tudo o que `def` normalmente permite — a uniformidade seria
+aparente e a assimetria, real.
+
+**Consequência:** é a única exceção ao §2, e ela é justificada em vez de tolerada.
+Macros ocupam um espaço de nomes próprio: `macro log` e `def log = fn ...` convivem,
+porque `@log` e `log` nunca se confundem. Usar uma macro em posição de valor é
+`LAP0510`.
+
+---
+
+## Q20 🅿️ — `@match` compara variantes (estacionada junto com `@match`)
+
+**Problema.** Para `@match` ser macro, ele precisa de duas primitivas que
+`goto`/`label` não dão: `enumTag(valor)` e `enumPayload(valor, índice)`. O
+comentário em `CoreNodes.cs` rejeitou exatamente isso no M3:
+
+> desugará-lo exigiria primitivas `enum_tag` e `enum_payload`, aumentando o
+> runtime — contra a spec §58 ("runtime mínimo")
+
+**A conta, agora com os dois lados:**
+
+| Sai | Entra |
+|---|---|
+| `CoreMatch`, `CorePattern` e família | `enumTag` |
+| `TryMatch` do evaluator | `enumPayload` |
+| `MatchCoverage` e a exaustividade do checker | |
+| `CoreIf` | |
+
+Cinco estruturas de C# contra duas nativas. **A conta favorece as macros.**
+
+**O obstáculo que decide o cronograma.** O tipo de `enumPayload` depende da
+variante: em `Result.Ok(v)`, `v` é `T`; em `Result.Err(e)`, `e` é `E`. Uma
+assinatura `fn(Any, Int) Any` perderia isso, e um `@match` expandido seria **menos**
+tipado que o `Match` de hoje — o oposto do objetivo.
+
+A saída é `enumPayload` ser intrínseco do checker, com tipo derivado da variante
+testada no caminho de controle. Isso exige que o checker ganhe **noção de fluxo**, e
+o checker de hoje é uma travessia única dirigida por sintaxe (§47).
+
+**✅ Decidido pelo autor, e a decisão dissolve o problema em vez de pagá-lo:**
+`@match` **não desestrutura carga**. Ele compara a variante, e só. Basta que enums
+sejam comparáveis — e são, desde o M3.
+
+Com isso `enumTag` e `enumPayload` **não são necessários**, o comentário do
+`CoreNodes.cs` continua correto, e o obstáculo do tipo dependente de variante
+desaparece: não há carga a tipar.
+
+A única adição é uma regra de tipo estreita: comparar um valor de enum com um
+**construtor de variante** não aplicado compara apenas a variante.
+`r == Result.Ok` tem tipo `Bool`. Uma regra e uma linha no evaluator, contra duas
+nativas e uma análise de fluxo.
+
+**O que a decisão custa** foi o que a estacionou. A ligação de carga
+(`Result.Ok(value) => ...`) deixa de existir, e nenhuma das saídas examinadas em Q23
+se sustentou. `@match` saiu do escopo, e esta decisão fica guardada: **quando ele
+voltar, a comparação por variante continua sendo a forma certa de despachar.** O que
+falta não é o despacho — é ler a carga.
+
+---
+
+## Q21 ✅ — `constraint` roda na própria LapisLang
+
+**Problema.** Que linguagem roda dentro de `constraint`? Uma linguagem de macro
+separada (como `macro_rules!` do Rust) ou a própria linguagem?
+
+**✅ Decidido pelo autor.** A própria, no **mesmo evaluator** do plano 08. O que
+muda entre as fases é só o ambiente: nativas e escopo.
+
+**Justificativa.** O princípio §58.3 diz que o evaluator é a implementação de
+referência da semântica. Uma segunda linguagem precisaria de segundo lexer, parser,
+checker e evaluator, todos com o mesmo dever de correção, e a divergência entre as
+duas seria fonte permanente de bugs.
+
+**Consequência boa:** o partial evaluator do M6–M9 roda em `constraint` também,
+porque é o mesmo Core. Uma constraint cara pode ser especializada pela mesma máquina
+que especializa o programa.
+
+**Consequência a administrar:** `Lapis.Macros` passaria a depender de `TypeChecker` e
+`Evaluator`, fechando um ciclo. A saída é a mesma do plano 09 (`PreludeScope` dado no
+Runtime, `PreludeLoader` carga no Cli): `Lapis.Macros` declara uma interface
+`IConstraintRunner` e o `Lapis.Cli` a implementa.
+
+---
+
+## Q22 ✅ — `if` e `match` continuam no compilador
+
+**Problema.** Se `@if` e `@match` funcionarem, `if`/`match` viram macros do prelude
+e deixam de ser keywords. Todo programa passa a escrever `@if`.
+
+**Primeira decisão do autor:** sim, viram prelude.
+
+**Decisão final, depois da análise de Q23:** **não.** `if` e `match` permanecem
+construções do compilador; entram no prelude apenas construções que a linguagem
+**não** tem — `@unless` e `@while`.
+
+**O que mudou entre as duas.** `@if` sozinho é trivial. `@match` precisa ler a carga
+de uma variante, e as três saídas examinadas caíram (Q23). O padrão comum:
+**extrair carga com segurança é problema de linguagem, não de macro** — uma macro
+transforma sintaxe, e não tem como estabelecer que um valor é da variante `Ok` no
+ponto do acesso.
+
+**E `@if` sem `@match` é pior que nenhum dos dois:** metade do controle vira prelude
+e metade fica no compilador, e a análise de fluxo do plano 14 passa a ter **duas**
+formas a entender em vez de uma. O ganho declarado — "uma forma só de controle" —
+some se a substituição for parcial.
+
+**Consequências:**
+
+- `if` e `match` seguem palavras reservadas; `CoreIf` e `CoreMatch` seguem na Core;
+- a desestruturação por padrão (`Result.Ok(value) => ...`) segue sendo como se lê
+  uma carga;
+- o saldo de palavras reservadas passa a ser **só de entrada**: `macro`,
+  `constraint`, `expand`, `goto`, `label`, `throw`. Nada sai;
+- o plano 20 deixa de retirar nada, e nenhum programa existente muda de
+  comportamento.
+
+**Volta à mesa** quando Q23 tiver resposta.
+
+---
+
+## Q23 ⏳ — Construção para ler carga de variante com segurança
+
+**Problema.** Para `@match` ser macro, é preciso ler a carga de uma variante fora do
+`match` da Core. Três saídas foram examinadas, e **as três caíram**:
+
+| Saída | Por que caiu |
+|---|---|
+| `enumTag`/`enumPayload` como nativas | o tipo da carga depende da variante; `fn(Any, Int) Any` tornaria `@match` **menos** tipado que o `Match` de hoje |
+| Carga como campo (`result.value`), com nome na declaração | o **tipo** sai fácil — o nome do campo determina a variante —, mas nada garante que a variante seja a certa: `r.value` sobre um `Err` é indefensável, e §30 proíbe exceção de runtime |
+| Campo + análise de dominância sobre o grafo de `Labeled` | funciona, e a análise até se paga (é a mesma do plano 14, para bounds-check elimination) — mas fazer a segurança de uma construção **básica** depender de análise de fluxo é peso demais para o que se ganha |
+
+O padrão comum às três é o mesmo, e é o achado que fechou a questão:
+
+> **Extrair carga com segurança é problema de linguagem, não de macro.**
+
+Uma macro transforma sintaxe. Ela não tem como estabelecer que um valor é da
+variante `Ok` no ponto do acesso — isso é papel de uma construção da linguagem, com
+regra de tipo própria.
+
+**✅ Decidido pelo autor: adiar, e resolver com uma palavra reservada.** A
+funcionalidade será atacada criando uma construção própria para acessar a carga com
+segurança. `if` e `match` continuam no compilador até lá (Q22).
+
+**O requisito, sem projetar a solução:**
+
+- entregar o **tipo** da carga, derivado da variante nomeada no ponto do acesso;
+- entregar a **garantia** de que a variante é aquela, sem depender de análise de
+  fluxo;
+- ter caminho definido quando não é — sem exceção de runtime (§30, Q9).
+
+Especificar a forma antes de precisar dela seria projetar no escuro. O que está
+registrado é o requisito e o que **não** funciona — que é a parte cara de descobrir.
+
+**Quando houver resposta**, a conta de §58.2 fecha: saem `CoreMatch`, `CorePattern`
+e família, o `TryMatch` do evaluator e a máquina de exaustividade; entra uma
+construção só. E Q20 sai do estacionamento.
+
+---
+
+## Q24 ✅ — `goto` pode saltar para trás
+
+**Problema.** Salto para trás permite laços — e permite programas que não terminam.
+Até o M4 a linguagem não tinha recursão (Q8) nem laços, então **todo programa
+terminava por construção**.
+
+**✅ Decidido pelo autor:** `goto` pode saltar em qualquer direção, desde que o
+rótulo esteja no mesmo escopo ou num que o contenha, **dentro da mesma função**.
+Sair do escopo é `LAP0521`.
+
+**O que se ganha:** `@while` no prelude, sem tocar no compilador e sem precisar de
+recursão.
+
+**O que se perde, com os olhos abertos:**
+
+1. **Terminação por construção.** O evaluator passa a contar saltos e abortar com
+   `LAP0303` — o mesmo tratamento que `LAP0302` já dá à profundidade de chamada.
+2. **O PE passa a enfrentar laços.** Especializar um laço exige *widening* ou
+   combustível, e é problema genuinamente mais difícil que especializar `If`.
+   Registrado nos planos 13 e 14.
+3. **`Never` muda de leitura.** Deixa de significar "não retorna" e passa a
+   significar "não continua daqui" — que é o que sempre foi de fato.
+
+**O que não se perde:** a pilha de C#. Um salto para trás é mais uma volta do laço
+que consome completions no evaluator, não uma chamada recursiva.
 
 ---
 

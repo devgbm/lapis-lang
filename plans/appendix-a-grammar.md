@@ -285,6 +285,63 @@ block_comment  = "/*" ... "*/" ;              (* não aninha *)
 
 ---
 
+## A.10b Macros e controle de fluxo — proposta
+
+Da [spec de macros](../spec/lapislang-macros-0.1.md), planos 16–20. **Ainda não
+implementada**; entra aqui para que a gramática tenha um lugar só.
+
+```ebnf
+(* declaração nomeada — Q19: macro não é valor, não passa por `def` *)
+macro_decl     = "macro" IDENT macro_rule+ ";" ;
+macro_rule     = "match" macro_pattern
+                 ( "constraint" block )?
+                 "expand" block ;
+
+macro_pattern  = macro_item+ ;
+macro_item     = IDENT ":" IDENT              (* captura: Expression:e     *)
+               | repetition                   (* Q23: grupos, para @match  *)
+               | IDENT ;                      (* literal sintático: `in`   *)
+
+repetition     = ( IDENT ":" IDENT | "(" macro_pattern ")" ) "*" "separado" "por" token ;
+
+(* invocação *)
+macro_call     = "@" IDENT macro_tokens ;
+
+(* controle de fluxo — plano 16 *)
+goto_stmt      = "goto" IDENT ( "if" expression )? ";" ;
+label_stmt     = "label" IDENT ";" ;
+
+(* compile time — plano 18 *)
+throw_expr     = "throw" expression ;
+
+```
+
+`macro_tokens` **não é uma produção da gramática**: a invocação é delimitada por
+contagem de aninhamento (até o `;` de nível 0, ou o `}` que fecha o último bloco de
+nível 0) e os tokens são entregues crus ao matcher. É o que dá sentido à §9 da spec
+de macros — "macros definem sua própria sintaxe": `@foreach user in users { }` não
+parseia com a gramática da linguagem, e não deveria.
+
+Categorias de captura: `Expression`, `Statement`, `Block`, `Type`, `Identifier`,
+`Literal`, `Int`, `Float`, `Str`, `Bool`. **A proposta original usava `String`**; o
+primitivo se chama `Str` desde a 0.2.
+
+A repetição de **grupo** (`(Identifier:a Type:b)*`) existe para itens compostos e é
+o que evita inventar categorias sob medida para cada macro.
+
+Rótulos são `IDENT` comuns. **A proposta original escrevia `$end`**, que não lexa:
+identificadores são `[A-Za-z_][A-Za-z0-9_]*` (spec §7).
+
+`goto ... if ...` é **uma produção só**, não um `if` pós-fixo disponível em outros
+lugares: se `@if` vai ser construído a partir de `goto`, o salto condicional não pode
+depender de `if`.
+
+O salto pode ir **para trás** (Q24), desde que o rótulo esteja no mesmo escopo ou num
+que o contenha, dentro da mesma função. É o que viabiliza `@while` — e o que acaba
+com a terminação por construção da 0.2.
+
+---
+
 ## A.11 Precedência resumida
 
 | Nível | Construção | Assoc. |
@@ -306,6 +363,15 @@ block_comment  = "/*" ... "*/" ;              (* não aninha *)
 ```text
 def  fn  type  enum  return  true  false  if  else  match
 ```
+
+A proposta de macros acrescenta `macro`, `constraint`, `expand`, `goto`, `label` e
+`throw`. **Nada sai:** `if` e `match` continuam construções do compilador (Q22), e
+`match` é reaproveitada dentro de `macro`, onde inicia uma regra — sem ambiguidade,
+porque ali só pode ser isso.
+
+`if` aparece também em `goto ... if ...`, o salto condicional a partir do qual
+`@unless` e `@while` são construídos.
+
 
 `Int`, `Float`, `Bool`, `Str`, `Void`, `Result`, `IndexError`, `Option`, `print`,
 `array_length` **não** são reservadas — são bindings do prelude ou nomes
