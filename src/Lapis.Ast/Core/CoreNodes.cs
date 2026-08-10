@@ -195,6 +195,37 @@ public sealed class CoreEnumDef(
     public ImmutableArray<CoreVariantDecl> Variants { get; } = variants;
 }
 
+public sealed record CoreFieldDecl(string Name, TypeSyntax Type, SourceSpan Span);
+
+public sealed class CoreTypeDef(
+    int nodeId,
+    SourceSpan span,
+    ImmutableArray<string> typeParameters,
+    ImmutableArray<CoreFieldDecl> fields) : CoreExpr(nodeId, span)
+{
+    public ImmutableArray<string> TypeParameters { get; } = typeParameters;
+
+    public ImmutableArray<CoreFieldDecl> Fields { get; } = fields;
+}
+
+public sealed record CoreFieldInit(string Name, CoreExpr Value, SourceSpan Span, SourceSpan NameSpan);
+
+public sealed class CoreConstruct(
+    int nodeId,
+    SourceSpan span,
+    string typeName,
+    ImmutableArray<TypeSyntax> typeArguments,
+    ImmutableArray<CoreFieldInit> fields) : CoreExpr(nodeId, span)
+{
+    public string TypeName { get; } = typeName;
+
+    public ImmutableArray<TypeSyntax> TypeArguments { get; } = typeArguments;
+
+    public ImmutableArray<CoreFieldInit> Fields { get; } = fields;
+
+    public SourceSpan TypeNameSpan { get; init; } = span;
+}
+
 public abstract record CorePattern
 {
     public required SourceSpan Span { get; init; }

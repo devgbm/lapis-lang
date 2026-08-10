@@ -188,6 +188,20 @@ public sealed class Desugarer
                     DesugarExpression(n.Scrutinee),
                     [.. n.Arms.Select(a => new CoreArm(DesugarPattern(a.Pattern), DesugarExpression(a.Body), a.Span))]);
 
+            case TypeExpression n:
+                return _factory.TypeDef(
+                    n.Span,
+                    [.. n.TypeParameters.Select(p => p.Name)],
+                    [.. n.Fields.Select(f => new CoreFieldDecl(f.Name, f.Type, f.Span))]);
+
+            case ConstructExpression n:
+                return _factory.Construct(
+                    n.Span,
+                    n.TypeName,
+                    n.TypeArguments,
+                    [.. n.Fields.Select(f => new CoreFieldInit(f.Name, DesugarExpression(f.Value), f.Span, f.NameSpan))],
+                    n.TypeNameSpan);
+
             case ErrorExpression n:
                 // O parser já reportou; um literal Void mantém a árvore bem-formada.
                 return _factory.Unit(n.Span);

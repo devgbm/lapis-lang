@@ -31,12 +31,21 @@ public static class ValueFormatter
         // sejam escritos (Q3): `Result.Ok(20)`, não `Ok(20)`.
         EnumValue v => FormatEnum(v),
 
+        StructValue v => FormatStruct(v),
         TypeValue v => $"<tipo {v.Definition.Name}>",
         VariantConstructorValue v => $"<{v.Definition.Name}.{v.Definition.Variants[v.VariantIndex].Name}>",
         ClosureValue v => $"<{v.Signature.ToDisplayString()}>",
         NativeFunctionValue v => $"<nativo {v.Name}>",
         _ => throw InternalCompilerException.Unreachable(value),
     };
+
+    private static string FormatStruct(StructValue value)
+    {
+        var fields = value.Definition.Fields
+            .Select((f, i) => $"{f.Name}: {Format(value.Fields[i], quoteStrings: true)}");
+
+        return $"{value.Definition.Name} {{ {string.Join(", ", fields)} }}";
+    }
 
     private static string FormatEnum(EnumValue value)
     {

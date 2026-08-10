@@ -155,6 +155,36 @@ public static class CoreSExprPrinter
                 Close(builder, indent);
                 break;
 
+            case CoreTypeDef n:
+                var typeDefParams = n.TypeParameters.IsDefaultOrEmpty
+                    ? string.Empty
+                    : "<" + string.Join(" ", n.TypeParameters) + ">";
+                Open(builder, indent, $"{tag}type{typeDefParams}");
+
+                foreach (var field in n.Fields)
+                {
+                    Line(builder, indent + 1, $"(field {field.Name} {SurfaceSExprPrinter.PrintType(field.Type)})");
+                }
+
+                Close(builder, indent);
+                break;
+
+            case CoreConstruct n:
+                var constructArgs = n.TypeArguments.IsDefaultOrEmpty
+                    ? string.Empty
+                    : "<" + string.Join(", ", n.TypeArguments.Select(SurfaceSExprPrinter.PrintType)) + ">";
+                Open(builder, indent, $"{tag}construct {n.TypeName}{constructArgs}");
+
+                foreach (var field in n.Fields)
+                {
+                    Open(builder, indent + 1, $"init {field.Name}");
+                    PrintExpression(builder, field.Value, indent + 2, ids);
+                    Close(builder, indent + 1);
+                }
+
+                Close(builder, indent);
+                break;
+
             default:
                 throw InternalCompilerException.Unreachable(node, node.Span);
         }

@@ -105,6 +105,33 @@ public sealed record EnumValue(
     }
 }
 
+/// <summary>Uma instância de <c>type</c>: o que <c>.User { id: 1 }</c> produz.</summary>
+public sealed record StructValue(
+    TypeDefinition Definition,
+    ImmutableArray<Value> Fields,
+    ImmutableArray<LapisType> TypeArguments) : Value
+{
+    public override LapisType Type => new NamedType(Definition, TypeArguments);
+
+    public bool Equals(StructValue? other) =>
+        other is not null
+        && ReferenceEquals(Definition, other.Definition)
+        && Fields.SequenceEqual(other.Fields);
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Definition.Id);
+
+        foreach (var field in Fields)
+        {
+            hash.Add(field);
+        }
+
+        return hash.ToHashCode();
+    }
+}
+
 /// <summary>Um tipo usado como valor: o que <c>def Color = enum { ... };</c> liga.</summary>
 public sealed record TypeValue(TypeDefinition Definition) : Value
 {

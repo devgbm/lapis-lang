@@ -36,31 +36,39 @@ lapis hello.ls
 | **M0** — esqueleto da solução e CI | ✅ concluído |
 | **M1** — `lapis hello.ls` de ponta a ponta | ✅ concluído |
 | **M2** — arrays, indexação e `Result` | ✅ concluído |
-| M3 — `match`, tipos definidos pelo usuário | ⏳ próximo |
-| M4 — generics e const generics | ⬜ |
+| **M3** — `match`, tipos definidos pelo usuário | ✅ concluído |
+| M4 — generics escritos pelo programador | ⏳ próximo |
 | M5 — suíte de conformidade | ⬜ |
 | M6–M9 — partial evaluator | ⬜ |
 
-**669 testes** cobrindo lexer, parser, desugar, type checker, runtime, evaluator
+**785 testes** cobrindo lexer, parser, desugar, type checker, runtime, evaluator
 e CLI.
 
-O que a linguagem já faz: literais, `def`, blocos como expressão, operadores com
-precedência, `if`/`else`, funções de primeira classe com closures, `return`
-explícito com verificação de "retorna em todos os caminhos", arrays, indexação
-segura, enums, e um prelude escrito na própria linguagem.
+A linguagem já roda programas de verdade: funções de primeira classe com
+closures, `return` explícito com verificação de "retorna em todos os caminhos",
+arrays com indexação segura, enums, `match` exaustivo, tipos definidos pelo
+usuário, e um prelude escrito na própria linguagem.
 
 ```c
 def numbers = [10, 20, 30];
 
-print(numbers[1]);    // Result.Ok(20)
-print(numbers[9]);    // Result.Err(IndexError.OutOfBounds)
+def unwrapOr = fn(r: Result<Int, IndexError>, fallback: Int) Int {
+    match r {
+        Result.Ok(value) => return value,
+        Result.Err(error) => return fallback
+    }
+};
+
+print(unwrapOr(numbers[1], 0));    // 20
+print(unwrapOr(numbers[9], 0));    // 0
 ```
 
 Indexar **sempre** devolve `Result` (spec §21): a falha aparece no tipo, e o
-acesso fora de limites nunca lança.
+acesso fora de limites nunca lança. E `match` deve ser exaustivo, porque é uma
+expressão e precisa produzir um valor em toda execução.
 
-O que falta (M3 em diante): `match`, tipos definidos pelo usuário e generics
-escritos pelo programador. O roteiro completo está em
+O que falta (M4 em diante): generics escritos pelo programador (`fn<T>`), const
+generics e o partial evaluator. O roteiro completo está em
 [`plans/`](plans/README.md).
 
 ```bash

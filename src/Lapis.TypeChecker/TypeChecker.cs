@@ -98,6 +98,8 @@ public sealed class TypeChecker
             CoreField n => CheckField(n, scope),
             CoreEnumDef n => CheckEnumDef(n, scope),
             CoreMatch n => CheckMatch(n, scope),
+            CoreTypeDef n => CheckTypeDef(n, scope),
+            CoreConstruct n => CheckConstruct(n, scope),
             _ => throw InternalCompilerException.Unreachable(node, node.Span),
         };
 
@@ -592,6 +594,12 @@ public sealed class TypeChecker
             return ErrorType.Instance;
         }
 
+        // Campo de uma instância de `type`.
+        if (target is NamedType { Definition.Kind: TypeDefinitionKind.Struct } structType)
+        {
+            return CheckStructField(node, structType);
+        }
+
         if (target is not MetaType meta || meta.Definition.Kind != TypeDefinitionKind.Enum)
         {
             _diagnostics.ReportError(
@@ -628,12 +636,178 @@ public sealed class TypeChecker
         }
 
         var variant = definition.Variants[variantIndex];
-        var instance = new NamedType(definition, []);
+        var enumInstance = new NamedType(definition, []);
 
         // Variante nulária é o próprio valor; com carga, é um construtor.
         return variant.Payload.IsDefaultOrEmpty
-            ? instance
-            : FunctionType.Of(variant.Payload, instance);
+            ? enumInstance
+            : FunctionType.Of(variant.Payload, enumInstance);
+    }
+
+    private LapisType CheckStructField(CoreField node, NamedType instance)
+    {
+        var definition = instance.Definition;
+        var index = definition.IndexOfField(node.Name);
+
+        if (index < 0)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.UnknownField,
+                node.NameSpan,
+                $"{instance.ToDisplayString()} não possui o campo '{node.Name}'");
+            return ErrorType.Instance;
+        }
+
+        _resolutions[node.NodeId] = new FieldResolution(index);
+
+        // O tipo declarado do campo pode mencionar parâmetros do tipo; os
+        // argumentos da instância os substituem.
+        var bindings = BuildSubstitution(definition, instance.Arguments);
+
+        return TypeSubstitution.Apply(definition.Fields[index].Type, bindings);
+    }
+
+    private LapisType CheckTypeDef(CoreTypeDef node, Scope scope)
+    {
+        var typeParameters = node.TypeParameters
+            .Select(name => new TypeParameterType(name))
+            .ToImmutableArray();
+
+        var definition = new TypeDefinition("<anônimo>", TypeDefinitionKind.Struct, typeParameters, node.Span);
+
+        foreach (var parameter in typeParameters)
+        {
+            _types.TypeParameters[parameter.Name] = parameter;
+        }
+
+        try
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var fields = ImmutableArray.CreateBuilder<FieldInfo>(node.Fields.Length);
+
+            foreach (var field in node.Fields)
+            {
+                if (!seen.Add(field.Name))
+                {
+                    _diagnostics.ReportError(
+                        DiagnosticCodes.DuplicateDefinition,
+                        field.Span,
+                        $"campo '{field.Name}' declarado mais de uma vez");
+                }
+
+                fields.Add(new FieldInfo(field.Name, _types.Resolve(field.Type, scope), field.Span));
+            }
+
+            definition.Fields = fields.ToImmutable();
+        }
+        finally
+        {
+            foreach (var parameter in typeParameters)
+            {
+                _types.TypeParameters.Remove(parameter.Name);
+            }
+        }
+
+        _resolutions[node.NodeId] = new TypeDefinitionResolution(definition);
+
+        return new MetaType(definition);
+    }
+
+    /// <summary>
+    /// <c>.Nome { campo: valor }</c>. Todos os campos declarados devem ser
+    /// inicializados, e nenhum campo desconhecido é aceito (spec §14).
+    /// </summary>
+    private LapisType CheckConstruct(CoreConstruct node, Scope scope)
+    {
+        if (!scope.TryLookup(node.TypeName, out var binding)
+            || binding.Type is not MetaType { Definition.Kind: TypeDefinitionKind.Struct } meta)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.NotConstructible,
+                node.TypeNameSpan,
+                $"'{node.TypeName}' não é um tipo construível");
+
+            foreach (var field in node.Fields)
+            {
+                CheckExpression(field.Value, scope);
+            }
+
+            return ErrorType.Instance;
+        }
+
+        var definition = meta.Definition;
+        var arguments = node.TypeArguments.Select(t => _types.Resolve(t, scope)).ToImmutableArray();
+
+        if (arguments.Length != definition.TypeParameters.Length)
+        {
+            var code = arguments.IsEmpty
+                ? DiagnosticCodes.GenericTypeNeedsArguments
+                : DiagnosticCodes.GenericArityMismatch;
+
+            _diagnostics.ReportError(
+                code,
+                node.TypeNameSpan,
+                $"'{definition.Name}' espera {definition.TypeParameters.Length} argumentos genéricos, "
+                + $"fornecidos {arguments.Length}");
+
+            foreach (var field in node.Fields)
+            {
+                CheckExpression(field.Value, scope);
+            }
+
+            return ErrorType.Instance;
+        }
+
+        var bindings = BuildSubstitution(definition, arguments);
+        var initialized = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var field in node.Fields)
+        {
+            var valueType = CheckExpression(field.Value, scope);
+            var index = definition.IndexOfField(field.Name);
+
+            if (index < 0)
+            {
+                _diagnostics.ReportError(
+                    DiagnosticCodes.ExtraField,
+                    field.NameSpan,
+                    $"campo '{field.Name}' não existe em {definition.Name}");
+                continue;
+            }
+
+            if (!initialized.Add(field.Name))
+            {
+                _diagnostics.ReportError(
+                    DiagnosticCodes.DuplicateFieldInitializer,
+                    field.NameSpan,
+                    $"campo '{field.Name}' inicializado mais de uma vez");
+                continue;
+            }
+
+            var expected = TypeSubstitution.Apply(definition.Fields[index].Type, bindings);
+
+            if (!TypeRelations.IsAssignableTo(valueType, expected))
+            {
+                _diagnostics.ReportError(
+                    DiagnosticCodes.ArgumentTypeMismatch,
+                    field.Value.Span,
+                    $"campo '{field.Name}': esperado {expected.ToDisplayString()}, "
+                    + $"encontrado {valueType.ToDisplayString()}");
+            }
+        }
+
+        foreach (var field in definition.Fields)
+        {
+            if (!initialized.Contains(field.Name))
+            {
+                _diagnostics.ReportError(
+                    DiagnosticCodes.MissingField,
+                    node.Span,
+                    $"campo '{field.Name}' ausente na construção de {definition.Name}");
+            }
+        }
+
+        return new NamedType(definition, arguments);
     }
 
     private LapisType CheckEnumDef(CoreEnumDef node, Scope scope)

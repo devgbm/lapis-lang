@@ -223,6 +223,36 @@ public static class SurfaceSExprPrinter
                 Close(builder, indent);
                 break;
 
+            case TypeExpression n:
+                var typeParams = n.TypeParameters.IsDefaultOrEmpty
+                    ? string.Empty
+                    : "<" + string.Join(" ", n.TypeParameters.Select(p => p.Name)) + ">";
+                Open(builder, indent, $"type{typeParams}");
+
+                foreach (var field in n.Fields)
+                {
+                    Line(builder, indent + 1, $"(field {field.Name} {PrintType(field.Type)})");
+                }
+
+                Close(builder, indent);
+                break;
+
+            case ConstructExpression n:
+                var typeArgs = n.TypeArguments.IsDefaultOrEmpty
+                    ? string.Empty
+                    : "<" + string.Join(", ", n.TypeArguments.Select(PrintType)) + ">";
+                Open(builder, indent, $"construct {n.TypeName}{typeArgs}");
+
+                foreach (var field in n.Fields)
+                {
+                    Open(builder, indent + 1, $"init {field.Name}");
+                    PrintExpression(builder, field.Value, indent + 2);
+                    Close(builder, indent + 1);
+                }
+
+                Close(builder, indent);
+                break;
+
             default:
                 Line(builder, indent, $"(<desconhecido {expression.GetType().Name}>)");
                 break;

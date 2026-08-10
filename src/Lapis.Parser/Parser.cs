@@ -456,6 +456,12 @@ public sealed class Parser
             case TokenKind.MatchKeyword:
                 return ParseMatch();
 
+            case TokenKind.TypeKeyword:
+                return ParseTypeDeclaration();
+
+            case TokenKind.Dot:
+                return ParseConstruct();
+
             default:
                 var code = token.Kind == TokenKind.EndOfFile
                     ? DiagnosticCodes.UnexpectedEndOfFile
@@ -558,6 +564,186 @@ public sealed class Parser
         }
 
         return new EnumExpression(typeParameters, variants.ToImmutable()) { Span = SpanFrom(start) };
+    }
+
+    /// <summary><c>type&lt;T&gt; { campo: T; }</c> — declaração de tipo (spec §14).</summary>
+    private Expression ParseTypeDeclaration()
+    {
+        var start = Current.Span.Start;
+        _tokens.Advance(); // 'type'
+
+        var typeParameters = ParseTypeParameterList();
+        var fields = ImmutableArray.CreateBuilder<FieldSyntax>();
+
+        if (!_tokens.Match(TokenKind.OpenBrace))
+        {
+            Report(DiagnosticCodes.UnexpectedToken, Current.Span, "esperado '{' no corpo do type");
+            return new TypeExpression(typeParameters, fields.ToImmutable()) { Span = SpanFrom(start) };
+        }
+
+        while (Current.Kind != TokenKind.CloseBrace && !_tokens.AtEnd)
+        {
+            var before = _tokens.Mark();
+            var fieldStart = Current.Span.Start;
+            var name = "?";
+
+            if (Current.Kind == TokenKind.Identifier)
+            {
+                name = Current.Text;
+                _tokens.Advance();
+            }
+            else
+            {
+                Report(DiagnosticCodes.ExpectedIdentifier, Current.Span, "esperado o nome do campo");
+            }
+
+            TypeSyntax type;
+
+            if (_tokens.Match(TokenKind.Colon))
+            {
+                type = ParseType();
+            }
+            else
+            {
+                Report(DiagnosticCodes.UnexpectedToken, Current.Span, $"esperado ':' após o campo '{name}'");
+                type = NamedTypeSyntax.Of("?", Current.Span);
+            }
+
+            if (!_tokens.Match(TokenKind.Semicolon))
+            {
+                Report(DiagnosticCodes.ExpectedFieldSemicolon, Current.Span, "campo de 'type' requer ';'");
+            }
+
+            fields.Add(new FieldSyntax(name, type) { Span = SpanFrom(fieldStart) });
+
+            if (_tokens.Mark() == before)
+            {
+                _tokens.Advance();
+            }
+        }
+
+        if (!_tokens.Match(TokenKind.CloseBrace))
+        {
+            Report(DiagnosticCodes.UnclosedBrace, Current.Span, "esperado '}' para fechar o type");
+        }
+
+        return new TypeExpression(typeParameters, fields.ToImmutable()) { Span = SpanFrom(start) };
+    }
+
+    /// <summary>
+    /// <c>.Nome { campo: valor }</c> — construção de instância (Q2).
+    ///
+    /// O ponto inicial é o que torna esta produção reconhecível com um único token
+    /// de lookahead, dispensando qualquer restrição contextual em <c>if</c>/<c>match</c>.
+    /// </summary>
+    private Expression ParseConstruct()
+    {
+        var start = Current.Span.Start;
+        _tokens.Advance(); // '.'
+
+        var nameToken = Current;
+
+        if (Current.Kind != TokenKind.Identifier)
+        {
+            Report(DiagnosticCodes.ExpectedIdentifier, Current.Span, "esperado o nome do tipo após '.'");
+            return ErrorExpr(SpanFrom(start));
+        }
+
+        _tokens.Advance();
+        var typeArguments = ImmutableArray<TypeSyntax>.Empty;
+
+        if (Current.Kind == TokenKind.Less)
+        {
+            _tokens.Advance();
+            var builder = ImmutableArray.CreateBuilder<TypeSyntax>();
+
+            while (Current.Kind != TokenKind.Greater && !_tokens.AtEnd)
+            {
+                var before = _tokens.Mark();
+                builder.Add(ParseType());
+
+                if (!_tokens.Match(TokenKind.Comma))
+                {
+                    break;
+                }
+
+                if (_tokens.Mark() == before)
+                {
+                    _tokens.Advance();
+                }
+            }
+
+            if (!_tokens.Match(TokenKind.Greater))
+            {
+                Report(DiagnosticCodes.UnexpectedToken, Current.Span, "esperado '>' nos argumentos genéricos");
+            }
+
+            typeArguments = builder.ToImmutable();
+        }
+
+        var fields = ImmutableArray.CreateBuilder<FieldInitSyntax>();
+
+        if (!_tokens.Match(TokenKind.OpenBrace))
+        {
+            Report(DiagnosticCodes.UnexpectedToken, Current.Span, "esperado '{' na construção");
+            return new ConstructExpression(nameToken.Text, typeArguments, fields.ToImmutable())
+            {
+                Span = SpanFrom(start),
+                TypeNameSpan = nameToken.Span,
+            };
+        }
+
+        while (Current.Kind != TokenKind.CloseBrace && !_tokens.AtEnd)
+        {
+            var before = _tokens.Mark();
+            var fieldStart = Current.Span.Start;
+            var fieldToken = Current;
+            var name = "?";
+
+            if (Current.Kind == TokenKind.Identifier)
+            {
+                name = Current.Text;
+                _tokens.Advance();
+            }
+            else
+            {
+                Report(DiagnosticCodes.ExpectedIdentifier, Current.Span, "esperado o nome do campo");
+            }
+
+            if (!_tokens.Match(TokenKind.Colon))
+            {
+                Report(DiagnosticCodes.UnexpectedToken, Current.Span, $"esperado ':' após o campo '{name}'");
+            }
+
+            var value = ParseExpression();
+
+            fields.Add(new FieldInitSyntax(name, value)
+            {
+                Span = SpanFrom(fieldStart),
+                NameSpan = fieldToken.Span,
+            });
+
+            if (!_tokens.Match(TokenKind.Comma))
+            {
+                break;
+            }
+
+            if (_tokens.Mark() == before)
+            {
+                _tokens.Advance();
+            }
+        }
+
+        if (!_tokens.Match(TokenKind.CloseBrace))
+        {
+            Report(DiagnosticCodes.UnclosedBrace, Current.Span, "esperado '}' para fechar a construção");
+        }
+
+        return new ConstructExpression(nameToken.Text, typeArguments, fields.ToImmutable())
+        {
+            Span = SpanFrom(start),
+            TypeNameSpan = nameToken.Span,
+        };
     }
 
     /// <summary>

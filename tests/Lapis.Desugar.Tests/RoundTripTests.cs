@@ -60,6 +60,14 @@ public sealed class RoundTripTests : DesugarTestBase
     [InlineData("def x = match v { A.B(C.D(a)) => a };")]
     [InlineData("def x = match v { 1 => \"um\", -2 => \"menos dois\", _ => \"outro\" };")]
     [InlineData("def x = match v { true => 1, false => 2 };")]
+    [InlineData("def T = type { };")]
+    [InlineData("def T = type { id: Int; name: Str; };")]
+    [InlineData("def T = type<A, B> { first: A; second: B; };")]
+    [InlineData("def u = .User { id: 1, name: \"g\" };")]
+    [InlineData("def u = .Unit { };")]
+    [InlineData("def u = .Box<Int> { value: 1 };")]
+    [InlineData("def u = .A { inner: .B { v: 1 } };")]
+    [InlineData("def v = .P { x: 1 }.x;")]
     public void PrintThenReparse_ProducesTheSameCore(string source)
     {
         var original = Print(source);
