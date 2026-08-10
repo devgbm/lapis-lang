@@ -26,6 +26,12 @@ public static class ReturnAnalysis
         CoreIf n => DefinitelyReturns(n.Condition)
                     || (DefinitelyReturns(n.Then) && DefinitelyReturns(n.Else)),
 
+        // Todos os braços precisam retornar. A exaustividade é assumida porque o
+        // checker já a exige (LAP0262): se o `match` não for exaustivo, os dois
+        // diagnósticos aparecem, o que descreve corretamente as duas falhas.
+        CoreMatch n => DefinitelyReturns(n.Scrutinee)
+                       || (!n.Arms.IsEmpty && n.Arms.All(a => DefinitelyReturns(a.Body))),
+
         CoreBinary n => DefinitelyReturns(n.Left) || DefinitelyReturns(n.Right),
 
         CoreUnary n => DefinitelyReturns(n.Operand),

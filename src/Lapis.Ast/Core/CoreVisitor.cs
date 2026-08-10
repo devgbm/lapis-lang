@@ -20,6 +20,9 @@ public abstract class CoreVisitor<TResult>
         CoreIndex n => VisitIndex(n),
         CoreField n => VisitField(n),
         CoreEnumDef n => VisitEnumDef(n),
+        CoreMatch n => VisitMatch(n),
+        CoreTypeDef n => VisitTypeDef(n),
+        CoreConstruct n => VisitConstruct(n),
         _ => throw InternalCompilerException.Unreachable(node, node.Span),
     };
 
@@ -48,6 +51,12 @@ public abstract class CoreVisitor<TResult>
     protected abstract TResult VisitField(CoreField node);
 
     protected abstract TResult VisitEnumDef(CoreEnumDef node);
+
+    protected abstract TResult VisitMatch(CoreMatch node);
+
+    protected abstract TResult VisitTypeDef(CoreTypeDef node);
+
+    protected abstract TResult VisitConstruct(CoreConstruct node);
 }
 
 /// <summary>
@@ -125,6 +134,27 @@ public abstract class CoreWalker
                 break;
 
             case CoreEnumDef:
+                break;
+
+            case CoreMatch n:
+                Visit(n.Scrutinee);
+
+                foreach (var arm in n.Arms)
+                {
+                    Visit(arm.Body);
+                }
+
+                break;
+
+            case CoreTypeDef:
+                break;
+
+            case CoreConstruct n:
+                foreach (var field in n.Fields)
+                {
+                    Visit(field.Value);
+                }
+
                 break;
 
             default:

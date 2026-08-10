@@ -98,8 +98,11 @@ public sealed class Evaluator
         CoreUnary n => EvaluateUnary(n, environment),
         CoreArray n => EvaluateArray(n, environment),
         CoreIndex n => EvaluateIndex(n, environment),
-        CoreField n => EvaluateField(n),
+        CoreField n => EvaluateField(n, environment),
         CoreEnumDef n => EvaluateEnumDef(n),
+        CoreMatch n => EvaluateMatch(n, environment),
+        CoreTypeDef n => EvaluateTypeDef(n),
+        CoreConstruct n => EvaluateConstruct(n, environment),
         _ => throw InternalCompilerException.Unreachable(node, node.Span),
     };
 
@@ -273,8 +276,27 @@ public sealed class Evaluator
             : prelude.MakeIndexError(array.ElementType));
     }
 
-    private Completion EvaluateField(CoreField node)
+    private Completion EvaluateField(CoreField node, Environment environment)
     {
+        // Acesso a campo de instância: precisa avaliar o alvo.
+        if (_program.ResolutionOf<FieldResolution>(node) is { } field)
+        {
+            var target = Evaluate(node.Target, environment);
+
+            if (!target.IsNormal)
+            {
+                return target;
+            }
+
+            if (target.Value is not StructValue instance)
+            {
+                throw new InternalCompilerException(
+                    "acesso a campo sobre valor que não é instância de type", node.Span);
+            }
+
+            return Completion.Normal(instance.Fields[field.FieldIndex]);
+        }
+
         if (_program.ResolutionOf<VariantResolution>(node) is not { } resolution)
         {
             throw new InternalCompilerException(
@@ -296,14 +318,121 @@ public sealed class Evaluator
             new VariantConstructorValue(definition, resolution.VariantIndex, signature, []));
     }
 
-    private Completion EvaluateEnumDef(CoreEnumDef node)
+    private Completion EvaluateEnumDef(CoreEnumDef node) => EvaluateDefinition(node);
+
+    private Completion EvaluateTypeDef(CoreTypeDef node) => EvaluateDefinition(node);
+
+    private Completion EvaluateDefinition(CoreExpr node)
     {
         if (_program.ResolutionOf<TypeDefinitionResolution>(node) is not { } resolution)
         {
-            throw new InternalCompilerException("enum sem definição resolvida", node.Span);
+            throw new InternalCompilerException("declaração de tipo sem definição resolvida", node.Span);
         }
 
         return Completion.Normal(new TypeValue(resolution.Definition));
+    }
+
+    /// <summary>
+    /// Campos são avaliados na ordem em que aparecem no <b>código</b>, não na ordem
+    /// de declaração do tipo — e depois reordenados para a posição declarada.
+    /// </summary>
+    private Completion EvaluateConstruct(CoreConstruct node, Environment environment)
+    {
+        if (_program.TypeOf(node) is not NamedType instance)
+        {
+            throw new InternalCompilerException(
+                "construção sem tipo resolvido; o checker deveria ter rejeitado", node.Span);
+        }
+
+        var definition = instance.Definition;
+        var fields = new Value[definition.Fields.Length];
+
+        foreach (var initializer in node.Fields)
+        {
+            var evaluated = Evaluate(initializer.Value, environment);
+
+            if (!evaluated.IsNormal)
+            {
+                return evaluated;
+            }
+
+            var index = definition.IndexOfField(initializer.Name);
+
+            if (index < 0)
+            {
+                throw new InternalCompilerException(
+                    $"campo '{initializer.Name}' não existe; o checker deveria ter rejeitado", node.Span);
+            }
+
+            fields[index] = evaluated.Value;
+        }
+
+        return Completion.Normal(
+            new StructValue(definition, [.. fields], instance.Arguments));
+    }
+
+    /// <summary>
+    /// Escrutinado avaliado <b>uma única vez</b>; braços testados em ordem, o
+    /// primeiro que casa vence. O checker garante exaustividade (LAP0262), então
+    /// "nenhum braço casou" só pode ser bug nosso.
+    /// </summary>
+    private Completion EvaluateMatch(CoreMatch node, Environment environment)
+    {
+        var scrutinee = Evaluate(node.Scrutinee, environment);
+
+        if (!scrutinee.IsNormal)
+        {
+            return scrutinee;
+        }
+
+        foreach (var arm in node.Arms)
+        {
+            var bindings = new List<(string, Value)>();
+
+            if (TryMatch(arm.Pattern, scrutinee.Value, bindings))
+            {
+                return Evaluate(arm.Body, environment.ExtendAll(bindings));
+            }
+        }
+
+        throw new InternalCompilerException(
+            "nenhum braço do 'match' casou; o checker deveria ter exigido exaustividade", node.Span);
+    }
+
+    private static bool TryMatch(CorePattern pattern, Value value, List<(string, Value)> bindings)
+    {
+        switch (pattern)
+        {
+            case CoreWildcardPattern:
+                return true;
+
+            case CoreBindingPattern binding:
+                bindings.Add((binding.Name, value));
+                return true;
+
+            case CoreLiteralPattern literal:
+                return Primitives.StructuralEquals(FromConstant(literal.Value), value);
+
+            case CoreVariantPattern variant:
+                if (value is not EnumValue enumValue
+                    || !string.Equals(enumValue.Variant.Name, variant.VariantName, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                for (var i = 0; i < variant.Arguments.Length; i++)
+                {
+                    if (!TryMatch(variant.Arguments[i], enumValue.Payload[i], bindings))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+
+            default:
+                throw new InternalCompilerException($"padrão inesperado: {pattern.GetType().Name}");
+        }
     }
 
     private Completion EvaluateCall(CoreCall node, Environment environment)

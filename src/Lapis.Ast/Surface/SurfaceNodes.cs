@@ -80,6 +80,34 @@ public sealed record MemberExpression(Expression Target, string Name) : Expressi
     public required SourceSpan NameSpan { get; init; }
 }
 
+/// <summary>
+/// <c>match e { padrão =&gt; corpo, ... }</c>. Deve ser exaustivo (Q6): como é uma
+/// expressão, precisa produzir um valor em toda execução.
+/// </summary>
+public sealed record MatchExpression(
+    Expression Scrutinee,
+    ImmutableArray<MatchArm> Arms) : Expression;
+
+/// <summary>Declaração de tipo. Não tem nome próprio: o nome vem do <c>def</c> (spec §14).</summary>
+public sealed record TypeExpression(
+    ImmutableArray<TypeParameterSyntax> TypeParameters,
+    ImmutableArray<FieldSyntax> Fields) : Expression;
+
+/// <summary>
+/// <c>.Nome { campo: valor }</c> — construção de instância (Q2).
+///
+/// O ponto inicial não é decoração: como nenhuma outra expressão começa com
+/// <c>.</c>, o parser distingue bloco de construção olhando um único token, e a
+/// condição de <c>if</c>/<c>match</c> não precisa de regra contextual.
+/// </summary>
+public sealed record ConstructExpression(
+    string TypeName,
+    ImmutableArray<TypeSyntax> TypeArguments,
+    ImmutableArray<FieldInitSyntax> Fields) : Expression
+{
+    public required SourceSpan TypeNameSpan { get; init; }
+}
+
 /// <summary>Declaração de enum. Não tem nome próprio: o nome vem do <c>def</c> (spec §15).</summary>
 public sealed record EnumExpression(
     ImmutableArray<TypeParameterSyntax> TypeParameters,
@@ -93,6 +121,39 @@ public sealed record ErrorExpression : Expression;
 public sealed record ParameterSyntax(string Name, TypeSyntax Type) : SurfaceNode;
 
 public sealed record VariantSyntax(string Name, ImmutableArray<TypeSyntax> Payload) : SurfaceNode;
+
+public sealed record MatchArm(Pattern Pattern, Expression Body) : SurfaceNode;
+
+public sealed record FieldSyntax(string Name, TypeSyntax Type) : SurfaceNode;
+
+public sealed record FieldInitSyntax(string Name, Expression Value) : SurfaceNode
+{
+    public required SourceSpan NameSpan { get; init; }
+}
+
+// ---------------------------------------------------------------- padrões
+
+/// <summary>
+/// Q3 tornou os padrões não ambíguos: como variantes exigem qualificação
+/// completa, um identificador sozinho é <b>sempre</b> um binding novo e
+/// <c>Enum.Variante</c> é <b>sempre</b> um padrão de variante. O parser decide
+/// sem consultar o escopo.
+/// </summary>
+public abstract record Pattern : SurfaceNode;
+
+public sealed record WildcardPattern : Pattern;
+
+public sealed record BindingPattern(string Name) : Pattern;
+
+public sealed record VariantPattern(
+    string EnumName,
+    string VariantName,
+    ImmutableArray<Pattern> Arguments) : Pattern
+{
+    public required SourceSpan VariantSpan { get; init; }
+}
+
+public sealed record LiteralPattern(ConstantValue Value) : Pattern;
 
 public sealed record TypeParameterSyntax(string Name) : SurfaceNode;
 

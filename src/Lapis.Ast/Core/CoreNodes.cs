@@ -195,6 +195,75 @@ public sealed class CoreEnumDef(
     public ImmutableArray<CoreVariantDecl> Variants { get; } = variants;
 }
 
+public sealed record CoreFieldDecl(string Name, TypeSyntax Type, SourceSpan Span);
+
+public sealed class CoreTypeDef(
+    int nodeId,
+    SourceSpan span,
+    ImmutableArray<string> typeParameters,
+    ImmutableArray<CoreFieldDecl> fields) : CoreExpr(nodeId, span)
+{
+    public ImmutableArray<string> TypeParameters { get; } = typeParameters;
+
+    public ImmutableArray<CoreFieldDecl> Fields { get; } = fields;
+}
+
+public sealed record CoreFieldInit(string Name, CoreExpr Value, SourceSpan Span, SourceSpan NameSpan);
+
+public sealed class CoreConstruct(
+    int nodeId,
+    SourceSpan span,
+    string typeName,
+    ImmutableArray<TypeSyntax> typeArguments,
+    ImmutableArray<CoreFieldInit> fields) : CoreExpr(nodeId, span)
+{
+    public string TypeName { get; } = typeName;
+
+    public ImmutableArray<TypeSyntax> TypeArguments { get; } = typeArguments;
+
+    public ImmutableArray<CoreFieldInit> Fields { get; } = fields;
+
+    public SourceSpan TypeNameSpan { get; init; } = span;
+}
+
+public abstract record CorePattern
+{
+    public required SourceSpan Span { get; init; }
+}
+
+public sealed record CoreWildcardPattern : CorePattern;
+
+public sealed record CoreBindingPattern(string Name) : CorePattern;
+
+public sealed record CoreVariantPattern(
+    string EnumName,
+    string VariantName,
+    ImmutableArray<CorePattern> Arguments) : CorePattern
+{
+    public required SourceSpan VariantSpan { get; init; }
+}
+
+public sealed record CoreLiteralPattern(ConstantValue Value) : CorePattern;
+
+public sealed record CoreArm(CorePattern Pattern, CoreExpr Body, SourceSpan Span);
+
+/// <summary>
+/// <c>Match</c> permanece como primitiva da Core: desugará-lo exigiria primitivas
+/// <c>enum_tag</c> e <c>enum_payload</c>, aumentando o runtime — contra a spec §58
+/// ("runtime mínimo"). Um plano futuro pode inverter isso sem afetar nada acima
+/// do desugar.
+/// </summary>
+public sealed class CoreMatch(
+    int nodeId,
+    SourceSpan span,
+    CoreExpr scrutinee,
+    ImmutableArray<CoreArm> arms) : CoreExpr(nodeId, span)
+{
+    public CoreExpr Scrutinee { get; } = scrutinee;
+
+    public ImmutableArray<CoreArm> Arms { get; } = arms;
+}
+
 /// <summary>Um arquivo <c>.ls</c> inteiro reduzido a uma única expressão.</summary>
 public sealed class CoreProgram(CoreExpr body, int nodeCount)
 {

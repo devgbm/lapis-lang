@@ -141,10 +141,65 @@ public static class CoreSExprPrinter
                 Close(builder, indent);
                 break;
 
+            case CoreMatch n:
+                Open(builder, indent, $"{tag}match");
+                PrintExpression(builder, n.Scrutinee, indent + 1, ids);
+
+                foreach (var arm in n.Arms)
+                {
+                    Open(builder, indent + 1, $"arm {PrintPattern(arm.Pattern)}");
+                    PrintExpression(builder, arm.Body, indent + 2, ids);
+                    Close(builder, indent + 1);
+                }
+
+                Close(builder, indent);
+                break;
+
+            case CoreTypeDef n:
+                var typeDefParams = n.TypeParameters.IsDefaultOrEmpty
+                    ? string.Empty
+                    : "<" + string.Join(" ", n.TypeParameters) + ">";
+                Open(builder, indent, $"{tag}type{typeDefParams}");
+
+                foreach (var field in n.Fields)
+                {
+                    Line(builder, indent + 1, $"(field {field.Name} {SurfaceSExprPrinter.PrintType(field.Type)})");
+                }
+
+                Close(builder, indent);
+                break;
+
+            case CoreConstruct n:
+                var constructArgs = n.TypeArguments.IsDefaultOrEmpty
+                    ? string.Empty
+                    : "<" + string.Join(", ", n.TypeArguments.Select(SurfaceSExprPrinter.PrintType)) + ">";
+                Open(builder, indent, $"{tag}construct {n.TypeName}{constructArgs}");
+
+                foreach (var field in n.Fields)
+                {
+                    Open(builder, indent + 1, $"init {field.Name}");
+                    PrintExpression(builder, field.Value, indent + 2, ids);
+                    Close(builder, indent + 1);
+                }
+
+                Close(builder, indent);
+                break;
+
             default:
                 throw InternalCompilerException.Unreachable(node, node.Span);
         }
     }
+
+    public static string PrintPattern(CorePattern pattern) => pattern switch
+    {
+        CoreWildcardPattern => "_",
+        CoreBindingPattern p => p.Name,
+        CoreLiteralPattern p => p.Value.ToDisplayString(),
+        CoreVariantPattern { Arguments.IsDefaultOrEmpty: true } p => $"{p.EnumName}.{p.VariantName}",
+        CoreVariantPattern p =>
+            $"{p.EnumName}.{p.VariantName}({string.Join(", ", p.Arguments.Select(PrintPattern))})",
+        _ => throw new InternalCompilerException($"padrão inesperado: {pattern.GetType().Name}"),
+    };
 
     private static void PrintLetChain(StringBuilder builder, CoreExpr node, int indent, bool ids)
     {

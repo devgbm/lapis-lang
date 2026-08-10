@@ -182,6 +182,26 @@ public sealed class Desugarer
                     [.. n.TypeParameters.Select(p => p.Name)],
                     [.. n.Variants.Select(v => new CoreVariantDecl(v.Name, v.Payload, v.Span))]);
 
+            case MatchExpression n:
+                return _factory.Match(
+                    n.Span,
+                    DesugarExpression(n.Scrutinee),
+                    [.. n.Arms.Select(a => new CoreArm(DesugarPattern(a.Pattern), DesugarExpression(a.Body), a.Span))]);
+
+            case TypeExpression n:
+                return _factory.TypeDef(
+                    n.Span,
+                    [.. n.TypeParameters.Select(p => p.Name)],
+                    [.. n.Fields.Select(f => new CoreFieldDecl(f.Name, f.Type, f.Span))]);
+
+            case ConstructExpression n:
+                return _factory.Construct(
+                    n.Span,
+                    n.TypeName,
+                    n.TypeArguments,
+                    [.. n.Fields.Select(f => new CoreFieldInit(f.Name, DesugarExpression(f.Value), f.Span, f.NameSpan))],
+                    n.TypeNameSpan);
+
             case ErrorExpression n:
                 // O parser já reportou; um literal Void mantém a árvore bem-formada.
                 return _factory.Unit(n.Span);
@@ -261,6 +281,27 @@ public sealed class Desugarer
 
         return _factory.Lambda(node.Span, parameters, node.ReturnType, body, EndOf(node.Body.Span));
     }
+
+    /// <summary>
+    /// Normalização de padrões. Totalmente sintática: com Q3, um identificador
+    /// sozinho é sempre binding e <c>A.B</c> é sempre variante — o checker não
+    /// precisa desempatar nada.
+    /// </summary>
+    private static CorePattern DesugarPattern(Pattern pattern) => pattern switch
+    {
+        WildcardPattern p => new CoreWildcardPattern { Span = p.Span },
+        BindingPattern p => new CoreBindingPattern(p.Name) { Span = p.Span },
+        LiteralPattern p => new CoreLiteralPattern(p.Value) { Span = p.Span },
+        VariantPattern p => new CoreVariantPattern(
+            p.EnumName,
+            p.VariantName,
+            [.. p.Arguments.Select(DesugarPattern)])
+        {
+            Span = p.Span,
+            VariantSpan = p.VariantSpan,
+        },
+        _ => throw InternalCompilerException.Unreachable(pattern, pattern.Span),
+    };
 
     /// <summary>
     /// Span de comprimento zero no fim de uma construção. Nós introduzidos apontam

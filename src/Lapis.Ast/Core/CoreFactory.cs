@@ -65,6 +65,23 @@ public sealed class CoreFactory
         ImmutableArray<CoreVariantDecl> variants) =>
         new(Next(), span, typeParameters, variants);
 
+    public CoreMatch Match(SourceSpan span, CoreExpr scrutinee, ImmutableArray<CoreArm> arms) =>
+        new(Next(), span, scrutinee, arms);
+
+    public CoreTypeDef TypeDef(
+        SourceSpan span,
+        ImmutableArray<string> typeParameters,
+        ImmutableArray<CoreFieldDecl> fields) =>
+        new(Next(), span, typeParameters, fields);
+
+    public CoreConstruct Construct(
+        SourceSpan span,
+        string typeName,
+        ImmutableArray<TypeSyntax> typeArguments,
+        ImmutableArray<CoreFieldInit> fields,
+        SourceSpan typeNameSpan) =>
+        new(Next(), span, typeName, typeArguments, fields) { TypeNameSpan = typeNameSpan };
+
     public CoreProgram Program(CoreExpr body) => new(body, _nextNodeId);
 
     private int Next() => _nextNodeId++;

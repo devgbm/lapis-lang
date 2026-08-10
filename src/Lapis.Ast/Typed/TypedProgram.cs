@@ -24,6 +24,9 @@ public sealed record CallResolution(
 /// <summary>A variante selecionada por um acesso a membro sobre um enum.</summary>
 public sealed record VariantResolution(TypeDefinition Enum, int VariantIndex) : Resolution;
 
+/// <summary>O índice do campo selecionado por um acesso sobre uma instância de <c>type</c>.</summary>
+public sealed record FieldResolution(int FieldIndex) : Resolution;
+
 /// <summary>A definição criada por um <c>type</c> ou <c>enum</c>.</summary>
 public sealed record TypeDefinitionResolution(TypeDefinition Definition) : Resolution;
 
