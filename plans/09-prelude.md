@@ -62,8 +62,8 @@ diretamente no escopo raiz:
 
 | Nome | Tipo | Motivo de ser nativo |
 |---|---|---|
-| `print` | `fn<T>(value: T) Void` | efeito de I/O |
-| `array_length` | `fn<T>(array: T[]) Int` | acesso à representação (spec §29) |
+| `print` | `fn(Any) Void` | efeito de I/O. Não é genérico: com Q7 exigindo argumentos explícitos, `fn<T>(T) Void` obrigaria `print<Int>(x)` em todo programa. `Any` é um tipo top interno que nenhuma sintaxe produz |
+| `array_length` | `fn(Any) Int` | acesso à representação (spec §29); mesma razão de `print` para não ser genérico |
 
 Regra de admissão de novos nativos, para manter §58.2: um nome só pode ser nativo
 se for **impossível** defini-lo em `prelude.ls`. Cada nativo novo precisa dessa
@@ -158,8 +158,13 @@ compilador conceitualmente — só editar um arquivo.
 **Ligação por `TypeDefinition` resolvida, não por nome.** É o que torna o
 sombreamento seguro e o que mantém o evaluator sem strings mágicas.
 
-**`print` é genérico, não variádico.** Um único argumento (spec §34 nunca usa
-mais de um). Múltiplos argumentos exigiriam variadicidade, que não está na spec.
+**`print` aceita um argumento, não vários.** A spec §34 nunca usa mais de um, e
+variadicidade não está na spec.
+
+**`print` não é genérico** (Q7). A alternativa — `fn<T>(T) Void` com argumentos
+explícitos obrigatórios — forçaria `print<Int>(x)` em todo programa. O tipo `Any`
+é o preço, e ele é contido: interno, sem sintaxe que o produza, e usado só por
+primitivas.
 
 ---
 
@@ -186,7 +191,7 @@ mais de um). Múltiplos argumentos exigiriam variadicidade, que não está na sp
 |---|---|
 | `Index_Type_UsesPreludeResult` | `[1][0] : Result<Int, IndexError>` |
 | `User_CanAnnotateWithResult` | `def r: Result<Int, IndexError> = a[0];` tipa |
-| `User_CanMatchOnResult` | `match a[0] { Ok(v)=>v, Err(e)=>0 }` tipa |
+| `User_CanMatchOnResult` | `match a[0] { Result.Ok(v)=>v, Result.Err(e)=>0 }` tipa |
 | `User_CanUseOption` | `Option.Some(1)` tipa |
 | `Result_IsGeneric` | `Result<Str, Int>` tipa |
 
@@ -196,8 +201,8 @@ mais de um). Múltiplos argumentos exigiriam variadicidade, que não está na sp
 |---|---|
 | `Index_ProducesPreludeOk` | `EnumValue.Definition` é a **mesma instância** de `prelude.Result` |
 | `Index_OutOfBounds_ProducesPreludeErr` | idem, com carga `OutOfBounds` |
-| `Result_FormatsAsOk` | `print([1][0])` ⇒ `Ok(1)\n` |
-| `Result_FormatsAsErr` | `print([1][5])` ⇒ `Err(OutOfBounds)\n` |
+| `Result_FormatsAsOk` | `print([1][0])` ⇒ `Result.Ok(1)\n` |
+| `Result_FormatsAsErr` | `print([1][5])` ⇒ `Result.Err(IndexError.OutOfBounds)\n` |
 
 ### Sombreamento
 
@@ -214,9 +219,9 @@ mais de um). Múltiplos argumentos exigiriam variadicidade, que não está na sp
 | `Print_Int`, `Print_Str`, `Print_Bool`, `Print_Void` | formatação da tabela do plano 07 §7.4 |
 | `Print_Array`, `Print_Enum`, `Print_Struct`, `Print_Closure` | idem |
 | `Print_ReturnsVoid` | `def x: Void = print(1);` tipa |
-| `Print_Generic_InferredArgument` | `print(1)` sem `<Int>` explícito (Q7) |
-| `Print_Explicit_GenericArgument` | `print<Int>(1)` também aceito |
-| `ArrayLength_Generic` | `array_length([1,2,3])` ⇒ 3 |
+| `Print_AcceptsAnyType` | `print(1)`, `print("s")`, `print(f)` — sem argumento genérico (Q7) |
+| `Print_IsNotGeneric` | a assinatura não tem parâmetros de tipo |
+| `ArrayLength` | `array_length([1,2,3])` ⇒ 3 |
 | `Natives_ListIsMinimal` | teste de regressão: exatamente 2 nativos |
 
 ---

@@ -133,20 +133,44 @@ public sealed class PrimitiveTests
 
     [Fact]
     public void Divide_Int_Truncates() =>
-        Primitives.Divide(new IntValue(7), new IntValue(2)).Unwrap().ShouldBe(new IntValue(3));
+        Primitives.Divide(new IntValue(7), new IntValue(2)).ShouldBe(new IntValue(3));
 
     [Fact]
     public void Divide_Int_TruncatesTowardZero() =>
-        Primitives.Divide(new IntValue(-7), new IntValue(2)).Unwrap().ShouldBe(new IntValue(-3));
+        Primitives.Divide(new IntValue(-7), new IntValue(2)).ShouldBe(new IntValue(-3));
 
-    [Fact]
-    public void Divide_Int_ByZero_IsReported() =>
-        Primitives.Divide(new IntValue(1), new IntValue(0)).DivisionByZero.ShouldBeTrue();
+    /// <summary>Q9: divisão inteira por zero é total e produz o maior <c>Int</c>.</summary>
+    [Theory]
+    [InlineData(1L)]
+    [InlineData(0L)]
+    [InlineData(-1L)]
+    [InlineData(long.MinValue)]
+    public void Divide_Int_ByZero_IsMaxValue(long dividend) =>
+        Primitives.Divide(new IntValue(dividend), new IntValue(0)).ShouldBe(new IntValue(long.MaxValue));
 
     [Fact]
     public void Divide_Float_ByZero_IsInfinity() =>
-        Primitives.Divide(new FloatValue(1), new FloatValue(0)).Unwrap()
+        Primitives.Divide(new FloatValue(1), new FloatValue(0))
             .ShouldBe(new FloatValue(double.PositiveInfinity));
+
+    /// <summary>A única divisão que estoura em Int64; envolve como o resto da aritmética.</summary>
+    [Fact]
+    public void Divide_MinValueByMinusOne_Wraps() =>
+        Primitives.Divide(new IntValue(long.MinValue), new IntValue(-1)).ShouldBe(new IntValue(long.MinValue));
+
+    [Fact]
+    public void Divide_IsTotal_ForEveryIntPair()
+    {
+        long[] samples = [long.MinValue, -7, -1, 0, 1, 7, long.MaxValue];
+
+        foreach (var a in samples)
+        {
+            foreach (var b in samples)
+            {
+                Should.NotThrow(() => Primitives.Divide(new IntValue(a), new IntValue(b)));
+            }
+        }
+    }
 
     [Fact]
     public void Negate_MinValue_Wraps() =>

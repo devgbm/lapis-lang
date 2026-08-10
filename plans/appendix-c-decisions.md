@@ -1,11 +1,30 @@
 # Apêndice C — Decisões de Design e Questões Abertas
 
 Registro das escolhas que a spec 0.2 não determina, ou determina de forma
-ambígua. Cada entrada tem: o problema, a decisão provisória, a justificativa e
-o que precisa de confirmação.
+ambígua. Cada entrada tem: o problema, a decisão, a justificativa e o estado.
 
-**As entradas marcadas 🔴 mudam a linguagem e devem ser confirmadas pelo autor da
-spec.** As marcadas 🟡 são internas à implementação.
+**As entradas marcadas 🔴 mudam a linguagem.** As marcadas 🟡 são internas à
+implementação.
+
+## Estado
+
+| # | Tema | Estado |
+|---|---|---|
+| Q1 | declaração de generics com parâmetros nomeados | ✅ decidido |
+| Q2 | construção de `type` com `.Nome { campo: valor }` | ✅ decidido |
+| Q3 | variantes de enum sempre qualificadas | ✅ decidido |
+| Q4 | operadores `!`, `&&`, `\|\|` | ✅ decidido · implementado |
+| Q5 | desambiguação de `<` por backtracking | ✅ decidido |
+| Q6 | `match` exaustivo | ✅ decidido |
+| Q7 | argumentos genéricos sempre explícitos | ✅ decidido · implementado |
+| Q8 | sem recursão na v0.2 | ✅ decidido · implementado |
+| Q9 | `x / 0` produz o maior `Int` | ✅ decidido · implementado |
+| Q10–Q15 | decisões internas de implementação | 🟡 em vigor |
+| Q16 | statements que terminam em bloco dispensam `;` | ⏳ aguardando |
+
+**A spec 0.2 precisa ser atualizada** em quatro pontos por causa destas decisões:
+§15/§16/§22 (variantes qualificadas), §44 (tokens `!`, `&&`, `\|\|`), §14/§24
+(sintaxe de construção) e §25/§26 (divisão por zero). Detalhes em cada entrada.
 
 ---
 
@@ -37,7 +56,8 @@ Parâmetro genérico é ou `IDENT` (parâmetro de tipo) ou `IDENT ":" type`
 corpo precisa de um nome para o valor. Preserva integralmente a forma de *uso*
 que a spec exemplifica, que é o que §13 realmente quer demonstrar.
 
-**Precisa de confirmação:** sim.
+**✅ Confirmado pelo autor da spec.** Parâmetros genéricos são sempre nomeados na
+declaração.
 
 ---
 
@@ -47,22 +67,27 @@ que a spec exemplifica, que é o que §13 realmente quer demonstrar.
 `Construct` na Core AST, mas nenhuma seção mostra como criar uma instância nem
 como ler um campo.
 
-**Decisão.**
+**✅ Decidido pelo autor da spec:** a construção leva um **ponto inicial**.
 
 ```c
-def u = User { id: 1, name: "Gabriel" };
+def u = .User { id: 1, name: "Gabriel" };
 def n = u.name;
 ```
 
-Com a restrição de "sem literal de struct" na condição de `if` e no escrutinado
-de `match` (Apêndice A §A.8).
+**Consequência boa:** o `.` inicial resolve a ambiguidade que motivou a pergunta.
+Como nenhuma expressão comum começa com `.`, o parser sabe imediatamente que
+`{` abre uma construção e não um bloco — então a restrição de "sem literal de
+struct na condição de `if`/`match`" **deixa de ser necessária** e sai da
+gramática. Isto passa a ser válido sem parênteses:
 
-**Alternativa considerada:** construção em forma de chamada, `User(id: 1)`.
-Rejeitada porque exigiria argumentos nomeados, que não existem na linguagem, e
-porque a forma de chaves espelha a declaração.
+```c
+if .Point { x: 1, y: 2 }.valid {
+    ...
+}
+```
 
-**Precisa de confirmação:** sim — inclusive se `type` deve mesmo ser construível
-na 0.2, ou se fica só declarável até a 0.3.
+O custo é um caractere a mais por construção, pago uma vez, contra uma regra
+contextual que o programador teria que carregar na cabeça.
 
 ---
 
@@ -71,21 +96,29 @@ na 0.2, ou se fica só declarável até a 0.3.
 **Problema.** A spec usa as duas formas: `Ok(10)` e `Err(error)` (§15, §16) nuas,
 e `IndexError.OutOfBounds` (§21) qualificada.
 
-**Decisão.** Ambas são válidas:
+**✅ Decidido pelo autor da spec:** **qualificação completa obrigatória**.
 
-- `Enum.Variante` é sempre válido (acesso a membro sobre um `MetaType`);
-- `def X = enum { ... };` **também** injeta os nomes das variantes no escopo em
-  que o `def` aparece;
-- colisão com um nome existente ⇒ `LAP0203`.
+```c
+Result.Ok(1)
+Result.Err(error)
+IndexError.OutOfBounds
+```
 
-**Justificativa.** Faz os exemplos da spec funcionarem literalmente. O custo é
-poluição de escopo, mitigada pelo diagnóstico de colisão.
+Não há injeção de variantes no escopo. `Ok(10)` sozinho é `LAP0201` (variável
+inexistente).
 
-**Risco conhecido.** Dois enums com variantes homônimas no mesmo escopo tornam a
-forma nua inutilizável para ambos. Aceitável em v0.2; se incomodar, a injeção
-pode virar opt-in.
+**Ganhos:** nenhuma poluição de escopo, nenhuma colisão possível entre enums com
+variantes homônimas, e o diagnóstico `LAP0203` deixa de existir. Padrões de
+`match` seguem a mesma regra: `Result.Ok(v)`, não `Ok(v)`.
 
-**Precisa de confirmação:** sim.
+**⚠️ A spec precisa ser atualizada.** Os exemplos das seções §15, §16 e §22 usam a
+forma nua e passam a ser inválidos:
+
+| Seção | Como está | Como fica |
+|---|---|---|
+| §15 | `Ok(10)`, `Err(error)` | `Result.Ok(10)`, `Result.Err(error)` |
+| §21 | `Err(IndexError.OutOfBounds)` | já correto |
+| §22 | `Ok(value) => value` | `Result.Ok(value) => value` |
 
 ---
 
@@ -96,10 +129,10 @@ conjunção/disjunção. Sem elas, `Bool` só serve como condição de `if` e n�
 como escrever `if !encontrado` ou `if 0 <= i && i < n` — este último é
 justamente o padrão que a spec §41/§42 quer analisar.
 
-**Decisão.** Adicionar `!`, `&&`, `||` com curto-circuito, desugarados para `If`
-(plano 05 §5.2).
+**✅ Confirmado pelo autor da spec.** `!`, `&&` e `||` com curto-circuito,
+desugarados para `If` (plano 05 §5.2). Implementados no M1.
 
-**Precisa de confirmação:** sim (é adição de sintaxe à spec).
+**⚠️ A spec §44 precisa listar os três tokens.**
 
 ---
 
@@ -117,6 +150,8 @@ descoberto como "bug".
 **Alternativa considerada:** turbofish (`identity::<Int>(10)`). Rejeitada por
 divergir da sintaxe que a spec exemplifica.
 
+**✅ Confirmado pelo autor da spec**, com a limitação aceita.
+
 ---
 
 ## Q6 🔴 — Exaustividade de `match`
@@ -131,7 +166,7 @@ casou", e as opções (abortar, retornar `Void`) são ambas piores que exigir
 cobertura. Além disso, exaustividade é o que permite ao PE eliminar braços
 impossíveis com segurança (plano 14).
 
-**Precisa de confirmação:** sim.
+**✅ Confirmado pelo autor da spec.**
 
 ---
 
@@ -141,15 +176,27 @@ impossíveis com segurança (plano 14).
 sempre mostra generics explícitos (`identity<Int>(10)`). E `print` precisa ser
 genérico para aceitar qualquer valor.
 
-**Decisão.** Inferência de 1ª ordem para **parâmetros de tipo** quando os
-argumentos genéricos são omitidos numa chamada: casamento posicional entre os
-tipos dos parâmetros formais e os dos argumentos reais. Parâmetros **const**
-nunca são inferidos (`LAP0296`).
+**✅ Decidido pelo autor da spec:** **sem inferência por ora**. Argumentos
+genéricos são sempre explícitos: `identity<Int>(10)`. Uma chamada a função
+genérica sem argumentos é `LAP0290`.
 
-**Justificativa.** É o mínimo para os exemplos da spec funcionarem, e é
-previsível (spec §47) — nada de unificação global.
+**Consequência sobre `print`.** Aplicar a regra a uma assinatura
+`print: fn<T>(T) Void` obrigaria a escrever `print<Int>(x)` em todo programa —
+inclusive nos exemplos da spec, cujo §34 mostra `print(result)`. A saída adotada:
 
-**Precisa de confirmação:** sim.
+> `print` deixa de ser genérico. Sua assinatura passa a ser `fn(Any) Void`, onde
+> `Any` é um tipo top **interno**: nenhuma sintaxe o produz, nenhum valor o tem,
+> ele só aparece na assinatura de primitivas que aceitam qualquer valor.
+
+Isso mantém `print(30)` exatamente como a spec escreve, e mantém a regra de
+generics limpa — porque `print` simplesmente não é uma função genérica.
+
+**Estado atual.** A regra está fixada no checker, mas ainda é vacuosa: a sintaxe
+de *declaração* de generics é do M4, então nenhuma função genérica é construível.
+Quando o M4 chegar, `identity<Int>(10)` funciona e `identity(10)` é erro.
+
+**Revisitar quando:** se `Any` começar a aparecer em mais de uma ou duas
+primitivas, é sinal de que a inferência deveria voltar.
 
 ---
 
@@ -171,7 +218,9 @@ para "pesquisa de avaliação" a médio prazo, e **deve ser revisitada na 0.3**
 junto com a estratégia de terminação do PE (memoização de especializações +
 generalização de argumentos, ao estilo dos supercompiladores).
 
-**Precisa de confirmação:** sim — é a decisão de maior impacto deste apêndice.
+**✅ Confirmado pelo autor da spec.** Implementado no M1: `Let(x, v, body)` não
+expõe `x` em `v`, e o teste `SelfReference_InOwnInitializer_ReportsLap0201`
+trava o comportamento.
 
 ---
 
@@ -180,15 +229,28 @@ generalização de argumentos, ao estilo dos supercompiladores).
 **Problema.** A spec não define. As opções: retornar `Result` (muda o tipo de
 `/`), produzir um valor indefinido, ou abortar.
 
-**Decisão.** Abortar a execução com `LAP0301` e exit code 1. `Float` segue IEEE
-754 (`inf`/`nan`), sem abortar.
+**✅ Decidido pelo autor da spec:** `x / 0` produz o **maior `Int`**
+(`9223372036854775807`), qualquer que seja o sinal do dividendo. `Float` segue
+IEEE 754 (`inf`/`nan`).
 
-**Justificativa.** Retornar `Result` de `/` contradiria §25/§26, que tratam
-aritmética como operação comum, e contaminaria toda expressão aritmética com
-`Result`. Abortar mantém o tipo de `/` simples e é observável (portanto testável
-na equivalência PE/evaluator).
+**Ganhos.** A divisão vira uma operação **total**: o tipo de `/` continua sendo
+`Int` (sem contaminar toda expressão aritmética com `Result`, o que contradiria
+§25/§26), e não há caminho de aborto em nenhuma operação binária. Três efeitos
+concretos:
 
-**Precisa de confirmação:** sim.
+1. o evaluator perdeu um caso de `Completion.Abort` inteiro;
+2. `LAP0301` foi **aposentado** (o código não é reciclado);
+3. **o partial evaluator fica mais simples**: a regra de "divisão é impura porque
+   pode abortar" (plano 12 §12.4, regra 3) some, e toda aritmética passa a ser
+   dobrável sem análise de efeito.
+
+**Caso de borda descoberto ao implementar.** `long.MinValue / -1` é a única
+divisão inteira que estoura em Int64 — o quociente não cabe e o hardware trapeia,
+mesmo em `unchecked`. Envolve para `long.MinValue`, coerente com o resto da
+aritmética (`-MinValue == MinValue` em complemento de dois). Coberto por
+`Divide_IsTotal_ForEveryIntPair`.
+
+**⚠️ A spec deveria registrar isto**, já que §25/§26 não falam de divisão por zero.
 
 ---
 

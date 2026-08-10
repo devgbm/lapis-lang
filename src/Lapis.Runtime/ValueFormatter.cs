@@ -25,8 +25,25 @@ public static class ValueFormatter
         BoolValue v => v.Value ? "true" : "false",
         StrValue v => quoteStrings ? new ConstStr(v.Value).ToDisplayString() : v.Value,
         VoidValue => "()",
+        ArrayValue v => "[" + string.Join(", ", v.Elements.Select(e => Format(e, quoteStrings: true))) + "]",
+
+        // Enums são impressos qualificados, exatamente como a linguagem exige que
+        // sejam escritos (Q3): `Result.Ok(20)`, não `Ok(20)`.
+        EnumValue v => FormatEnum(v),
+
+        TypeValue v => $"<tipo {v.Definition.Name}>",
+        VariantConstructorValue v => $"<{v.Definition.Name}.{v.Definition.Variants[v.VariantIndex].Name}>",
         ClosureValue v => $"<{v.Signature.ToDisplayString()}>",
         NativeFunctionValue v => $"<nativo {v.Name}>",
         _ => throw InternalCompilerException.Unreachable(value),
     };
+
+    private static string FormatEnum(EnumValue value)
+    {
+        var qualified = $"{value.Definition.Name}.{value.Variant.Name}";
+
+        return value.Payload.IsDefaultOrEmpty
+            ? qualified
+            : $"{qualified}({string.Join(", ", value.Payload.Select(p => Format(p, quoteStrings: true)))})";
+    }
 }

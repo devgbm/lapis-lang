@@ -16,10 +16,16 @@ public abstract record Resolution;
 
 public sealed record VariableResolution(BindingId Binding) : Resolution;
 
-/// <summary>Argumentos genéricos inferidos e o tipo já instanciado de uma chamada.</summary>
+/// <summary>Argumentos genéricos e o tipo já instanciado de uma chamada.</summary>
 public sealed record CallResolution(
     ImmutableArray<LapisType> TypeArguments,
     FunctionType Instantiated) : Resolution;
+
+/// <summary>A variante selecionada por um acesso a membro sobre um enum.</summary>
+public sealed record VariantResolution(TypeDefinition Enum, int VariantIndex) : Resolution;
+
+/// <summary>A definição criada por um <c>type</c> ou <c>enum</c>.</summary>
+public sealed record TypeDefinitionResolution(TypeDefinition Definition) : Resolution;
 
 /// <summary>
 /// Saída do type checker: a mesma Core AST, mais tabelas indexadas por

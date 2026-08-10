@@ -68,14 +68,15 @@ public static class Pipeline
             return Result(diagnostics, tokens, surface, core);
         }
 
-        var typed = TypeChecker.TypeChecker.Check(core, diagnostics);
+        var prelude = PreludeLoader.Load();
+        var typed = TypeChecker.TypeChecker.Check(core, prelude, diagnostics);
 
         if (stopAfter == PipelineStage.TypeCheck || diagnostics.HasErrors)
         {
             return Result(diagnostics, tokens, surface, core, typed);
         }
 
-        var evaluation = Evaluator.Evaluator.Run(typed, context ?? new RuntimeContext(new StringOutput()));
+        var evaluation = Evaluator.Evaluator.Run(typed, prelude, context ?? new RuntimeContext(new StringOutput()));
 
         return Result(diagnostics, tokens, surface, core, typed, evaluation);
     }

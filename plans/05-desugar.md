@@ -125,10 +125,14 @@ desugared). Os padrões são normalizados:
 ```text
 D[ p => body ]               = Arm(N[p], D[body])
 N[ _ ]                       = WildcardPat
-N[ x ]                       = IdentPat(x)             // binding ou variante — decide o checker
-N[ A.B(p1, p2) ]             = VariantPat(["A","B"], [N[p1], N[p2]])
+N[ x ]                       = BindingPat(x)           // sempre um binding novo (Q3)
+N[ A.B(p1, p2) ]             = VariantPat("A", "B", [N[p1], N[p2]])
 N[ literal ]                 = LiteralPat(const)
 ```
+
+Com Q3 (variantes sempre qualificadas), a normalização de padrões é totalmente
+sintática: um `IDENT` sozinho é sempre binding, `A.B` é sempre variante. Não há
+mais o `IdentPat` ambíguo que o checker precisava desempatar.
 
 Motivo de manter `Match`: desugará-lo exigiria primitivas `enum_tag` e
 `enum_payload`, que aumentariam o runtime — contra a spec §58 ("runtime mínimo").
@@ -246,7 +250,7 @@ Snapshots via `CoreSExprPrinter`.
 | Teste | Asserção |
 |---|---|
 | `Desugar_Match_PreservesArmOrder` | ordem dos braços mantida |
-| `Desugar_Match_PatternNormalization` | `Result.Ok(v)` ⇒ `VariantPat(["Result","Ok"],[IdentPat v])` |
+| `Desugar_Match_PatternNormalization` | `Result.Ok(v)` ⇒ `VariantPat("Result","Ok",[BindingPat v])` |
 | `Desugar_Match_WildcardPattern` | `_` ⇒ `WildcardPat` |
 | `Desugar_Match_ReturnInArm` | `Ok(v) => return v` ⇒ `Arm(_, Return(v))` |
 | `Desugar_TypeDef_PreservesFields` | snapshot |

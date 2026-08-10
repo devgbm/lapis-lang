@@ -168,9 +168,72 @@ public static class CoreSourcePrinter
 
                 break;
 
+            case CoreArray n:
+                builder.Append('[');
+
+                for (var i = 0; i < n.Elements.Length; i++)
+                {
+                    if (i > 0)
+                    {
+                        builder.Append(", ");
+                    }
+
+                    Print(builder, n.Elements[i], indent, Precedence.Lowest);
+                }
+
+                builder.Append(']');
+                break;
+
+            case CoreIndex n:
+                Print(builder, n.Target, indent, Precedence.Postfix);
+                builder.Append('[');
+                Print(builder, n.Index, indent, Precedence.Lowest);
+                builder.Append(']');
+                break;
+
+            case CoreField n:
+                Print(builder, n.Target, indent, Precedence.Postfix);
+                builder.Append('.').Append(n.Name);
+                break;
+
+            case CoreEnumDef n:
+                PrintEnumDef(builder, n, indent);
+                break;
+
             default:
                 throw InternalCompilerException.Unreachable(node, node.Span);
         }
+    }
+
+    private static void PrintEnumDef(StringBuilder builder, CoreEnumDef node, int indent)
+    {
+        builder.Append("enum");
+
+        if (!node.TypeParameters.IsDefaultOrEmpty)
+        {
+            builder.Append('<').Append(string.Join(", ", node.TypeParameters)).Append('>');
+        }
+
+        builder.AppendLine(" {");
+
+        for (var i = 0; i < node.Variants.Length; i++)
+        {
+            var variant = node.Variants[i];
+            Indent(builder, indent + 1);
+            builder.Append(variant.Name);
+
+            if (!variant.Payload.IsDefaultOrEmpty)
+            {
+                builder.Append('(')
+                       .Append(string.Join(", ", variant.Payload.Select(SurfaceSExprPrinter.PrintType)))
+                       .Append(')');
+            }
+
+            builder.AppendLine(i < node.Variants.Length - 1 ? "," : string.Empty);
+        }
+
+        Indent(builder, indent);
+        builder.Append('}');
     }
 
     private static void PrintLambda(StringBuilder builder, CoreLambda lambda, int indent)

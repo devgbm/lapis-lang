@@ -71,11 +71,12 @@ Regras:
   a spec §8 não menciona recursão, e sem ela a terminação do partial evaluator é
   trivialmente garantida — o que é bom para M6–M8. Recursão entra em v0.3 junto
   com a estratégia de terminação do PE.
-- **Shadowing é permitido** em escopo interno, e é `LAP0202` (erro) no mesmo
-  escopo. Bindings são imutáveis (spec §8), então shadowing não é mutação.
-- `def` de um `enum` também injeta os nomes das variantes no escopo corrente (Q3),
-  permitindo `Ok(10)` além de `Result.Ok(10)`. Colisão com nome existente ⇒
-  `LAP0203`.
+- **Shadowing é permitido** em escopo interno. Bindings são imutáveis (spec §8),
+  então shadowing não é mutação. Redefinir no mesmo bloco é `LAP0202`, detectado
+  no **desugar** — a Core não tem nó `Block` e não distingue os dois casos (Q10).
+- **Variantes de enum exigem qualificação completa** (Q3): `Result.Ok(10)`,
+  `IndexError.OutOfBounds`. Não há injeção de nomes no escopo, então `Ok(10)`
+  sozinho é `LAP0201`. O diagnóstico de colisão `LAP0203` não existe mais.
 
 ### 6.3 Regras de tipagem
 
@@ -197,15 +198,15 @@ Int`. `Box<Int>` produz `NamedType(Box, [TypeArg(Int)])`. O checker **não**
 monomorfiza o corpo — quem especializa corpos é o partial evaluator (plano 13),
 e essa divisão é exatamente o objeto de pesquisa do projeto.
 
-**Inferência (Q7):** quando os argumentos genéricos são omitidos numa chamada, o
-checker infere os **parâmetros de tipo** por casamento de 1ª ordem entre os tipos
-dos parâmetros formais e os tipos dos argumentos reais, da esquerda para a
-direita. Parâmetros **const** nunca são inferidos — devem ser explícitos
-(`LAP0296`). Parâmetro de tipo que não aparece em nenhum parâmetro formal não é
-inferível ⇒ `LAP0297`.
+**Sem inferência (Q7):** argumentos genéricos são **sempre explícitos**.
+`identity<Int>(10)` é válido; `identity(10)` é `LAP0290`. Não há casamento de
+tipos formais contra reais — a única máquina de generics do checker é a
+substituição (`TypeSubstitution`).
 
-Isso é o mínimo necessário para `print(result)` (spec §34) funcionar com
-`print: fn<T>(value: T) Void`.
+Consequência sobre `print`: ele **não é genérico**. Sua assinatura é
+`fn(Any) Void`, com `Any` sendo um tipo top interno que nenhuma sintaxe produz.
+Sem isso, `print<Int>(x)` seria obrigatório em todo programa — inclusive no
+exemplo da spec §34. Ver Q7 no apêndice C.
 
 ### 6.9 Prelude
 
@@ -247,10 +248,10 @@ Todo teste negativo assevera **código + span**, nunca a mensagem.
 | `Var_UsedBeforeDef` | `x; def x = 1;` | `LAP0201` |
 | `Var_NotVisibleInOwnInitializer` | `def f = fn(){ return f(); };` | `LAP0201` (sem recursão) |
 | `Var_ShadowingInInnerScope_Allowed` | `def x=1; { def x="s"; }` | sem erro |
-| `Var_RedefinitionInSameScope` | `def x=1; def x=2;` | `LAP0202` |
+| `Var_RedefinitionInSameScope` | `def x=1; def x=2;` | `LAP0202` (do desugar) |
 | `Closure_CapturesOuterBinding` | spec §32 | tipa |
-| `EnumDef_InjectsVariantNames` | `def C = enum{Red};` + `Red;` | tipa |
-| `EnumDef_VariantNameCollision` | variante colide com binding | `LAP0203` |
+| `EnumVariant_RequiresQualification` | `def C = enum{Red};` + `Red;` | `LAP0201` (Q3) |
+| `EnumVariant_Qualified_Resolves` | `C.Red;` | tipa |
 
 ### Primitivos e operadores
 
@@ -344,8 +345,8 @@ Todo teste negativo assevera **código + span**, nunca a mensagem.
 | `Match_DuplicateVariantArm` | warning `LAP0263` |
 | `Match_PatternBindsPayload` | `Ok(v) => v` ⇒ `v` no escopo do braço com o tipo da carga |
 | `Match_PatternTypeMismatch` | padrão de outro enum ⇒ `LAP0260` |
-| `Match_BareVariantPattern` | `Ok(v)` sem qualificação resolve para a variante (Q3) |
-| `Match_IdentifierPattern_IsBinding` | `x => x` com `x` não sendo variante ⇒ binding |
+| `Match_BareIdentifier_IsAlwaysBinding` | `x => x` liga um nome, nunca casa variante (Q3) |
+| `Match_QualifiedVariantPattern` | `Result.Ok(v) => v` |
 | `Match_LiteralPattern_OnInt` | `1 => "a"` tipa; exaustividade exige `_` |
 | `Match_ArmScope_DoesNotLeak` | binding do padrão não visível fora do braço |
 
@@ -354,12 +355,11 @@ Todo teste negativo assevera **código + span**, nunca a mensagem.
 | Teste | Fonte | Esperado |
 |---|---|---|
 | `Generic_Identity_Explicit` | `identity<Int>(10)` | `Int` |
-| `Generic_Identity_Inferred` | `identity(10)` | `Int` (Q7) |
+| `Generic_Identity_Omitted_IsError` | `identity(10)` | `LAP0290` (Q7) |
 | `Generic_Identity_WrongArg` | `identity<Int>("s")` | `LAP0222` |
 | `Generic_ArityMismatch` | `identity<Int,Str>(1)` | `LAP0290` |
-| `Generic_Inference_FromMultipleParams` | `pair(1,"s")` com `fn<A,B>` | `A=Int, B=Str` |
-| `Generic_Inference_Conflicting` | `same(1,"s")` com `fn<T>(a:T,b:T)` | `LAP0222` |
-| `Generic_Uninferable` | `fn<T>() T` chamada sem args | `LAP0297` |
+| `Generic_Substitution_InReturnType` | `identity<Str>("a")` | `Str` |
+| `Generic_Substitution_InArrayParam` | `first<Int>(xs)` com `fn<T>(T[]) T` | `Int` |
 | `Generic_Type_Instantiation` | `Box<Int>` ⇒ `NamedType(Box,[Int])` |
 | `Generic_Type_WithoutArgs` | `def b: Box = ...` | `LAP0295` |
 | `Generic_Enum_Result` | `Result<Int, IndexError>` | tipa |
@@ -368,7 +368,7 @@ Todo teste negativo assevera **código + span**, nunca a mensagem.
 | `Const_Generic_WrongKind_ConstForType` | `FixedArray<3, 3>` | `LAP0291` |
 | `Const_Generic_WrongConstType` | `FixedArray<Int, "a">` | `LAP0293` |
 | `Const_Generic_NonConstant` | `FixedArray<Int, x>` com `x` runtime | `LAP0294` |
-| `Const_Generic_NotInferred` | `FixedArray<Int>` | `LAP0296` |
+| `Const_Generic_Missing` | `FixedArray<Int>` | `LAP0290` |
 | `Const_Generic_MixedArgs` | spec §13 `SomeType<"value",1,true,Int,fn() Int {return 1;}>` | tipa — **teste central da spec §13** |
 | `Const_Generic_FunctionValueArg` | `fn() Int { return 1; }` como argumento genérico | aceito, `ConstFunction` |
 | `Generic_DistinctInstantiations_AreDistinctTypes` | `Box<Int>` ≠ `Box<Str>` |

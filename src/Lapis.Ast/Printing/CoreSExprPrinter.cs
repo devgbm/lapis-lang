@@ -100,6 +100,47 @@ public static class CoreSExprPrinter
                 Close(builder, indent);
                 break;
 
+            case CoreArray n:
+                Open(builder, indent, $"{tag}array");
+
+                foreach (var element in n.Elements)
+                {
+                    PrintExpression(builder, element, indent + 1, ids);
+                }
+
+                Close(builder, indent);
+                break;
+
+            case CoreIndex n:
+                Open(builder, indent, $"{tag}index");
+                PrintExpression(builder, n.Target, indent + 1, ids);
+                PrintExpression(builder, n.Index, indent + 1, ids);
+                Close(builder, indent);
+                break;
+
+            case CoreField n:
+                Open(builder, indent, $"{tag}field {n.Name}");
+                PrintExpression(builder, n.Target, indent + 1, ids);
+                Close(builder, indent);
+                break;
+
+            case CoreEnumDef n:
+                var typeParameters = n.TypeParameters.IsDefaultOrEmpty
+                    ? string.Empty
+                    : "<" + string.Join(" ", n.TypeParameters) + ">";
+                Open(builder, indent, $"{tag}enum{typeParameters}");
+
+                foreach (var variant in n.Variants)
+                {
+                    var payload = variant.Payload.IsDefaultOrEmpty
+                        ? string.Empty
+                        : " " + string.Join(" ", variant.Payload.Select(SurfaceSExprPrinter.PrintType));
+                    Line(builder, indent + 1, $"(variant {variant.Name}{payload})");
+                }
+
+                Close(builder, indent);
+                break;
+
             default:
                 throw InternalCompilerException.Unreachable(node, node.Span);
         }

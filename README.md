@@ -35,23 +35,32 @@ lapis hello.ls
 |---|---|
 | **M0** — esqueleto da solução e CI | ✅ concluído |
 | **M1** — `lapis hello.ls` de ponta a ponta | ✅ concluído |
-| M2 — arrays, indexação e `Result` | ⏳ próximo |
-| M3 — enums, `match` e tipos | ⬜ |
+| **M2** — arrays, indexação e `Result` | ✅ concluído |
+| M3 — `match`, tipos definidos pelo usuário | ⏳ próximo |
 | M4 — generics e const generics | ⬜ |
 | M5 — suíte de conformidade | ⬜ |
 | M6–M9 — partial evaluator | ⬜ |
 
-A cadeia completa funciona: `lapis examples/hello.ls` imprime `30` (spec §60).
-**542 testes** cobrindo lexer, parser, desugar, type checker, runtime, evaluator
+**669 testes** cobrindo lexer, parser, desugar, type checker, runtime, evaluator
 e CLI.
 
 O que a linguagem já faz: literais, `def`, blocos como expressão, operadores com
 precedência, `if`/`else`, funções de primeira classe com closures, `return`
-explícito com verificação de "retorna em todos os caminhos", `print`, e
-diagnósticos com linha, coluna, trecho e cursor.
+explícito com verificação de "retorna em todos os caminhos", arrays, indexação
+segura, enums, e um prelude escrito na própria linguagem.
 
-O que falta (M2 em diante): arrays e indexação, `Result`/`IndexError`, enums,
-`match`, tipos definidos pelo usuário e generics. O roteiro completo está em
+```c
+def numbers = [10, 20, 30];
+
+print(numbers[1]);    // Result.Ok(20)
+print(numbers[9]);    // Result.Err(IndexError.OutOfBounds)
+```
+
+Indexar **sempre** devolve `Result` (spec §21): a falha aparece no tipo, e o
+acesso fora de limites nunca lança.
+
+O que falta (M3 em diante): `match`, tipos definidos pelo usuário e generics
+escritos pelo programador. O roteiro completo está em
 [`plans/`](plans/README.md).
 
 ```bash

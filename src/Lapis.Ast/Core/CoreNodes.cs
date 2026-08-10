@@ -144,6 +144,57 @@ public sealed class CoreUnary(
     public CoreExpr Operand { get; } = operand;
 }
 
+public sealed class CoreArray(
+    int nodeId,
+    SourceSpan span,
+    ImmutableArray<CoreExpr> elements) : CoreExpr(nodeId, span)
+{
+    public ImmutableArray<CoreExpr> Elements { get; } = elements;
+}
+
+/// <summary>
+/// <c>alvo[índice]</c>. A checagem de limites é semântica <b>deste nó</b> (spec §41),
+/// não uma expansão do desugar — é o que permite ao partial evaluator decidir
+/// sobre a checagem em vez de analisar um <c>If</c> gerado.
+/// </summary>
+public sealed class CoreIndex(
+    int nodeId,
+    SourceSpan span,
+    CoreExpr target,
+    CoreExpr index) : CoreExpr(nodeId, span)
+{
+    public CoreExpr Target { get; } = target;
+
+    public CoreExpr Index { get; } = index;
+}
+
+/// <summary>Acesso a campo de struct e a variante de enum; o checker distingue.</summary>
+public sealed class CoreField(
+    int nodeId,
+    SourceSpan span,
+    CoreExpr target,
+    string name) : CoreExpr(nodeId, span)
+{
+    public CoreExpr Target { get; } = target;
+
+    public string Name { get; } = name;
+
+    public SourceSpan NameSpan { get; init; } = span;
+}
+
+public sealed record CoreVariantDecl(string Name, ImmutableArray<TypeSyntax> Payload, SourceSpan Span);
+
+public sealed class CoreEnumDef(
+    int nodeId,
+    SourceSpan span,
+    ImmutableArray<string> typeParameters,
+    ImmutableArray<CoreVariantDecl> variants) : CoreExpr(nodeId, span)
+{
+    public ImmutableArray<string> TypeParameters { get; } = typeParameters;
+
+    public ImmutableArray<CoreVariantDecl> Variants { get; } = variants;
+}
+
 /// <summary>Um arquivo <c>.ls</c> inteiro reduzido a uma única expressão.</summary>
 public sealed class CoreProgram(CoreExpr body, int nodeCount)
 {

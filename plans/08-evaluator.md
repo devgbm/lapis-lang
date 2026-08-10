@@ -83,8 +83,10 @@ O braço `Normal → Void` só é alcançável em funções `Void`: o checker ga
 (`LAP0272`) que uma função não-`Void` retorna em todos os caminhos. Se acontecer
 em função não-`Void`, é `InternalCompilerException` — bug do checker.
 
-**`Abort`** existe para erros de execução da linguagem que não são `Result`
-(hoje: divisão inteira por zero). Propaga até o topo e vira exit code 1.
+**`Abort`** existe para erros de execução da linguagem que não são `Result`.
+Depois de Q9 (divisão total), sobrou apenas o limite de profundidade de chamada —
+que, sem recursão (Q8), também é inalcançável hoje. O mecanismo fica como rede de
+proteção para quando a recursão entrar.
 
 **Por que completion record e não exceção C#?** Três razões: (1) o custo de
 exceção em .NET tornaria funções recursivas absurdamente lentas; (2) o partial
@@ -172,7 +174,7 @@ crash não-capturável.
 | `Eval_Arithmetic` | `10 + 20` | `30` — exemplo da spec §28 |
 | `Eval_Precedence` | `1 + 2 * 3` | `7` |
 | `Eval_IntDivision_Truncates` | `7 / 2` | `3` |
-| `Eval_IntDivision_ByZero_Aborts` | `1 / 0` | `Aborted`, span correto, sem exceção C# |
+| `Eval_IntDivision_ByZero_IsMaxValue` | `1 / 0` | `9223372036854775807` (Q9) |
 | `Eval_FloatDivision_ByZero` | `1.0 / 0.0` | `Infinity` |
 | `Eval_StrConcat` | `"a" + "b"` | `"ab"` |
 | `Eval_Comparisons` | todos os 6 operadores | `Bool` correto |
@@ -213,11 +215,11 @@ crash não-capturável.
 |---|---|---|
 | `Eval_Array_Literal` | `[1,2,3]` | `ArrayValue` de 3 |
 | `Eval_Array_ElementOrder` | `[p(1), p(2)]` | saída `1\n2\n` |
-| `Eval_Index_First` | `[1,2,3][0]` | `Ok(1)` — spec §50 |
-| `Eval_Index_Last` | `[1,2,3][2]` | `Ok(3)` — spec §50 |
-| `Eval_Index_OutOfBounds` | `[1,2,3][3]` | `Err(OutOfBounds)` — spec §50 |
-| `Eval_Index_Negative` | `[1,2,3][-1]` | `Err(OutOfBounds)` |
-| `Eval_Index_EmptyArray` | `[][0]` | `Err(OutOfBounds)` |
+| `Eval_Index_First` | `[1,2,3][0]` | `Result.Ok(1)` — spec §50 |
+| `Eval_Index_Last` | `[1,2,3][2]` | `Result.Ok(3)` — spec §50 |
+| `Eval_Index_OutOfBounds` | `[1,2,3][3]` | `Result.Err(IndexError.OutOfBounds)` — spec §50 |
+| `Eval_Index_Negative` | `[1,2,3][-1]` | `Result.Err(...)` |
+| `Eval_Index_EmptyArray` | `[][0]` | `Result.Err(...)` |
 | `Eval_Index_NeverThrows` | property: índice arbitrário ⇒ sempre `Result`, nunca exceção (spec §30) |
 | `Eval_Index_ResultIsEnumValue` | o valor é `EnumValue` da `TypeDefinition` do prelude, não um tipo especial |
 | `Eval_Index_Nested` | `[[1,2]][0]` ⇒ `Ok([1,2])` |
@@ -230,8 +232,8 @@ crash não-capturável.
 | `Eval_EnumDef_ProducesTypeValue` | `def C = enum{Red};` ⇒ `TypeValue` |
 | `Eval_EnumVariant_Nullary` | `C.Red` ⇒ `EnumValue(idx 0, [])` |
 | `Eval_EnumVariant_WithPayload` | `Ok(10)` ⇒ carga `[IntValue(10)]` |
-| `Eval_EnumVariant_BareName` | `Ok(10)` sem qualificação (Q3) |
-| `Eval_Struct_Construct` | `User{id:1,name:"g"}` ⇒ `StructValue` |
+| `Eval_EnumVariant_RequiresQualification` | `Result.Ok(10)`; a forma nua nem compila (Q3) |
+| `Eval_Struct_Construct` | `.User { id: 1, name: "g" }` ⇒ `StructValue` (Q2) |
 | `Eval_Struct_FieldAccess` | `u.id` ⇒ `1` |
 | `Eval_Struct_ConstructFieldOrder` | ordem de avaliação segue o código |
 | `Eval_Match_FirstMatchingArm` | ordem respeitada |

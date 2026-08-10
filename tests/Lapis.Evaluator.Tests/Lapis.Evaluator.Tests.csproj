@@ -15,6 +15,8 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/Lapis.Evaluator/Lapis.Evaluator.csproj" />
+    <!-- O carregador do prelude mora no orquestrador (plano 09 §9.3). -->
+    <ProjectReference Include="../../src/Lapis.Cli/Lapis.Cli.csproj" />
     <ProjectReference Include="../../src/Lapis.TypeChecker/Lapis.TypeChecker.csproj" />
     <ProjectReference Include="../../src/Lapis.Desugar/Lapis.Desugar.csproj" />
     <ProjectReference Include="../../src/Lapis.Parser/Lapis.Parser.csproj" />

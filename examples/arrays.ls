@@ -1,9 +1,9 @@
 // Arrays e indexação (spec §18, §20, §21, §50).
 // Indexação sempre devolve Result<T, IndexError>.
 // Saída esperada:
-//   Ok(10)
-//   Ok(30)
-//   Err(OutOfBounds)
+//   Result.Ok(10)
+//   Result.Ok(30)
+//   Result.Err(IndexError.OutOfBounds)
 
 def numbers = [10, 20, 30];
 

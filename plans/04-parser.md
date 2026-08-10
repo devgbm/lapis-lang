@@ -20,7 +20,7 @@ sem jamais executar código (spec §36).
 |---|---|---|
 | A | literais, identificadores, `def`, blocos, binários/unários, `fn`, chamada, `return`, `if`/`else`, `()` | M1 |
 | B | arrays, indexação, acesso a membro | M2 |
-| C | `type`, `enum`, `match`, construção de struct | M3 |
+| C | `type`, `enum`, `match`, construção `.Nome { }` | M3 |
 | D | generics: parâmetros e argumentos, incluindo const generics | M4 |
 
 Cada fase entrega parser + testes de snapshot antes da próxima começar.
@@ -99,13 +99,13 @@ Consequências documentadas na gramática:
 O backtracking é limitado (nunca aninha mais de um nível de tentativa) e a
 profundidade máxima é registrada em teste para evitar regressão exponencial.
 
-#### (b) `if cond { ... }` vs. construção de struct `Point { x: 1 }` — Q2
+#### (b) ~~`if cond { ... }` vs. construção de struct~~ — resolvida por Q2
 
-Como `if`, `match` e `while`(futuro) esperam uma expressão seguida de `{`, adota-se
-a regra do Rust: dentro da condição de `if` e do escrutinado de `match`, a forma
-`Expr { ... }` **não** é interpretada como construção de struct. O parser mantém
-uma flag `_noStructLiteral` durante esses parses. Para construir mesmo assim:
-`if (Point { x: 1 }).valid { ... }`.
+**Esta ambiguidade deixou de existir.** A construção de `type` leva um ponto
+inicial — `.Point { x: 1 }` — e nenhuma outra expressão começa com `.`. O parser
+decide entre bloco e construção olhando um único token, sem flag de contexto e
+sem restrição na condição de `if`/`match`. Nada a implementar aqui além de
+reconhecer `.` em posição de primária.
 
 #### (c) `fn(Int) Int` (tipo) vs. `fn(a: Int) Int { ... }` (valor)
 
@@ -216,13 +216,16 @@ Predominantemente **snapshots de AST** (spec §45), via `SurfaceSExprPrinter` +
 | `Parse_Match_WithReturnArms` | spec §22 (segundo exemplo) |
 | `Parse_Match_Wildcard` | `_ => 0` |
 | `Parse_Match_LiteralPattern` | `1 => "one"` |
-| `Parse_Match_NestedPattern` | `Ok(Ok(v)) => v` |
+| `Parse_Match_NestedPattern` | `Result.Ok(Result.Ok(v)) => v` |
 | `Parse_Match_QualifiedPattern` | `Result.Ok(v) => v` |
+| `Parse_Match_BareIdent_IsBinding` | `outra => 0` ⇒ binding, não variante (Q3) |
 | `Parse_Match_NoArms` | `match x { }` ⇒ `LAP0107` |
-| `Parse_Match_NoStructLiteralInScrutinee` | `match p { }` — `p` é identificador |
-| `Parse_Construct` | `Point { x: 1, y: 2 };` |
-| `Parse_Construct_Empty` | `Unit { };` |
-| `Parse_Construct_InParens_InIfCondition` | `if (P { a: 1 }).b { }` aceito |
+| `Parse_Match_ScrutineeIsUnrestricted` | `match p { ... }` sem regra contextual (Q2) |
+| `Parse_Construct` | `.Point { x: 1, y: 2 };` |
+| `Parse_Construct_Empty` | `.Unit { };` |
+| `Parse_Construct_InIfCondition_NeedsNoParens` | `if .P { a: 1 }.b { }` aceito |
+| `Parse_Block_NotConfusedWithConstruct` | `if p { }` — `p` é identificador, `{}` é o `then` |
+| `Parse_Construct_DotIsRequired` | `Point { x: 1 };` ⇒ erro (é `Point` seguido de bloco) |
 
 ### Fase D — generics (M4)
 
@@ -233,6 +236,7 @@ Predominantemente **snapshots de AST** (spec §45), via `SurfaceSExprPrinter` +
 | `Parse_GenericType_Decl` | `type<T> { value: T; }` | snapshot |
 | `Parse_GenericEnum_Decl` | `enum<T, E> { Ok(T), Err(E) }` | snapshot |
 | `Parse_GenericCall_Explicit` | `identity<Int>(10);` | `CallExpression` com 1 arg genérico |
+| `Parse_GenericCall_Omitted_IsCheckerError` | `identity(10);` | parseia; o erro (`LAP0290`) é do checker (Q7) |
 | `Parse_GenericCall_Multiple` | `f<Int, Str>(a, b);` | 2 args |
 | `Parse_GenericType_InAnnotation` | `x: Result<Int, IndexError>` | snapshot |
 | `Parse_GenericType_Nested` | `Box<Box<Int>>` | sem `>>`, aninhado corretamente |

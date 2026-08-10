@@ -1,6 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <EmbeddedResource Include="Resources/prelude.ls" LogicalName="Lapis.Runtime.prelude.ls" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../Lapis.Ast/Lapis.Ast.csproj" />
     <ProjectReference Include="../Lapis.Diagnostics/Lapis.Diagnostics.csproj" />
   </ItemGroup>

@@ -79,8 +79,9 @@ abstract record Expression;
   sealed record IndexExpression(Expression Target, Expression Index);
   sealed record MemberExpression(Expression Target, string Name);
   sealed record ArrayExpression(ImmutableArray<Expression> Elements);
-  sealed record ConstructExpression(                            // Q2
-      Expression TypeRef,
+  sealed record ConstructExpression(                            // Q2: .Nome { ... }
+      string TypeName,
+      ImmutableArray<GenericArgumentSyntax> GenericArguments,
       ImmutableArray<FieldInitSyntax> Fields);
 
 sealed record ParameterSyntax(string Name, TypeSyntax Type);
@@ -106,15 +107,15 @@ Padrões:
 ```csharp
 abstract record Pattern;
   sealed record WildcardPattern;                        // _
-  sealed record IdentifierPattern(string Name);         // binding OU variante nulária
-  sealed record VariantPattern(ImmutableArray<string> Path,
+  sealed record BindingPattern(string Name);            // sempre liga um nome novo
+  sealed record VariantPattern(string EnumName, string VariantName,
                                ImmutableArray<Pattern> Arguments);
   sealed record LiteralPattern(Expression Literal);
 ```
 
-`IdentifierPattern` é deliberadamente ambíguo no parser: `Red` pode ser uma
-variante nulária ou um novo binding. Quem decide é o type checker (plano 06), que
-conhece o escopo.
+Com Q3 (variantes sempre qualificadas), não há ambiguidade: `x` é sempre um
+binding novo e `Color.Red` é sempre uma variante. O parser decide sozinho, sem
+consultar o escopo.
 
 Sintaxe de tipos:
 

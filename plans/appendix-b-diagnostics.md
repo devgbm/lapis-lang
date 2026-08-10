@@ -65,7 +65,7 @@ dispara, asseverando **código + span** — nunca a mensagem.
 |---|---|---|
 | `LAP0201` | error | variável `'{0}'` não existe |
 | `LAP0202` | error | `'{0}'` já foi definido neste escopo |
-| `LAP0203` | error | variante `'{0}'` colide com um nome já definido |
+| ~~`LAP0203`~~ | — | **aposentado** (Q3): com variantes sempre qualificadas não há injeção no escopo, logo não há colisão possível |
 | `LAP0204` | error | tipo `'{0}'` não existe |
 | `LAP0205` | warning | `'{0}'` foi definido mas nunca usado |
 
@@ -147,8 +147,8 @@ dispara, asseverando **código + span** — nunca a mensagem.
 | `LAP0293` | error | argumento const {0}: esperado `{1}`, encontrado `{2}` |
 | `LAP0294` | error | argumento genérico deve ser constante em tempo de compilação |
 | `LAP0295` | error | `{0}` é genérico e requer argumentos de tipo |
-| `LAP0296` | error | argumentos const generic não são inferidos; forneça-os explicitamente |
-| `LAP0297` | error | não foi possível inferir o parâmetro genérico `'{0}'` |
+| ~~`LAP0296`~~ | — | **aposentado** (Q7): nenhum argumento genérico é inferido |
+| ~~`LAP0297`~~ | — | **aposentado** (Q7): idem |
 
 ---
 
@@ -158,7 +158,7 @@ Não são diagnósticos de compilação: são relatados na saída de execução 
 
 | Código | Severidade | Mensagem |
 |---|---|---|
-| `LAP0301` | abort | divisão inteira por zero |
+| ~~`LAP0301`~~ | — | **aposentado** (Q9): a divisão inteira por zero produz o maior `Int`, então a operação é total |
 | `LAP0302` | abort | profundidade de chamada excedida (limite {0}) |
 
 ---
@@ -194,3 +194,9 @@ Não são diagnósticos de compilação: são relatados na saída de execução 
 - Notas (`DiagnosticNote`) são usadas para: sugestão de nome próximo
   (`LAP0201`), local da definição anterior (`LAP0202`), lista de variantes
   faltantes (`LAP0262`) e local do `return` esperado (`LAP0272`).
+- **Códigos aposentados nunca são reciclados.** `LAP0203`, `LAP0296`, `LAP0297` e
+  `LAP0301` saíram por causa de decisões do apêndice C e seus números ficam
+  permanentemente vagos.
+- `LAP0290` passou a cobrir também "função genérica chamada sem argumentos
+  genéricos explícitos" (Q7).
+- `LAP0202` é reportado pelo **desugar**, não pelo type checker (Q10).

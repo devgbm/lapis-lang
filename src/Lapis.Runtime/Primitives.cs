@@ -3,14 +3,12 @@ using Lapis.Diagnostics;
 
 namespace Lapis.Runtime;
 
-/// <summary>Resultado de uma operação aritmética que pode falhar.</summary>
-public readonly record struct ArithmeticOutcome(Value? Value, bool DivisionByZero)
+/// <summary>Resultado de um acesso a array, antes de virar um <c>Result</c> da linguagem.</summary>
+public readonly record struct IndexOutcome(Value? Value, bool IsInBounds)
 {
-    public static ArithmeticOutcome Ok(Value value) => new(value, false);
+    public static IndexOutcome InBounds(Value value) => new(value, true);
 
-    public static readonly ArithmeticOutcome DividedByZero = new(null, true);
-
-    public Value Unwrap() => Value ?? throw new InternalCompilerException("operação aritmética falhou");
+    public static readonly IndexOutcome OutOfBounds = new(null, false);
 }
 
 /// <summary>
@@ -18,18 +16,22 @@ public readonly record struct ArithmeticOutcome(Value? Value, bool DivisionByZer
 ///
 /// Todas assumem que o type checker já validou os operandos: um tipo inesperado
 /// é <see cref="InternalCompilerException"/>, nunca diagnóstico.
+///
+/// Todas são <b>totais</b>: nenhuma operação aritmética falha (Q9), o que mantém
+/// o tipo de <c>/</c> simples e torna toda a aritmética dobrável pelo partial
+/// evaluator sem análise de efeito.
 /// </summary>
 public static class Primitives
 {
-    public static ArithmeticOutcome Apply(BinaryOperator op, Value left, Value right) => op switch
+    public static Value Apply(BinaryOperator op, Value left, Value right) => op switch
     {
-        BinaryOperator.Add => ArithmeticOutcome.Ok(Add(left, right)),
-        BinaryOperator.Subtract => ArithmeticOutcome.Ok(Subtract(left, right)),
-        BinaryOperator.Multiply => ArithmeticOutcome.Ok(Multiply(left, right)),
+        BinaryOperator.Add => Add(left, right),
+        BinaryOperator.Subtract => Subtract(left, right),
+        BinaryOperator.Multiply => Multiply(left, right),
         BinaryOperator.Divide => Divide(left, right),
-        BinaryOperator.Equal => ArithmeticOutcome.Ok(BoolValue.Of(StructuralEquals(left, right))),
-        BinaryOperator.NotEqual => ArithmeticOutcome.Ok(BoolValue.Of(!StructuralEquals(left, right))),
-        _ when op.IsComparison() => ArithmeticOutcome.Ok(Compare(op, left, right)),
+        BinaryOperator.Equal => BoolValue.Of(StructuralEquals(left, right)),
+        BinaryOperator.NotEqual => BoolValue.Of(!StructuralEquals(left, right)),
+        _ when op.IsComparison() => Compare(op, left, right),
         _ => throw new InternalCompilerException($"operador binário inesperado no runtime: {op}"),
     };
 
@@ -56,14 +58,24 @@ public static class Primitives
     };
 
     /// <summary>
-    /// Divisão inteira por zero aborta a execução (Q9); <c>Float</c> segue IEEE 754
-    /// e produz infinito ou NaN sem abortar.
+    /// Divisão inteira por zero produz o maior <c>Int</c> (Q9), qualquer que seja o
+    /// sinal do dividendo — regra única, sem casos especiais a memorizar. Com isso
+    /// <c>/</c> é total e seu tipo continua sendo <c>Int</c>, sem contaminar toda
+    /// expressão aritmética com <c>Result</c>.
+    ///
+    /// <c>Float</c> segue IEEE 754 e produz infinito ou NaN.
     /// </summary>
-    public static ArithmeticOutcome Divide(Value left, Value right) => (left, right) switch
+    public static Value Divide(Value left, Value right) => (left, right) switch
     {
-        (IntValue, IntValue { Value: 0 }) => ArithmeticOutcome.DividedByZero,
-        (IntValue a, IntValue b) => ArithmeticOutcome.Ok(new IntValue(unchecked(a.Value / b.Value))),
-        (FloatValue a, FloatValue b) => ArithmeticOutcome.Ok(new FloatValue(a.Value / b.Value)),
+        (IntValue, IntValue { Value: 0 }) => new IntValue(long.MaxValue),
+
+        // `MinValue / -1` é a única divisão inteira que estoura: o quociente não
+        // cabe em Int64 e o hardware trapeia, mesmo em `unchecked`. Envolve como o
+        // resto da aritmética (`-MinValue == MinValue` em complemento de dois).
+        (IntValue { Value: long.MinValue }, IntValue { Value: -1 }) => new IntValue(long.MinValue),
+
+        (IntValue a, IntValue b) => new IntValue(a.Value / b.Value),
+        (FloatValue a, FloatValue b) => new FloatValue(a.Value / b.Value),
         _ => throw Mismatch("/", left, right),
     };
 
@@ -116,6 +128,16 @@ public static class Primitives
 
         return left.Equals(right);
     }
+
+    /// <summary>
+    /// Acesso a array com checagem de limites (spec §41). O runtime não conhece
+    /// <c>Result</c>: quem converte este resultado em <c>Result.Ok</c> /
+    /// <c>Result.Err</c> é o evaluator, usando as definições do prelude (spec §16).
+    /// </summary>
+    public static IndexOutcome ArrayGet(ArrayValue array, long index) =>
+        index >= 0 && index < array.Elements.Length
+            ? IndexOutcome.InBounds(array.Elements[(int)index])
+            : IndexOutcome.OutOfBounds;
 
     private static InternalCompilerException Mismatch(string op, Value left, Value right) =>
         new($"'{op}' não se aplica a {left.Type.ToDisplayString()} e {right.Type.ToDisplayString()}");

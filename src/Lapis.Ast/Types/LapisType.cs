@@ -58,6 +58,21 @@ public sealed record ErrorType : LapisType
     public override string ToDisplayString() => "<erro>";
 }
 
+/// <summary>
+/// Tipo top, interno e não escrevível em código-fonte. Existe apenas para tipar
+/// o parâmetro de primitivas que aceitam qualquer valor — hoje só <c>print</c>.
+///
+/// Nenhuma sintaxe produz <c>Any</c> e nenhum valor tem <c>Any</c> como tipo, então
+/// ele não é uma brecha no sistema de tipos: só aparece na assinatura de um
+/// nativo. Ver Q7 no apêndice C.
+/// </summary>
+public sealed record AnyType : LapisType
+{
+    public static readonly AnyType Instance = new();
+
+    public override string ToDisplayString() => "Any";
+}
+
 public sealed record ArrayType(LapisType Element) : LapisType
 {
     public override string ToDisplayString() => $"{Element.ToDisplayString()}[]";
@@ -66,6 +81,55 @@ public sealed record ArrayType(LapisType Element) : LapisType
 public sealed record TypeParameterType(string Name) : LapisType
 {
     public override string ToDisplayString() => Name;
+}
+
+/// <summary>
+/// Instância de um tipo definido pelo usuário: <c>Result&lt;Int, IndexError&gt;</c>,
+/// <c>Color</c>.
+///
+/// A identidade é <b>nominal</b>: dois <c>enum { A }</c> escritos separadamente são
+/// tipos distintos, porque <see cref="TypeDefinition"/> é comparado por
+/// referência.
+/// </summary>
+public sealed record NamedType(TypeDefinition Definition, ImmutableArray<LapisType> Arguments) : LapisType
+{
+    public override string ToDisplayString() =>
+        Arguments.IsDefaultOrEmpty
+            ? Definition.Name
+            : $"{Definition.Name}<{string.Join(", ", Arguments.Select(a => a.ToDisplayString()))}>";
+
+    public bool Equals(NamedType? other) =>
+        other is not null
+        && ReferenceEquals(Definition, other.Definition)
+        && Arguments.SequenceEqual(other.Arguments);
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Definition.Id);
+
+        foreach (var argument in Arguments)
+        {
+            hash.Add(argument);
+        }
+
+        return hash.ToHashCode();
+    }
+}
+
+/// <summary>
+/// O tipo de uma expressão que <b>é</b> um tipo. Em <c>def Color = enum { Red };</c>,
+/// <c>Color</c> tem tipo <c>MetaType(NamedType(Color))</c>.
+///
+/// Existe porque tipos e enums são expressões de primeira classe (spec §14, §15).
+/// </summary>
+public sealed record MetaType(TypeDefinition Definition) : LapisType
+{
+    public override string ToDisplayString() => $"<tipo {Definition.Name}>";
+
+    public bool Equals(MetaType? other) => other is not null && ReferenceEquals(Definition, other.Definition);
+
+    public override int GetHashCode() => Definition.Id;
 }
 
 public sealed record FunctionType(

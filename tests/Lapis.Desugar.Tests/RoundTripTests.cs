@@ -41,6 +41,19 @@ public sealed class RoundTripTests : DesugarTestBase
     [InlineData("def x = { def y = 1; y + 1 };")]
     [InlineData("def x = a && b;")]
     [InlineData("def x = a || b;")]
+    [InlineData("def a = [1, 2, 3];")]
+    [InlineData("def a = [];")]
+    [InlineData("def a = [[1], [2]];")]
+    [InlineData("def r = a[0];")]
+    [InlineData("def r = a[0][1];")]
+    [InlineData("def v = A.B;")]
+    [InlineData("def v = A.B.C;")]
+    [InlineData("def v = Result.Ok(1);")]
+    [InlineData("def C = enum { Red, Green };")]
+    [InlineData("def C = enum { Wrap(Int) };")]
+    [InlineData("def R = enum<T, E> { Ok(T), Err(E) };")]
+    [InlineData("def r: Result<Int, IndexError> = x;")]
+    [InlineData("def a: Int[][] = x;")]
     public void PrintThenReparse_ProducesTheSameCore(string source)
     {
         var original = Print(source);

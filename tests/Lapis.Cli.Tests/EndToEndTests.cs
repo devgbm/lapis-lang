@@ -104,14 +104,15 @@ public sealed class EndToEndTests
         stderr.ShouldContain("warning " + DiagnosticCodes.UnreachableAfterReturn);
     }
 
+    /// <summary>Q9: divisão por zero não é mais um erro de execução.</summary>
     [Fact]
-    public void DivisionByZero_Returns1_WithSpan()
+    public void DivisionByZero_Succeeds_WithMaxValue()
     {
-        var (exit, _, stderr) = CliRunner.RunSource("def x = 1 / 0;");
+        var (exit, stdout, stderr) = CliRunner.RunSource("print(1 / 0);");
 
-        exit.ShouldBe(ExitCodes.RuntimeAbort);
-        stderr.ShouldContain(DiagnosticCodes.DivisionByZero);
-        stderr.ShouldContain("(1,");
+        exit.ShouldBe(ExitCodes.Success);
+        stdout.ShouldBe("9223372036854775807\n");
+        stderr.ShouldBeEmpty();
     }
 
     [Fact]

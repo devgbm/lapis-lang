@@ -49,6 +49,93 @@ public sealed record VoidValue : Value
 }
 
 /// <summary>
+/// Guarda o tipo do elemento porque um array vazio precisa saber o que carrega —
+/// para formatação e para o partial evaluator.
+/// </summary>
+public sealed record ArrayValue(ImmutableArray<Value> Elements, LapisType ElementType) : Value
+{
+    public override LapisType Type => new ArrayType(ElementType);
+
+    public bool Equals(ArrayValue? other) =>
+        other is not null && ElementType == other.ElementType && Elements.SequenceEqual(other.Elements);
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(ElementType);
+
+        foreach (var element in Elements)
+        {
+            hash.Add(element);
+        }
+
+        return hash.ToHashCode();
+    }
+}
+
+/// <summary>Uma variante de enum construída: <c>Result.Ok(20)</c>.</summary>
+public sealed record EnumValue(
+    TypeDefinition Definition,
+    int VariantIndex,
+    ImmutableArray<Value> Payload,
+    ImmutableArray<LapisType> TypeArguments) : Value
+{
+    public VariantInfo Variant => Definition.Variants[VariantIndex];
+
+    public override LapisType Type => new NamedType(Definition, TypeArguments);
+
+    public bool Equals(EnumValue? other) =>
+        other is not null
+        && ReferenceEquals(Definition, other.Definition)
+        && VariantIndex == other.VariantIndex
+        && Payload.SequenceEqual(other.Payload);
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Definition.Id);
+        hash.Add(VariantIndex);
+
+        foreach (var value in Payload)
+        {
+            hash.Add(value);
+        }
+
+        return hash.ToHashCode();
+    }
+}
+
+/// <summary>Um tipo usado como valor: o que <c>def Color = enum { ... };</c> liga.</summary>
+public sealed record TypeValue(TypeDefinition Definition) : Value
+{
+    public override LapisType Type => new MetaType(Definition);
+
+    public bool Equals(TypeValue? other) => other is not null && ReferenceEquals(Definition, other.Definition);
+
+    public override int GetHashCode() => Definition.Id;
+}
+
+/// <summary>
+/// Construtor de variante parcialmente aplicado: o valor de <c>Result.Ok</c> antes
+/// de receber a carga. Chamá-lo produz um <see cref="EnumValue"/>.
+/// </summary>
+public sealed record VariantConstructorValue(
+    TypeDefinition Definition,
+    int VariantIndex,
+    FunctionType Signature,
+    ImmutableArray<LapisType> TypeArguments) : Value
+{
+    public override LapisType Type => Signature;
+
+    public bool Equals(VariantConstructorValue? other) =>
+        other is not null
+        && ReferenceEquals(Definition, other.Definition)
+        && VariantIndex == other.VariantIndex;
+
+    public override int GetHashCode() => HashCode.Combine(Definition.Id, VariantIndex);
+}
+
+/// <summary>
 /// Uma closure guarda parâmetros, corpo e o ambiente capturado (spec §32).
 ///
 /// <see cref="Equals(ClosureValue)"/> lança de propósito: o type checker proíbe
