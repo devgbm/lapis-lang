@@ -40,15 +40,15 @@ critérios de conclusão satisfeitos.
 |---|---|---|---|
 | 00 | [Arquitetura e convenções](00-architecture-and-conventions.md) | — | M0 ✅ |
 | 01 | [Esqueleto da solução e CI](01-solution-skeleton.md) | `LapisLang.slnx` | M0 ✅ |
-| 02 | [AST (Surface + Core + Types)](02-ast.md) | `Lapis.Ast` | M1 |
-| 03 | [Lexer](03-lexer.md) | `Lapis.Lexer` | M1 |
-| 04 | [Parser](04-parser.md) | `Lapis.Parser` | M1–M3 |
-| 05 | [Desugar → Core AST](05-desugar.md) | `Lapis.Desugar` | M1–M3 |
-| 06 | [Type Checker](06-typechecker.md) | `Lapis.TypeChecker` | M1–M4 |
-| 07 | [Runtime (valores, ambiente, primitivas)](07-runtime.md) | `Lapis.Runtime` | M1–M2 |
-| 08 | [Evaluator](08-evaluator.md) | `Lapis.Evaluator` | M1–M3 |
+| 02 | [AST (Surface + Core + Types)](02-ast.md) | `Lapis.Ast` | M1 ✅ |
+| 03 | [Lexer](03-lexer.md) | `Lapis.Lexer` | M1 ✅ |
+| 04 | [Parser](04-parser.md) | `Lapis.Parser` | M1 ✅ · M2–M3 ⬜ |
+| 05 | [Desugar → Core AST](05-desugar.md) | `Lapis.Desugar` | M1 ✅ · M2–M3 ⬜ |
+| 06 | [Type Checker](06-typechecker.md) | `Lapis.TypeChecker` | M1 ✅ · M2–M4 ⬜ |
+| 07 | [Runtime (valores, ambiente, primitivas)](07-runtime.md) | `Lapis.Runtime` | M1 ✅ · M2 ⬜ |
+| 08 | [Evaluator](08-evaluator.md) | `Lapis.Evaluator` | M1 ✅ · M2–M3 ⬜ |
 | 09 | [Prelude (`Result`, `IndexError`, `print`)](09-prelude.md) | `Lapis.Runtime` + `prelude.ls` | M2 |
-| 10 | [CLI `lapis`](10-cli.md) | `Lapis.Cli` | M1, M5 |
+| 10 | [CLI `lapis`](10-cli.md) | `Lapis.Cli` | M1 ✅ · M5 ⬜ |
 | 11 | [Testes de integração e conformidade](11-integration-and-conformance-tests.md) | `tests/` | M1–M5 |
 
 ### Pesquisa (Partial Evaluation)
@@ -76,7 +76,7 @@ critérios de conclusão satisfeitos.
 | ID | Nome | Entrega observável | Planos |
 |---|---|---|---|
 | **M0** ✅ | Skeleton | `dotnet build` + `dotnet test` verdes numa solução vazia com CI | 00, 01 |
-| **M1** | Walking skeleton | `lapis hello.ls` imprime `30` (spec §60) — cadeia completa | 02, 03, 04, 05, 06, 07, 08, 10 |
+| **M1** ✅ | Walking skeleton | `lapis hello.ls` imprime `30` (spec §60) — cadeia completa | 02, 03, 04, 05, 06, 07, 08, 10 |
 | **M2** | Arrays & Result | `[10,20,30][1] → Ok(20)`, `[..][3] → Err(OutOfBounds)` | 04, 06, 07, 08, 09 |
 | **M3** | Enums, match, tipos | `enum`, `match` exaustivo, `type` + construção + acesso a campo | 02, 04, 05, 06, 08 |
 | **M4** | Generics | generics de tipo com inferência de 1ª ordem + const generics | 06 |

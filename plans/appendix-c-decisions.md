@@ -204,6 +204,14 @@ exibição.
 diz que "a estrutura exata poderá mudar". Um único nó de escopo simplifica todo
 `switch`, e torna substituição/inlining no PE textuais.
 
+**Consequência descoberta ao implementar o M1.** Sem `Block`, o type checker não
+distingue "redefinir no mesmo bloco" de "sombrear num bloco interno" — na cadeia
+de `Let` as duas coisas têm exatamente a mesma forma. `LAP0202` passou portanto a
+ser detectado no **desugar**, que ainda enxerga os blocos da Surface AST. É uma
+verificação puramente sintática (dois `DefStatement` com o mesmo nome na mesma
+lista de statements), então cabe naquela fase sem violar "o desugar não resolve
+nomes".
+
 ---
 
 ## Q11 🟡 — `Field` na Core AST
@@ -241,6 +249,13 @@ tipo. Único caso de subtipagem da linguagem.
 **Justificativa.** Um conceito resolve `return` em posição de statement, em braço
 de `match`, em ramo de `if` e como operando — sem regras ad hoc.
 
+**Refinamento descoberto ao implementar o M1.** `Never` precisa **propagar**, não
+só existir. `{ return 0; }` desugara para `Let($t, Return(0), ())`, cujo tipo
+ingênuo seria `Void` — e aí `if c { return 0; } else { 2 }` não tiparia. Regras
+adicionadas ao checker: um `Let` cujo valor sempre retorna tem tipo `Never` (o
+corpo é inalcançável), e `Binary`, `Unary`, `Call` e a condição de `If` produzem
+`Never` quando um subcomponente avaliado antes deles já diverge.
+
 ---
 
 ## Q14 🟡 — `Result` do prelude vs. `Result` do usuário
@@ -252,6 +267,31 @@ indexação passa a produzir?
 `TypeDefinition` na carga do prelude, não por busca de nome no escopo corrente.
 
 **Justificativa.** Sombrear um nome não deve mudar a semântica de um operador.
+
+---
+
+## Q16 🔴 — Statements que terminam em bloco dispensam o `;`
+
+**Problema.** O exemplo `abs` da própria spec §12 escreve
+
+```c
+if x < 0 {
+    return -x;
+}
+
+return x;
+```
+
+sem `;` depois do `}` do `if`. Com a gramática original do Apêndice A isso não
+parseava.
+
+**Decisão.** `block`, `if_expr` e `match_expr` usados como statement não exigem
+`;` — a mesma regra do Rust. Dentro de um bloco, a escolha entre "cauda" e
+"statement" continua sendo feita pelo token seguinte (`}` ⇒ cauda), então não há
+ambiguidade nova.
+
+**Precisa de confirmação:** sim (é ajuste de gramática), mas é o que a spec já
+pressupõe nos próprios exemplos.
 
 ---
 

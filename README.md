@@ -34,17 +34,35 @@ lapis hello.ls
 | Milestone | Status |
 |---|---|
 | **M0** — esqueleto da solução e CI | ✅ concluído |
-| **M1** — `lapis hello.ls` de ponta a ponta | ⏳ próximo |
-| M2 — arrays, indexação e `Result` | ⬜ |
+| **M1** — `lapis hello.ls` de ponta a ponta | ✅ concluído |
+| M2 — arrays, indexação e `Result` | ⏳ próximo |
 | M3 — enums, `match` e tipos | ⬜ |
 | M4 — generics e const generics | ⬜ |
 | M5 — suíte de conformidade | ⬜ |
 | M6–M9 — partial evaluator | ⬜ |
 
-Os projetos existem e compilam, mas ainda estão vazios: `lapis programa.ls`
-retorna "pipeline ainda não implementado". O roteiro completo, com o que será
-construído e quais testes são necessários em cada etapa, está em
+A cadeia completa funciona: `lapis examples/hello.ls` imprime `30` (spec §60).
+**542 testes** cobrindo lexer, parser, desugar, type checker, runtime, evaluator
+e CLI.
+
+O que a linguagem já faz: literais, `def`, blocos como expressão, operadores com
+precedência, `if`/`else`, funções de primeira classe com closures, `return`
+explícito com verificação de "retorna em todos os caminhos", `print`, e
+diagnósticos com linha, coluna, trecho e cursor.
+
+O que falta (M2 em diante): arrays e indexação, `Result`/`IndexError`, enums,
+`match`, tipos definidos pelo usuário e generics. O roteiro completo está em
 [`plans/`](plans/README.md).
+
+```bash
+$ lapis examples/hello.ls
+30
+
+$ lapis desugar examples/hello.ls     # Core AST
+$ lapis ast examples/hello.ls         # Surface AST
+$ lapis check examples/hello.ls       # só diagnósticos
+$ lapis tokens examples/hello.ls      # tokens com posição
+```
 
 ---
 
