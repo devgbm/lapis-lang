@@ -116,15 +116,24 @@ internal static class GenericArguments
     {
         if (argument.Constant is null)
         {
-            // Um nome que existe mas designa um valor de execução não é constante:
-            // nem o checker nem o partial evaluator têm de onde tirar seu valor.
-            var (code, message) = argument.IsRuntimeValue
-                ? (DiagnosticCodes.GenericArgumentNotConstant,
-                    $"o argumento de '{parameter.Name}' não é constante em tempo de compilação")
-                : (DiagnosticCodes.ExpectedConstArgument,
+            if (argument.IsRuntimeValue)
+            {
+                // Q18: um valor que só existe em execução não serve. Vale para
+                // parâmetros — inclusive os de um `fn<N: Int>` — e para qualquer
+                // `def` cujo valor o checker não conhece.
+                diagnostics.ReportError(
+                    DiagnosticCodes.GenericArgumentNotConstant,
+                    argument.Span,
+                    $"o argumento de '{parameter.Name}' não é constante em tempo de compilação",
+                    new DiagnosticNote("use um literal, ou um 'def' ligado a um literal"));
+            }
+            else
+            {
+                diagnostics.ReportError(
+                    DiagnosticCodes.ExpectedConstArgument,
+                    argument.Span,
                     $"o parâmetro '{parameter.Name}' é constante; um tipo não serve como argumento");
-
-            diagnostics.ReportError(code, argument.Span, message);
+            }
 
             return new ConstArgument(ConstUnit.Instance);
         }
@@ -133,6 +142,11 @@ internal static class GenericArguments
         {
             ConstArgument c => c.Value.Type,
             ConstFunctionArgument f => f.Signature,
+
+            // Constante simbólica (Q18): o valor é desconhecido, mas o tipo não —
+            // e é o tipo que precisa bater com o do parâmetro que a recebe.
+            ConstParameterArgument p => p.Type,
+
             _ => ErrorType.Instance,
         };
 

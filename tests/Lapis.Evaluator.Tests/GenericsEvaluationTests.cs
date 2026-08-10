@@ -126,6 +126,52 @@ public sealed class ConstGenericEvaluationTests : EvaluatorTestBase
             print(repeat<Str, 1>("x"));
             """).ShouldBe("[7, 7]\n[\"x\"]\n");
 
+    /// <summary>
+    /// Q18: um parâmetro const repassado adiante chega ao corpo interno com o valor
+    /// que a instanciação de fora fixou.
+    /// </summary>
+    [Fact]
+    public void ConstParameter_Forwarded_CarriesTheOuterValue() =>
+        Output("""
+            def scale = fn<N: Int>(x: Int) Int {
+                return x * N;
+            };
+
+            def twice = fn<M: Int>(x: Int) Int {
+                return scale<M>(x) + scale<M>(x);
+            };
+
+            print(twice<3>(5));
+            print(twice<10>(5));
+            """).ShouldBe("30\n100\n");
+
+    /// <summary>Um `def` ligado a um literal serve de argumento const (Q18).</summary>
+    [Fact]
+    public void ConstArgument_FromDefBoundToLiteral() =>
+        Output("""
+            def tres = 3;
+            def indireto = tres;
+
+            def scale = fn<N: Int>(x: Int) Int {
+                return x * N;
+            };
+
+            print(scale<tres>(5));
+            print(scale<indireto>(5));
+            """).ShouldBe("15\n15\n");
+
+    [Fact]
+    public void ConstFunctionArgument_FromDef() =>
+        Output("""
+            def make = fn() Int { return 40; };
+
+            def apply = fn<Make: fn() Int>(bonus: Int) Int {
+                return Make() + bonus;
+            };
+
+            print(apply<make>(2));
+            """).ShouldBe("42\n");
+
     /// <summary>Parâmetros const são capturados como qualquer outro binding.</summary>
     [Fact]
     public void ConstParameter_IsCapturedByInnerClosures() =>

@@ -222,10 +222,45 @@ public sealed class ConstGenericTests : TypeCheckerTestBase
             FixedArray + """def a: FixedArray<Int, "a"> = x;""",
             DiagnosticCodes.ConstArgumentTypeMismatch);
 
+    /// <summary>
+    /// Q18: um `def` ligado a um literal é constante e serve de argumento — mas o
+    /// checker não dobra expressões, então `1 + 2` ainda não é constante.
+    /// </summary>
     [Fact]
     public void Const_Generic_NonConstant() =>
         ShouldFailWith(
-            "def n = 3;\n" + FixedArray + "def a: FixedArray<Int, n> = x;",
+            "def n = 1 + 2;\n" + FixedArray + "def a: FixedArray<Int, n> = x;",
+            DiagnosticCodes.GenericArgumentNotConstant);
+
+    [Fact]
+    public void Const_Generic_FromDefBoundToLiteral() =>
+        ShouldPass(
+            "def n = 3;\n" + FixedArray
+            + "def a: FixedArray<Int, n> = .FixedArray<Int, 3> { values: [1, 2, 3] };");
+
+    /// <summary>Um `def` que só repassa outro `def` continua constante.</summary>
+    [Fact]
+    public void Const_Generic_PropagatesThroughDefChain() =>
+        ShouldPass(
+            "def n = 3;\ndef m = n;\n" + FixedArray
+            + "def a: FixedArray<Int, m> = .FixedArray<Int, 3> { values: [1, 2, 3] };");
+
+    /// <summary>Um `def` ligado a uma função literal também é constante.</summary>
+    [Fact]
+    public void Const_Generic_FunctionValueFromDef() =>
+        ShouldPass("""
+            def Wrapper = type<Make: fn() Int> { tag: Int; };
+            def make = fn() Int { return 1; };
+            def w = .Wrapper<make> { tag: 0 };
+            """);
+
+    /// <summary>Um valor que só existe em execução nunca serve (Q18).</summary>
+    [Theory]
+    [InlineData("def f = fn(somevar: Int) Int { return scale<somevar>(1); };")]
+    [InlineData("def f = fn(v: Int) Int { def n = v; return scale<n>(1); };")]
+    public void Const_Generic_RuntimeValue_IsError(string source) =>
+        ShouldFailWith(
+            "def scale = fn<N: Int>(x: Int) Int { return x * N; };\n" + source,
             DiagnosticCodes.GenericArgumentNotConstant);
 
     [Fact]
@@ -243,6 +278,68 @@ public sealed class ConstGenericTests : TypeCheckerTestBase
         ShouldFailWith(
             """def f = fn<Label: Str>() Int { return Label; };""",
             DiagnosticCodes.ReturnTypeMismatch);
+
+    // ------------------------------------------- repasse de parâmetro const (Q18)
+
+    private const string Scale = "def scale = fn<N: Int>(x: Int) Int { return x * N; };\n";
+
+    /// <summary>
+    /// Q18: um parâmetro const é constante <b>por construção</b> — só recebe
+    /// argumentos conhecidos em compilação — então repassá-lo adiante é legítimo.
+    /// </summary>
+    [Fact]
+    public void ConstParameter_CanBeForwarded() =>
+        ShouldPass(Scale + """
+            def twice = fn<M: Int>(x: Int) Int {
+                return scale<M>(x) + scale<M>(x);
+            };
+
+            def r = twice<3>(5);
+            """);
+
+    [Fact]
+    public void ConstParameter_CanBeForwardedToAGenericType() =>
+        ShouldPass("""
+            def Boxed = type<T, N: Int> { values: T[]; };
+
+            def make = fn<N: Int>(v: Int) Boxed<Int, N> {
+                return .Boxed<Int, N> { values: [v] };
+            };
+
+            def b: Boxed<Int, 4> = make<4>(9);
+            """);
+
+    /// <summary>
+    /// A constante simbólica se fecha na instanciação: o retorno de
+    /// <c>make&lt;4&gt;</c> é <c>Boxed&lt;Int, 4&gt;</c>, não <c>Boxed&lt;Int, N&gt;</c>.
+    /// </summary>
+    [Fact]
+    public void ConstParameter_IsClosedByInstantiation() =>
+        ShouldFailWith(
+            """
+            def Boxed = type<T, N: Int> { values: T[]; };
+
+            def make = fn<N: Int>(v: Int) Boxed<Int, N> {
+                return .Boxed<Int, N> { values: [v] };
+            };
+
+            def b: Boxed<Int, 5> = make<4>(9);
+            """,
+            DiagnosticCodes.TypeMismatch);
+
+    /// <summary>O tipo do parâmetro repassado precisa bater com o que o recebe.</summary>
+    [Fact]
+    public void ConstParameter_Forwarded_MustMatchTheReceivingType() =>
+        ShouldFailWith(
+            Scale + "def f = fn<L: Str>(x: Int) Int { return scale<L>(x); };",
+            DiagnosticCodes.ConstArgumentTypeMismatch);
+
+    /// <summary>Um parâmetro de tipo não vira argumento const.</summary>
+    [Fact]
+    public void TypeParameter_IsNotAConstArgument() =>
+        ShouldFailWith(
+            Scale + "def f = fn<T>(x: Int) Int { return scale<T>(x); };",
+            DiagnosticCodes.ExpectedConstArgument);
 
     /// <summary>Const generics entram na identidade do tipo (plano 06 fase D).</summary>
     [Fact]

@@ -180,12 +180,25 @@ public sealed class Evaluator
 
         for (var i = 0; i < resolution.Parameters.Length && i < node.Arguments.Length; i++)
         {
-            if (!resolution.Parameters[i].IsConst || node.Arguments[i] is not CoreValueArgument argument)
+            if (!resolution.Parameters[i].IsConst)
             {
                 continue;
             }
 
-            var value = Evaluate(argument.Value, environment);
+            // Escrito como literal ou função literal, o argumento é uma expressão a
+            // avaliar; escrito como nome (Q18), é um `def` que o checker já provou
+            // constante, e basta buscá-lo no ambiente.
+            var value = node.Arguments[i] switch
+            {
+                CoreValueArgument argument => Evaluate(argument.Value, environment),
+
+                CoreNameArgument named when environment.TryLookup(named.Name, out var bound) =>
+                    Completion.Normal(bound),
+
+                _ => throw new InternalCompilerException(
+                    $"argumento const de '{resolution.Parameters[i].Name}' sem valor em execução",
+                    node.Span),
+            };
 
             if (!value.IsNormal)
             {

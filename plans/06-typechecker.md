@@ -216,9 +216,24 @@ tipos formais contra reais — a única máquina de generics do checker é a
 substituição (`TypeSubstitution`).
 
 **Parâmetros const no corpo.** `N` é um valor do tipo declarado, visível como
-qualquer binding. Seu *valor* não é conhecido pelo checker — é um parâmetro — o
-que faz de `inner<N>()` um `LAP0294` (Q18). Em execução, quem liga `N` é o nó
-`Instantiate`, estendendo o ambiente da closure.
+qualquer binding. Em execução, quem o liga é o nó `Instantiate`, estendendo o
+ambiente da closure.
+
+**Argumento const tem de ser resolvível em compilação (Q18).** É a regra única, e
+o que a satisfaz é: um literal, uma função literal, um `def` ligado a um dos dois
+(direta ou por cadeia de `def`s), ou um **parâmetro const** de um genérico
+envolvente. Qualquer outra coisa é `LAP0294`.
+
+O caso do parâmetro é o que não é óbvio: `N` dentro de `fn<N: Int>` *é* constante,
+porque esta mesma regra garante que ele só recebeu valor conhecido em compilação.
+Não conhecer o valor ainda o torna **simbólico**, não variável — daí
+`ConstParameterArgument`, o análogo de `TypeParameterType` no mundo dos valores.
+`BindingInfo.Constant` é onde essa informação viaja, e a substituição fecha o
+símbolo quando a instanciação de fora acontece.
+
+A lacuna conhecida é `def n = 1 + 2;`: o checker **propaga** constantes mas não as
+**dobra**, porque dobrar exigiria replicar a aritmética de `Primitives` e mantê-la
+em sincronia (spec §58). O PE do M6 fecha isso sem mudar nada aqui.
 
 **Identidade de tipo.** Argumentos const entram na identidade nominal:
 `FixedArray<Int, 3>` e `FixedArray<Int, 4>` são tipos distintos. Um argumento que
@@ -391,7 +406,16 @@ Em `tests/Lapis.TypeChecker.Tests/GenericsTests.cs`.
 | `Const_Generic_WrongKind_TypeForConst` | `FixedArray<Int, Str>` | `LAP0292` |
 | `Const_Generic_WrongKind_ConstForType` | `FixedArray<3, 3>` | `LAP0291` |
 | `Const_Generic_WrongConstType` | `FixedArray<Int, "a">` | `LAP0293` |
-| `Const_Generic_NonConstant` | `FixedArray<Int, x>` com `x` runtime | `LAP0294` |
+| `Const_Generic_NonConstant` | `FixedArray<Int, n>` com `n = 1 + 2` | `LAP0294` — propaga, não dobra |
+| `Const_Generic_FromDefBoundToLiteral` | `def n = 3; FixedArray<Int, n>` | tipa |
+| `Const_Generic_PropagatesThroughDefChain` | `def n = 3; def m = n;` | tipa |
+| `Const_Generic_FunctionValueFromDef` | `def make = fn() Int {...}; Wrapper<make>` | tipa |
+| `Const_Generic_RuntimeValue_IsError` | parâmetro comum como argumento | `LAP0294` |
+| `ConstParameter_CanBeForwarded` | `fn<M: Int>` passando `M` a `fn<N: Int>` | tipa (Q18) |
+| `ConstParameter_CanBeForwardedToAGenericType` | `Boxed<Int, N>` dentro de `fn<N: Int>` | tipa |
+| `ConstParameter_IsClosedByInstantiation` | retorno de `make<4>` é `Boxed<Int, 4>` | `LAP0210` contra `Boxed<Int, 5>` |
+| `ConstParameter_Forwarded_MustMatchTheReceivingType` | `fn<L: Str>` passando `L` a `N: Int` | `LAP0293` |
+| `TypeParameter_IsNotAConstArgument` | `fn<T>` passando `T` a `N: Int` | `LAP0292` |
 | `Const_Generic_Missing` | `FixedArray<Int>` | `LAP0290` |
 | `Const_Generic_MixedArgs` | spec §13 `SomeType<"value",1,true,Int,fn() Int {return 1;}>` | tipa — **teste central da spec §13** |
 | `Const_Generic_FunctionValueArg` | `fn() Int { return 1; }` como argumento genérico | aceito, `ConstFunctionArgument` |

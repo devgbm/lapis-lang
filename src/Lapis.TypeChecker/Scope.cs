@@ -12,7 +12,18 @@ public enum BindingKind
     Native,
 }
 
-public sealed record BindingInfo(BindingId Id, string Name, LapisType Type, SourceSpan Span, BindingKind Kind);
+public sealed record BindingInfo(BindingId Id, string Name, LapisType Type, SourceSpan Span, BindingKind Kind)
+{
+    /// <summary>
+    /// O valor deste binding, quando conhecido em tempo de compilação — é o que
+    /// permite passá-lo como argumento const genérico (Q18).
+    ///
+    /// Só um `def` ligado a um literal ou a uma função literal tem constante. Um
+    /// parâmetro nunca tem, mesmo o de um `fn&lt;N: Int&gt;`: seu valor chega na
+    /// instanciação, não na declaração.
+    /// </summary>
+    public GenericArgument? Constant { get; init; }
+}
 
 /// <summary>
 /// Escopo léxico do type checker.

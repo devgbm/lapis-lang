@@ -203,8 +203,8 @@ serve às duas leituras e Q5 decide pela genérica. Contornável com
 **Ambiguidade `IDENT` em `generic_arg`.** `Int` e `N` casam tanto com "tipo"
 quanto com "valor const". O parser produz `NameArgumentSyntax(name)` e o checker
 decide pelo parâmetro correspondente na declaração: `LAP0291` se um valor apareceu
-onde se esperava tipo, `LAP0292` no contrário, `LAP0294` se o nome designa um
-valor que só existe em execução.
+onde se esperava tipo, `LAP0292` no contrário, `LAP0294` se o nome designa algo
+que não é resolvível em tempo de compilação (Q18).
 
 **Ambiguidade `fn` em `generic_arg`.** `fn(Int) Int` é um tipo; `fn(a: Int) Int
 { ... }` é um valor. Discriminador: só o valor tem corpo `{`. O parser tenta o

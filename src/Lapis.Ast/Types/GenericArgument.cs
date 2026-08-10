@@ -53,6 +53,24 @@ public sealed record ConstArgument(ConstantValue Value) : GenericArgument
 }
 
 /// <summary>
+/// Um parâmetro const repassado adiante: <c>N</c> dentro de
+/// <c>fn&lt;N: Int&gt;</c> usado como argumento de outro genérico (Q18).
+///
+/// É uma constante <b>simbólica</b>: constante por construção — parâmetros const
+/// só recebem valores conhecidos em tempo de compilação — mas de valor ainda
+/// desconhecido, porque quem o fixa é a instanciação de fora. A substituição o
+/// fecha quando ela acontece; até lá, <c>FixedArray&lt;Int, N&gt;</c> é um tipo
+/// legítimo, distinto de <c>FixedArray&lt;Int, 3&gt;</c>.
+///
+/// É o análogo, no mundo dos valores, do que <see cref="TypeParameterType"/> é no
+/// mundo dos tipos — e, como ele, tem identidade por nome.
+/// </summary>
+public sealed record ConstParameterArgument(string Name, LapisType Type) : GenericArgument
+{
+    public override string ToDisplayString() => Name;
+}
+
+/// <summary>
 /// Uma função literal usada como argumento genérico — o último item do exemplo da
 /// spec §13.
 ///

@@ -20,9 +20,9 @@ implementação.
 | Q8 | sem recursão na v0.2 | ✅ decidido · implementado |
 | Q9 | `x / 0` produz o maior `Int` | ✅ decidido · implementado |
 | Q10–Q15 | decisões internas de implementação | 🟡 em vigor |
-| Q16 | statements que terminam em bloco dispensam `;` | ⏳ aguardando |
-| Q17 | função literal como argumento genérico só em posição de expressão | 🟡 em vigor |
-| Q18 | parâmetro const não é repassável como argumento const | 🟡 em vigor |
+| Q16 | statements que terminam em bloco dispensam `;` | ✅ decidido · implementado |
+| Q17 | função literal como argumento genérico só em posição de expressão | ✅ decidido · implementado |
+| Q18 | argumento const tem de ser resolvível em tempo de compilação | ✅ decidido · implementado |
 
 **A spec 0.2 precisa ser atualizada** em quatro pontos por causa destas decisões:
 §15/§16/§22 (variantes qualificadas), §44 (tokens `!`, `&&`, `\|\|`), §14/§24
@@ -379,8 +379,8 @@ parseava.
 "statement" continua sendo feita pelo token seguinte (`}` ⇒ cauda), então não há
 ambiguidade nova.
 
-**Precisa de confirmação:** sim (é ajuste de gramática), mas é o que a spec já
-pressupõe nos próprios exemplos.
+**✅ Confirmado pelo autor da spec.** É o que a spec já pressupunha nos próprios
+exemplos — o `abs` de §12 não parsearia sem isso.
 
 ---
 
@@ -397,7 +397,7 @@ mais importa observar.
 
 ---
 
-## Q17 🟡 — Função literal como argumento genérico só em posição de expressão
+## Q17 🔴 — Função literal como argumento genérico só em posição de expressão
 
 **Problema.** A spec §13 admite uma função literal como argumento genérico
 (`Make: fn() Int` recebendo `fn() Int { return 1; }`). Mas `fn(Int) Int` dentro
@@ -423,25 +423,60 @@ também dentro da gramática de tipos, o que exige um printer de código-fonte p
 a Surface AST (hoje só a Core tem um) só para manter o round-trip do
 `CoreSourcePrinter`. Custo alto para um caso que a spec cita uma vez.
 
+**✅ Confirmado pelo autor da spec.**
+
 **Revisitar quando:** se const generics de função virarem uso corrente.
 
 ---
 
-## Q18 🟡 — Parâmetro const não é repassável como argumento const
+## Q18 🔴 — Argumento const tem de ser resolvível em tempo de compilação
 
-**Problema.** Dentro do corpo de `fn<N: Int>`, `N` é um valor. Repassá-lo a outra
-função genérica — `inner<N>()` — pareceria natural.
+**Problema.** Que expressões podem aparecer em posição de argumento const?
+Literais, claro. E um `def`? E o `N` de um `fn<N: Int>` envolvente?
 
-**Decisão.** Não é aceito: `LAP0294` ("não é constante em tempo de compilação").
+**✅ Decidido pelo autor da spec.** O critério é **um só**: o argumento tem de ser
+resolvível em tempo de compilação. Nunca um valor de execução.
 
-**Justificativa.** `N` é um *parâmetro*: seu valor não existe no momento em que o
-checker olha o corpo, e só aparece quando o partial evaluator especializa a
-chamada externa. Aceitá-lo exigiria constantes simbólicas no modelo de tipos —
-`FixedArray<Int, N>` como um tipo genuinamente aberto — e é exatamente o tipo de
-complexidade que o §47 manda evitar nesta versão.
+```c
+def somefn = fn<N: Int>(x: Int) Int { return x * N; };
 
-**Revisitar quando:** o PE de especialização (plano 13) estiver de pé; é ele quem
-teria a informação para fechar essas constantes.
+somefn<3>(x);          // literal            — ok
+somefn<tres>(x);       // def ligado a 3     — ok
+somefn<N>(x);          // parâmetro const    — ok, dentro de um fn<N: Int>
+somefn<somevar>(x);    // parâmetro comum    — LAP0294
+```
+
+**Parâmetro const é constante.** Esta é a parte que não é óbvia: `N` dentro de
+`fn<N: Int>` *é* uma constante, porque a própria regra acima garante que ele só
+pode ter recebido um valor conhecido em compilação. Não conhecer o valor **ainda**
+não o torna variável — só o torna **simbólico**.
+
+Daí `ConstParameterArgument` no modelo de tipos: uma constante de valor pendente,
+identificada pelo nome. É o análogo de `TypeParameterType` no mundo dos valores, e
+`FixedArray<Int, N>` é um tipo tão legítimo quanto `Box<T>` — distinto de
+`FixedArray<Int, 3>` até que a instanciação de fora feche o `N`:
+
+```c
+def Boxed = type<T, N: Int> { values: T[]; };
+
+def make = fn<N: Int>(v: Int) Boxed<Int, N> {
+    return .Boxed<Int, N> { values: [v] };
+};
+
+def b: Boxed<Int, 4> = make<4>(9);   // o retorno fecha em Boxed<Int, 4>
+```
+
+**O que conta como "resolvível" hoje.** Um literal, uma função literal, ou um
+`def` ligado a um dos dois — direta ou indiretamente por uma cadeia de `def`s.
+Isto é **propagação**, não *folding*: `def n = 1 + 2;` ainda não é constante,
+porque dobrar a expressão é trabalho do partial evaluator (spec §58) e replicá-lo
+no checker significaria manter duas aritméticas em sincronia. É a única lacuna
+conhecida da regra, e o PE do M6 a fecha sem mudar nada aqui.
+
+**Consequência sobre a execução.** Como o checker não monomorfiza, um valor
+construído dentro de um corpo genérico carrega o argumento simbólico
+(`Boxed<Int, N>`) nos seus `TypeArguments`. Isso não afeta igualdade nem
+formatação, que olham definição e campos; quem fecha esses tipos é o PE.
 
 ---
 

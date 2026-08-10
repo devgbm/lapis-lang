@@ -164,7 +164,10 @@ public sealed class TypeChecker
         // blocos ainda existem; aqui um `Let` interno sempre sombreia legitimamente.
         var inner = scope.Child();
 
-        inner.Declare(new BindingInfo(NextBindingId(), node.Name, valueType, node.NameSpan, BindingKind.Value));
+        inner.Declare(new BindingInfo(NextBindingId(), node.Name, valueType, node.NameSpan, BindingKind.Value)
+        {
+            Constant = ConstantOf(node.Value, valueType, scope),
+        });
 
         var valueReturns = ReturnAnalysis.DefinitelyReturns(node.Value);
 
@@ -182,6 +185,27 @@ public sealed class TypeChecker
         // em vez de Never, e não casaria com o outro ramo de um `if`.
         return valueReturns ? NeverType.Instance : bodyType;
     }
+
+    /// <summary>
+    /// O valor de um <c>def</c>, quando conhecido em tempo de compilação (Q18).
+    ///
+    /// A linha é deliberadamente reta: um literal, uma função literal, ou outro
+    /// <c>def</c> que já carregue uma constante. Isto é <b>propagação</b>, não
+    /// <i>folding</i> — <c>def n = 1 + 2;</c> não produz constante, porque dobrar
+    /// a expressão é trabalho do partial evaluator (spec §58) e replicá-lo no
+    /// checker significaria manter duas aritméticas em sincronia.
+    /// </summary>
+    private static GenericArgument? ConstantOf(CoreExpr value, LapisType type, Scope scope) => value switch
+    {
+        CoreLiteral literal => new ConstArgument(literal.Value),
+
+        CoreLambda lambda when type is FunctionType signature =>
+            new ConstFunctionArgument(CoreSourcePrinter.PrintExpressionCompact(lambda), signature),
+
+        CoreVariable variable when scope.TryLookup(variable.Name, out var binding) => binding.Constant,
+
+        _ => null,
+    };
 
     // --------------------------------------------------------- funções
 
@@ -298,8 +322,15 @@ public sealed class TypeChecker
 
             if (declareConstValues)
             {
+                // O parâmetro é um valor no corpo — e um valor *constante* (Q18):
+                // parâmetros const só recebem argumentos conhecidos em compilação,
+                // então repassá-lo adiante é legítimo. O valor em si é simbólico
+                // até a instanciação de fora fechá-lo.
                 scope.Declare(new BindingInfo(
-                    NextBindingId(), parameter.Name, constType, parameter.Span, BindingKind.Parameter));
+                    NextBindingId(), parameter.Name, constType, parameter.Span, BindingKind.Parameter)
+                {
+                    Constant = new ConstParameterArgument(parameter.Name, constType),
+                });
             }
         }
 
@@ -429,11 +460,16 @@ public sealed class TypeChecker
             return RawGenericArgument.Error(argument.Span);
         }
 
-        // Um parâmetro const em escopo é um valor, mas não um valor *conhecido*:
-        // seu valor só aparece quando o PE especializa. Repassá-lo adiante como
-        // argumento const exigiria constantes simbólicas, que a 0.2 não tem.
-        return binding.Type is MetaType meta
-            ? RawGenericArgument.OfType(new NamedType(meta.Definition, meta.Arguments), argument.Span)
+        if (binding.Type is MetaType meta)
+        {
+            return RawGenericArgument.OfType(new NamedType(meta.Definition, meta.Arguments), argument.Span);
+        }
+
+        // Um `def` ligado a um literal é constante e serve de argumento (Q18). Um
+        // parâmetro nunca é — inclusive o de um `fn<N: Int>`, cujo valor só aparece
+        // quando o PE especializa a chamada de fora.
+        return binding.Constant is { } constant
+            ? RawGenericArgument.OfConstant(constant, argument.Span)
             : RawGenericArgument.RuntimeValue(argument.Span);
     }
 
@@ -1289,21 +1325,18 @@ public sealed class TypeChecker
     }
 
     /// <summary>
-    /// Mapeia parâmetros de tipo nos argumentos correspondentes. Parâmetros const
-    /// ficam de fora: eles são valores, e valor nenhum aparece em posição de tipo.
+    /// Mapeia cada parâmetro genérico no argumento correspondente, por nome. Os
+    /// const entram junto: é por eles que uma constante simbólica se fecha (Q18).
     /// </summary>
-    private static Dictionary<string, LapisType> BuildSubstitution(
+    private static Dictionary<string, GenericArgument> BuildSubstitution(
         ImmutableArray<GenericParameter> parameters,
         ImmutableArray<GenericArgument> arguments)
     {
-        var bindings = new Dictionary<string, LapisType>(StringComparer.Ordinal);
+        var bindings = new Dictionary<string, GenericArgument>(StringComparer.Ordinal);
 
         for (var i = 0; i < parameters.Length && i < arguments.Length; i++)
         {
-            if (arguments[i] is TypeArgument argument)
-            {
-                bindings[parameters[i].Name] = argument.Type;
-            }
+            bindings[parameters[i].Name] = arguments[i];
         }
 
         return bindings;

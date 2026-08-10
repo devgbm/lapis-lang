@@ -1,18 +1,25 @@
 # LapisLang — Language & Research Specification
 
-**Versão:** 0.2.2
+**Versão:** 0.2.3
 **Extensão:** `.ls`
 **CLI:** `lapis`
 **Implementação inicial:** C#
 **Paradigma:** expression-oriented, statically typed, functional-oriented
 **Objetivo:** pesquisa de avaliação e partial evaluation
 
+> Changelog 0.2.2 → 0.2.3 — decisões do autor sobre as lacunas Q16, Q17 e Q18.
+>
+> - **Todo argumento const tem de ser resolvível em tempo de compilação** (Q18), e só isso: um literal, um `def` ligado a um literal, ou o parâmetro const de um genérico envolvente. Um valor de execução nunca serve. Seção §13.
+> - **Um parâmetro const é uma constante dentro do seu escopo** (Q18) e pode ser repassado a outro genérico. Seu valor é **simbólico** até a instanciação de fora fechá-lo: `FixedArray<Int, N>` é um tipo legítimo, distinto de `FixedArray<Int, 3>`. Seção §13.
+> - **Uma função literal como argumento genérico só é escrevível em posição de expressão** (Q17), confirmado. Seção §13.
+> - **Statements que terminam em bloco dispensam `;`** (Q16), confirmado. Seção §9.
+>
 > Changelog 0.2.1 → 0.2.2 — precisões trazidas pela implementação dos generics (M4).
 >
 > - **A variante de um enum genérico exige os argumentos antes do ponto** (Q7): `Option<Int>.Some(20)`, nunca `Option.Some(20)`. Sem inferência não há de onde tirar `T`. Seções §13 e §16.
 > - **`alvo<A, B>` é um operador pós-fixo próprio**, e não parte da chamada: aplica argumentos genéricos a qualquer expressão genérica — função, `type` ou `enum`. Seção §13.
 > - **Desambiguação de `<` precisada** (Q5): a leitura genérica também vence quando o token após o `>` não pode iniciar uma expressão, porque aí a leitura relacional ficaria sem operando à direita. É o que faz o exemplo de const generics desta seção parsear. Seção §13.
-> - **Uma função literal como argumento genérico só é escrevível em posição de expressão** (Q17): em posição de tipo, `fn(Int) Int` é um tipo de função. Seção §13.
+> - **Função literal como argumento genérico** proposta como restrita a posição de expressão (Q17) — confirmada na 0.2.3. Seção §13.
 >
 > Changelog 0.2 → 0.2.1 — lacunas fechadas durante a implementação.
 > Cada item corresponde a uma decisão registrada em `plans/appendix-c-decisions.md`.
@@ -651,6 +658,44 @@ scale<3>(5);    // 15
 
 É o caso interessante para partial evaluation: `N` é conhecido no ponto da
 instanciação, mesmo quando `x` só existe em execução.
+
+### Um argumento const tem de ser conhecido em compilação
+
+É a única regra, e ela não admite exceção: um valor que só existe em execução
+nunca é argumento genérico.
+
+```c
+def somefn = fn<N: Int>(x: Int) Int { return x * N; };
+
+somefn<3>(x);          // literal                        — ok
+somefn<tres>(x);       // `def tres = 3;`                — ok
+somefn<somevar>(x);    // parâmetro comum, valor de runtime — erro
+```
+
+Um `def` conta como constante quando está ligado a um literal ou a uma função
+literal, direta ou indiretamente por uma cadeia de `def`s. Expressões ainda não:
+`def n = 1 + 2;` não é aceito nesta versão, porque o type checker não dobra
+constantes — isso é trabalho do partial evaluator (§58).
+
+### Parâmetros const são constantes, e podem ser repassados
+
+Dentro de `fn<N: Int>`, `N` **é** uma constante: a regra acima garante que ele só
+pode ter recebido um valor conhecido em compilação. Não conhecer o valor ainda
+não o torna variável — torna-o **simbólico**. Logo, repassá-lo adiante é válido:
+
+```c
+def Boxed = type<T, N: Int> { values: T[]; };
+
+def make = fn<N: Int>(v: Int) Boxed<Int, N> {
+    return .Boxed<Int, N> { values: [v] };
+};
+
+def b: Boxed<Int, 4> = make<4>(9);
+```
+
+`Boxed<Int, N>` é um tipo tão legítimo quanto `Box<T>`, e distinto de
+`Boxed<Int, 3>`. A instanciação de fora fecha o `N`: o retorno de `make<4>` é
+`Boxed<Int, 4>`.
 
 ### Função literal como argumento
 

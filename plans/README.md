@@ -152,17 +152,12 @@ spec**. O registro completo, com justificativa e consequências, está no
 | Q7 | inferência de argumentos genéricos | **Sempre explícitos**, inclusive em variantes: `Option<Int>.Some(20)`. `print` deixa de ser genérico (`fn(Any) Void`) para não obrigar `print<Int>(x)` |
 | Q8 | a spec não menciona recursão | **Sem recursão na v0.2** |
 | Q9 | divisão inteira por zero | Produz o maior `Int`. A divisão vira total — sem caminho de aborto, e o PE ganha aritmética sempre pura |
+| Q16 | statements que terminam em bloco exigem `;`? | Não exigem — é o que o `abs` da própria spec §12 pressupõe |
+| Q17 | função literal como argumento genérico colide com tipo de função | Só escrevível em posição de expressão; em posição de tipo, `fn(Int) Int` é um tipo |
+| Q18 | o que pode ser argumento const? | O que for resolvível em compilação. Um parâmetro const **é** constante e pode ser repassado, como constante simbólica |
 
-A spec foi atualizada de acordo — hoje está na **0.2.2**, com o changelog de cada
-decisão no topo do arquivo.
-
-Segue aguardando decisão apenas **Q16** (statements que terminam em bloco
-dispensam `;`), já implementado porque o exemplo `abs` da própria spec §12
-depende dele.
-
-Duas limitações novas entraram em vigor no M4, ambas registradas no apêndice C:
-**Q17** (função literal como argumento genérico só em posição de expressão) e
-**Q18** (parâmetro const não é repassável como argumento const).
+**Nenhuma lacuna segue aguardando decisão.** A spec foi atualizada de acordo — hoje
+está na **0.2.3**, com o changelog de cada decisão no topo do arquivo.
 
 ---
 

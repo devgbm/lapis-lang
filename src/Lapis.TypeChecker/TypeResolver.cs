@@ -178,10 +178,15 @@ public sealed class TypeResolver(DiagnosticBag diagnostics)
             return RawGenericArgument.Error(argument.Span);
         }
 
-        // Um nome ligado a um valor é uma leitura válida como constante — só não
-        // é constante, porque seu valor só existe em execução.
-        return binding.Type is MetaType meta
-            ? RawGenericArgument.OfType(new NamedType(meta.Definition, meta.Arguments), argument.Span)
+        if (binding.Type is MetaType meta)
+        {
+            return RawGenericArgument.OfType(new NamedType(meta.Definition, meta.Arguments), argument.Span);
+        }
+
+        // Um `def` ligado a um literal é constante e serve de argumento (Q18);
+        // qualquer outro nome designa um valor que só existe em execução.
+        return binding.Constant is { } constant
+            ? RawGenericArgument.OfConstant(constant, argument.Span)
             : RawGenericArgument.RuntimeValue(argument.Span);
     }
 

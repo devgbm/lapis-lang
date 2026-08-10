@@ -41,7 +41,7 @@ lapis hello.ls
 | M5 — suíte de conformidade | ⏳ próximo |
 | M6–M9 — partial evaluator | ⬜ |
 
-**877 testes** cobrindo lexer, parser, desugar, type checker, runtime, evaluator
+**890 testes** cobrindo lexer, parser, desugar, type checker, runtime, evaluator
 e CLI.
 
 A linguagem já roda programas de verdade: funções de primeira classe com
@@ -71,14 +71,21 @@ são **sempre explícitos** — não há inferência na 0.2 (decisão Q7), o que
 type checker previsível e deixa a porta aberta para inferência depois.
 
 Const generics são o caso interessante para a pesquisa: `N` é conhecido no ponto
-da instanciação mesmo quando o resto só existe em execução.
+da instanciação mesmo quando o resto só existe em execução. Um argumento const
+tem de ser resolvível em tempo de compilação — e um parâmetro const **é**
+constante, então pode ser repassado adiante como constante simbólica.
 
 ```c
 def scale = fn<N: Int>(x: Int) Int {
     return x * N;
 };
 
+def twice = fn<M: Int>(x: Int) Int {
+    return scale<M>(x) + scale<M>(x);
+};
+
 print(scale<3>(5));    // 15
+print(twice<3>(5));    // 30
 ```
 
 O que falta (M5 em diante): a suíte de conformidade e o partial evaluator. O

@@ -17,6 +17,8 @@
 //   0
 //   15
 //   50
+//   30
+//   [9]
 
 def identity = fn<T>(value: T) T {
     return value;
@@ -66,3 +68,30 @@ def scale = fn<N: Int>(x: Int) Int {
 
 print(scale<3>(5));
 print(scale<10>(5));
+
+// Um argumento const precisa ser resolvível em tempo de compilação, e só isso:
+// um literal, um `def` ligado a um literal, ou o parâmetro const de um genérico
+// envolvente. `N` dentro de `fn<N: Int>` é constante — a regra garante que ele só
+// pode ter recebido um valor conhecido — então repassá-lo adiante é válido.
+
+def twice = fn<M: Int>(x: Int) Int {
+    return scale<M>(x) + scale<M>(x);
+};
+
+print(twice<3>(5));
+
+// O valor de `N` só é conhecido na instanciação de fora, e até lá ele é uma
+// constante *simbólica*: `Boxed<Int, N>` é um tipo tão legítimo quanto `Box<T>`,
+// e o retorno de `make<4>` é `Boxed<Int, 4>`.
+
+def Boxed = type<T, N: Int> {
+    values: T[];
+};
+
+def make = fn<N: Int>(v: Int) Boxed<Int, N> {
+    return .Boxed<Int, N> { values: [v] };
+};
+
+def quatro: Boxed<Int, 4> = make<4>(9);
+
+print(quatro.values);

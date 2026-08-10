@@ -209,3 +209,6 @@ Não são diagnósticos de compilação: são relatados na saída de execução 
 - `LAP0290` passou a cobrir também "função genérica chamada sem argumentos
   genéricos explícitos" (Q7), com nota indicando os parâmetros a escrever.
 - `LAP0202` é reportado pelo **desugar**, não pelo type checker (Q10).
+- `LAP0294` traz nota com o que *serve* como argumento const (Q18): literal, ou
+  `def` ligado a literal. Um parâmetro const de um genérico envolvente também
+  serve e não produz diagnóstico algum.
