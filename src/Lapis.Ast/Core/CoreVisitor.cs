@@ -16,6 +16,10 @@ public abstract class CoreVisitor<TResult>
         CoreIf n => VisitIf(n),
         CoreBinary n => VisitBinary(n),
         CoreUnary n => VisitUnary(n),
+        CoreArray n => VisitArray(n),
+        CoreIndex n => VisitIndex(n),
+        CoreField n => VisitField(n),
+        CoreEnumDef n => VisitEnumDef(n),
         _ => throw InternalCompilerException.Unreachable(node, node.Span),
     };
 
@@ -36,6 +40,14 @@ public abstract class CoreVisitor<TResult>
     protected abstract TResult VisitBinary(CoreBinary node);
 
     protected abstract TResult VisitUnary(CoreUnary node);
+
+    protected abstract TResult VisitArray(CoreArray node);
+
+    protected abstract TResult VisitIndex(CoreIndex node);
+
+    protected abstract TResult VisitField(CoreField node);
+
+    protected abstract TResult VisitEnumDef(CoreEnumDef node);
 }
 
 /// <summary>
@@ -93,6 +105,26 @@ public abstract class CoreWalker
 
             case CoreUnary n:
                 Visit(n.Operand);
+                break;
+
+            case CoreArray n:
+                foreach (var element in n.Elements)
+                {
+                    Visit(element);
+                }
+
+                break;
+
+            case CoreIndex n:
+                Visit(n.Target);
+                Visit(n.Index);
+                break;
+
+            case CoreField n:
+                Visit(n.Target);
+                break;
+
+            case CoreEnumDef:
                 break;
 
             default:

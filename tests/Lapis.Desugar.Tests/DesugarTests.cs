@@ -358,3 +358,46 @@ public sealed class InvariantTests : DesugarTestBase
         Print(Source).ShouldBe(Print(Source));
     }
 }
+
+public sealed class ArrayAndEnumDesugarTests : DesugarTestBase
+{
+    [Fact]
+    public void Array_IsOneToOne()
+    {
+        var program = Compile("def a = [1, 2];");
+
+        program.Body.ShouldBeOfType<CoreLet>().Value
+            .ShouldBeOfType<CoreArray>().Elements.Length.ShouldBe(2);
+    }
+
+    /// <summary>
+    /// A checagem de limites é semântica do nó <c>Index</c> (spec §41): o desugar
+    /// não a expande num <c>If</c>.
+    /// </summary>
+    [Fact]
+    public void Index_DoesNotExpandBoundsCheck()
+    {
+        var program = Compile("def r = a[0];");
+
+        program.Body.ShouldBeOfType<CoreLet>().Value.ShouldBeOfType<CoreIndex>();
+        AllNodes(program).OfType<CoreIf>().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Member_IsOneToOne()
+    {
+        var program = Compile("def v = A.B;");
+
+        program.Body.ShouldBeOfType<CoreLet>().Value.ShouldBeOfType<CoreField>().Name.ShouldBe("B");
+    }
+
+    [Fact]
+    public void EnumDef_PreservesVariantsAndTypeParameters()
+    {
+        var program = Compile("def R = enum<T, E> { Ok(T), Err(E) };");
+
+        var enumDef = program.Body.ShouldBeOfType<CoreLet>().Value.ShouldBeOfType<CoreEnumDef>();
+        enumDef.TypeParameters.ShouldBe(["T", "E"]);
+        enumDef.Variants.Select(v => v.Name).ShouldBe(["Ok", "Err"]);
+    }
+}

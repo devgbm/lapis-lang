@@ -83,6 +83,7 @@ public static class DiagnosticCodes
     public const string ConstArgumentTypeMismatch = "LAP0293";
     public const string GenericArgumentNotConstant = "LAP0294";
     public const string GenericTypeNeedsArguments = "LAP0295";
+    public const string CannotDetermineGenericArguments = "LAP0298";
     public const string ConstGenericNotInferred = "LAP0296";
     public const string CannotInferGenericParameter = "LAP0297";
 

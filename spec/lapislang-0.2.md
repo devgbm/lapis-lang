@@ -1,12 +1,26 @@
 # LapisLang — Language & Research Specification
 
-**Versão:** 0.2
+**Versão:** 0.2.1
 **Extensão:** `.ls`
 **CLI:** `lapis`
 **Implementação inicial:** C#
 **Paradigma:** expression-oriented, statically typed, functional-oriented
 **Objetivo:** pesquisa de avaliação e partial evaluation
 
+> Changelog 0.2 → 0.2.1 — lacunas fechadas durante a implementação.
+> Cada item corresponde a uma decisão registrada em `plans/appendix-c-decisions.md`.
+>
+> - **Variantes de enum exigem qualificação completa** (Q3): `Result.Ok(1)`, nunca `Ok(1)`. Seções §15, §16, §21 e §22 atualizadas.
+> - **Construção de tipo ganhou sintaxe** (Q2): `.User { id: 1, name: "x" }`, com ponto inicial. Seção §14.
+> - **Declaração de generics usa parâmetros nomeados** (Q1): `type<T, N: Int>`, distinta da forma de uso `FixedArray<Int, 3>`. Seções §13 e §14.
+> - **Argumentos genéricos são sempre explícitos** (Q7): não há inferência na 0.2. Seção §13.
+> - **`match` deve ser exaustivo** (Q6). Seção §22.
+> - **Não há recursão na 0.2** (Q8): um nome não é visível na própria expressão que o define. Seção §8.
+> - **Divisão inteira por zero produz o maior `Int`** (Q9), tornando `/` total. Seção §25.
+> - **Operadores lógicos `!`, `&&`, `||`** adicionados (Q4). Seções §25 e §44.
+> - **Statements que terminam em bloco dispensam `;`** (Q16). Seção §9.
+> - Lista de tokens de §44 completada com `.`, `=>` e `_`.
+>
 > Changelog 0.1 → 0.2:
 > - Tipos primitivos renomeados: `int → Int`, `float → Float`, `bool → Bool`, `string → Str`, `unit → Void`.
 > - Funções não retornam mais implicitamente pela última expressão do corpo: agora usam `return` explícito.
@@ -329,6 +343,22 @@ Não existe:
 x = 20;
 ```
 
+## Ausência de recursão
+
+O nome introduzido por `def` é visível **apenas depois** da declaração, e não
+dentro da expressão que o define. Portanto não existe recursão na versão 0.2:
+
+```c
+def fact = fn(n: Int) Int {
+    return fact(n - 1);   // erro: 'fact' não existe aqui
+};
+```
+
+Isso é consequência direta de bindings serem imutáveis e sequenciais. A decisão é
+deliberada: sem recursão, a terminação do partial evaluator é trivial, o que
+mantém a pesquisa focada. Recursão será reintroduzida em uma versão futura, junto
+com a estratégia de terminação correspondente.
+
 ---
 
 # 9. Blocos
@@ -365,6 +395,22 @@ Exemplo:
 ```
 
 **Importante:** essa regra de "última expressão é o valor" continua válida para blocos em geral (por exemplo, o corpo de um `if`/`else` usado como expressão, ou um bloco atribuído diretamente a um `def`). Ela **não** se aplica mais ao corpo de funções — funções usam `return` explícito (veja seção 12).
+
+## Ponto-e-vírgula após expressões que terminam em bloco
+
+Uma expressão que termina em bloco — `{ ... }`, `if`, `match` — dispensa o `;`
+quando usada como statement:
+
+```c
+if x < 0 {
+    return -x;
+}
+
+return x;
+```
+
+Dentro de um bloco, a distinção entre "statement" e "última expressão" continua
+sendo feita pelo token seguinte: se vier `}`, a expressão é o valor do bloco.
 
 ---
 
@@ -470,13 +516,22 @@ Funções, tipos e enums podem receber parâmetros genéricos. A partir da 0.2, 
 * um **tipo** (como antes); ou
 * um **valor constante** (const generic) — string, inteiro, boolean, um tipo, ou até uma função literal conhecida em tempo de especialização.
 
-Sintaxe:
+## Declaração vs. uso
+
+A **declaração** nomeia cada parâmetro; o **uso** fornece valores para eles. As
+duas formas são distintas e não devem ser confundidas:
 
 ```text
-fn<P1, P2, ...>(parameters) return_type { body }
+declaração:   fn<T, N: Int>(parameters) return_type { body }
+uso:          minhaFuncao<Int, 3>(argumentos)
 ```
 
-onde cada `Pn` pode ser um nome de tipo (`T`) ou um valor constante.
+Um parâmetro genérico é:
+
+* `T` — um parâmetro de **tipo**; ou
+* `N: Tipo` — um parâmetro **constante**, com o tipo do valor que receberá.
+
+Um argumento genérico é um tipo ou um valor constante.
 
 Exemplo tradicional (tipo):
 
@@ -493,15 +548,31 @@ identity<Int>(10);
 identity<Str>("hello");
 ```
 
-Exemplo com valores constantes como argumentos de generic:
+## Argumentos genéricos são sempre explícitos
+
+Não há inferência na versão 0.2. Uma chamada a função genérica sem argumentos
+genéricos é erro de compilação:
 
 ```c
-def SomeType = type<"value", 1, true, Int, fn() Int { return 1; }> {
+identity(10);        // erro: faltam argumentos genéricos
+identity<Int>(10);   // correto
+```
+
+A ausência de inferência é deliberada: o type checker deve ser simples e
+previsível (§47). Inferência poderá ser adicionada depois sem quebrar programas
+existentes, já que a forma explícita continuará válida.
+
+## Exemplo com valores constantes
+
+Declaração, com os parâmetros nomeados:
+
+```c
+def SomeType = type<Label: Str, Count: Int, Enabled: Bool, T, Make: fn() Int> {
     label: Str;
 };
 ```
 
-Uso conceitual:
+Uso, fornecendo os valores:
 
 ```c
 SomeType<"value", 1, true, Int, fn() Int { return 1; }>
@@ -556,17 +627,54 @@ def Box = type<T> {
 };
 ```
 
-Tipo genérico com valor constante (const generic):
+Tipo genérico com valor constante (const generic). O parâmetro é **nomeado** na
+declaração e recebe um valor no uso:
 
 ```c
-def FixedArray = type<T, 3> {
+def FixedArray = type<T, N: Int> {
     values: T[];
 };
+
+def buffer: FixedArray<Int, 3> = ...;
 ```
 
 O `type` não possui nome próprio.
 
 O nome `User`, `Box` ou `FixedArray` é apenas o resultado do binding.
+
+## Construção de instâncias
+
+Uma instância é criada com **ponto inicial** seguido do nome do tipo:
+
+```c
+def user = .User {
+    id: 1,
+    name: "Gabriel"
+};
+
+def boxed = .Box<Int> {
+    value: 10
+};
+```
+
+O acesso a campo usa a forma pós-fixa usual, sem o ponto inicial:
+
+```c
+def nome = user.name;
+```
+
+O ponto inicial não é decoração. Ele é o que permite distinguir, olhando um único
+token, uma chave que abre um bloco de uma que abre uma construção. Sem ele,
+`if p { ... }` seria ambíguo. Com ele, isto é válido sem parênteses:
+
+```c
+if .Point { x: 1, y: 2 }.valid {
+    print("ok");
+}
+```
+
+Todos os campos declarados devem ser inicializados, e nenhum campo desconhecido é
+aceito.
 
 ---
 
@@ -603,12 +711,23 @@ def Result = enum<T, E> {
 };
 ```
 
-Exemplo conceitual:
+## Variantes exigem qualificação completa
+
+Uma variante é sempre acessada através do nome do enum:
 
 ```c
-Ok(10)
-Err(error)
+Result.Ok(10)
+Result.Err(error)
+Color.Red
+IndexError.OutOfBounds
 ```
+
+A forma nua (`Ok(10)`) **não** é válida: o nome de uma variante não entra no
+escopo. Isso evita colisão entre enums com variantes homônimas e mantém a
+resolução de nomes trivial — `Ok` sozinho é simplesmente uma variável
+inexistente.
+
+A mesma regra vale em padrões de `match` (§22).
 
 Enums são valores de primeira classe.
 
@@ -625,6 +744,13 @@ def Result = enum<T, E> {
     Ok(T),
     Err(E)
 };
+```
+
+Construção e uso, sempre qualificados:
+
+```c
+def ok = Result.Ok(10);
+def erro = Result.Err(IndexError.OutOfBounds);
 ```
 
 O runtime não deve possuir uma implementação semântica especial de `Result`.
@@ -744,13 +870,13 @@ array[index]
 retorna:
 
 ```text
-Ok(value)
+Result.Ok(value)
 ```
 
 ou:
 
 ```text
-Err(IndexError.OutOfBounds)
+Result.Err(IndexError.OutOfBounds)
 ```
 
 Portanto:
@@ -783,8 +909,8 @@ Exemplo conceitual (como expressão de bloco comum):
 
 ```c
 match result {
-    Ok(value) => value,
-    Err(error) => 0
+    Result.Ok(value) => value,
+    Result.Err(error) => 0
 }
 ```
 
@@ -793,10 +919,40 @@ Dentro de uma função, um `match` também pode ser usado junto com `return`:
 ```c
 def unwrapOr = fn(result: Result<Int, IndexError>, fallback: Int) Int {
     match result {
-        Ok(value) => return value,
-        Err(error) => return fallback
+        Result.Ok(value) => return value,
+        Result.Err(error) => return fallback
     }
 };
+```
+
+## Padrões
+
+Um padrão é uma de quatro formas:
+
+```text
+_                     coringa: casa qualquer valor
+nome                  liga o valor a um nome novo
+Enum.Variante(p, ...) casa a variante e destrincha a carga
+literal               casa um valor literal
+```
+
+Como variantes exigem qualificação (§15), não há ambiguidade: um identificador
+sozinho é **sempre** um binding novo, e `Enum.Variante` é **sempre** um padrão de
+variante.
+
+## Exaustividade
+
+Um `match` deve cobrir todos os casos possíveis do valor escrutinado. Um `match`
+não exaustivo é erro de compilação.
+
+Isso decorre de `match` ser uma expressão: ela precisa produzir um valor em toda
+execução. O coringa `_` cobre o restante quando enumerar tudo não interessa.
+
+```c
+match cor {
+    Color.Red => "vermelho",
+    _ => "outra"
+}
 ```
 
 A sintaxe exata pode ser simplificada ou alterada posteriormente.
@@ -844,18 +1000,31 @@ Expr
  ├── Let
  ├── Lambda
  ├── Call
- ├── Block
  ├── Return
  ├── If
  ├── Binary
  ├── Unary
  ├── Array
  ├── Index
+ ├── Field
  ├── Construct
- └── Match
+ ├── Match
+ ├── TypeDef
+ └── EnumDef
 ```
 
-A estrutura exata poderá mudar durante a implementação.
+Diferenças em relação ao esboço original, todas apuradas durante a implementação:
+
+* **`Block` não existe.** `Let(nome, valor, corpo)` já sequencia: um statement
+  vira um `Let` cujo nome é gerado e não usado. Um único nó de escopo simplifica
+  todo consumidor da Core e torna substituição e inlining textuais no partial
+  evaluator.
+* **`Field` foi adicionado.** Serve tanto para acesso a campo de `type`
+  (`user.id`) quanto para acesso a variante de enum (`IndexError.OutOfBounds`).
+* **`TypeDef` e `EnumDef` foram adicionados.** `type` e `enum` são expressões
+  (§14, §15) e portanto precisam existir na Core.
+* **`&&` e `||` não aparecem.** São desugarados para `If`, o que mantém os dois
+  fora da Core e preserva o curto-circuito.
 
 O objetivo é minimizar a quantidade de operações semânticas.
 
@@ -916,6 +1085,44 @@ usados como argumentos de tipo, por exemplo em `SomeType<"value", 1, true, Int, 
 
 ---
 
+## Operadores
+
+| Operador | Tipos aceitos | Resultado |
+|---|---|---|
+| `+` | `Int×Int`, `Float×Float`, `Str×Str` (concatenação) | mesmo tipo |
+| `-` `*` `/` | `Int×Int`, `Float×Float` | mesmo tipo |
+| `<` `>` `<=` `>=` | `Int×Int`, `Float×Float`, `Str×Str` | `Bool` |
+| `==` `!=` | ambos os lados do mesmo tipo comparável | `Bool` |
+| `&&` `\|\|` | `Bool×Bool`, com curto-circuito | `Bool` |
+| `!` | `Bool` | `Bool` |
+| `-` unário | `Int`, `Float` | mesmo tipo |
+
+**Não há promoção numérica implícita.** `1 + 1.0` é erro de tipo. A conversão
+deve ser explícita quando existir uma função para isso.
+
+**Funções não são comparáveis.** `f == g` é erro de tipo: igualdade de closures
+não é decidível e destruiria a equivalência entre evaluator e partial evaluator.
+
+**Comparações não encadeiam.** `a < b < c` é erro de sintaxe; use parênteses.
+
+## Aritmética total
+
+Nenhuma operação aritmética falha:
+
+* **divisão inteira por zero produz o maior `Int`**, qualquer que seja o sinal do
+  dividendo;
+* divisão de `Float` segue IEEE 754, produzindo infinito ou `NaN`;
+* overflow de `Int` envolve (aritmética de complemento de dois).
+
+A alternativa — fazer `/` devolver `Result` — contaminaria toda expressão
+aritmética e contradiria o tratamento de `/` como operação comum nesta seção.
+Abortar a execução foi descartado por remover a totalidade sem ganho prático.
+
+Uma consequência útil para a pesquisa: como nenhuma operação aritmética falha,
+toda aritmética é dobrável pelo partial evaluator sem análise de efeito.
+
+---
+
 # 26. Type checking
 
 Pipeline:
@@ -947,7 +1154,13 @@ O type checker deverá detectar pelo menos:
 * elementos heterogêneos em arrays;
 * índice de array que não seja `Int`;
 * aplicação inválida de função;
-* uso inválido de parâmetros genéricos (tipo vs. valor constante incompatível com a posição esperada).
+* uso inválido de parâmetros genéricos (tipo vs. valor constante incompatível com a posição esperada);
+* chamada a função genérica sem argumentos genéricos explícitos;
+* `match` não exaustivo;
+* padrão incompatível com o tipo escrutinado;
+* variante inexistente no enum;
+* campo inexistente, faltante ou duplicado na construção de um `type`;
+* redefinição de um nome no mesmo bloco.
 
 ---
 
@@ -964,9 +1177,17 @@ Value
  ├── Void
  ├── Array
  ├── Closure
+ ├── NativeFunction
  ├── EnumValue
+ ├── StructValue
  └── TypeValue
 ```
+
+`StructValue` é a instância de um `type`; `TypeValue` é o próprio tipo como
+valor. `NativeFunction` cobre as poucas primitivas implementadas fora da
+linguagem (§29).
+
+Todos os valores são imutáveis: não há atribuição na 0.2 (§8).
 
 A representação concreta será definida em C#.
 
@@ -1018,7 +1239,22 @@ function_call
 enum construction
 ```
 
-A semântica de `Result`, `Option`, etc. deve permanecer na linguagem.
+A semântica de `Result`, `Option`, etc. deve permanecer na linguagem: esses tipos
+são definidos em um prelude escrito na própria LapisLang, e o runtime apenas
+constrói e manipula valores de enum.
+
+**Regra de admissão de primitivas:** um nome só pode ser nativo se for
+*impossível* defini-lo na própria linguagem. Hoje isso vale para duas coisas:
+
+| Nome | Por quê |
+|---|---|
+| `print` | efeito de I/O |
+| `array_length` | acesso à representação |
+
+Como argumentos genéricos são sempre explícitos (§13), essas primitivas não são
+genéricas — exigi-lo obrigaria a escrever `print<Int>(x)` em todo programa. Seus
+parâmetros usam um tipo interno que aceita qualquer valor e que nenhuma sintaxe
+da linguagem produz.
 
 O runtime fornece apenas as operações fundamentais necessárias para implementar essas abstrações.
 
@@ -1494,13 +1730,13 @@ deve verificar:
 Se válido:
 
 ```text
-Ok(value)
+Result.Ok(value)
 ```
 
 Se inválido:
 
 ```text
-Err(IndexError.OutOfBounds)
+Result.Err(IndexError.OutOfBounds)
 ```
 
 O evaluator sempre realiza a verificação.
@@ -1537,7 +1773,7 @@ Logo:
 e residualizar diretamente:
 
 ```c
-def x = Ok(20);
+def x = Result.Ok(20);
 ```
 
 Em uma etapa posterior, caso o sistema de tipos/representação permita, o `Ok` também poderá ser simplificado.
@@ -1604,6 +1840,9 @@ match
 ,
 ;
 =
+.
+=>
+_
 
 +
 -
@@ -1615,7 +1854,21 @@ match
 >
 <=
 >=
+!
+&&
+||
 ```
+
+Notas sobre a lista:
+
+* `.` é necessário para acesso a membro (`IndexError.OutOfBounds`, `user.id`) e
+  para a construção de tipos (`.User { ... }`, §14).
+* `=>` separa padrão e corpo nos braços de `match`.
+* `_` só é um token próprio quando isolado; `_x` continua sendo identificador.
+* `!`, `&&` e `||` são os operadores lógicos (§25).
+* **Não existe `>>`.** Isso é intencional: `Box<Box<Int>>` fecha com dois tokens
+  `>` independentes, o que elimina o problema clássico de fechar generics
+  aninhados.
 
 Adicionar source location:
 
@@ -1778,9 +2031,9 @@ retornando `Result`.
 Testes:
 
 ```text
-[1,2,3][0] → Ok(1)
-[1,2,3][2] → Ok(3)
-[1,2,3][3] → Err(OutOfBounds)
+[1,2,3][0] → Result.Ok(1)
+[1,2,3][2] → Result.Ok(3)
+[1,2,3][3] → Result.Err(IndexError.OutOfBounds)
 ```
 
 ---
@@ -2218,8 +2471,19 @@ A linguagem pode ser resumida em poucas regras:
 10. Dictionaries não fazem parte da linguagem por enquanto.
 
 11. Generics aceitam tanto tipos quanto valores constantes
-    (const generics):
-       SomeType<"value", 1, true, Int, fn(){ return 1; }>
+    (const generics). A declaração nomeia os parâmetros e o uso
+    fornece os valores, sempre explícitos:
+       declaração: type<Label: Str, Count: Int, T>
+       uso:        SomeType<"value", 1, Int>
+
+11a. Variantes de enum exigem qualificação completa:
+       Result.Ok(1), IndexError.OutOfBounds
+
+11b. Instâncias de `type` são construídas com ponto inicial:
+       .User { id: 1, name: "x" }
+
+11c. Não há recursão, e a aritmética é total:
+       divisão inteira por zero produz o maior Int.
 
 12. O arquivo .ls é o programa.
 

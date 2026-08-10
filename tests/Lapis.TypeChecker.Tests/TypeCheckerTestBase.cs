@@ -17,7 +17,7 @@ public abstract class TypeCheckerTestBase
             $"erro de parse: {string.Join(", ", diagnostics.Select(d => $"{d.Code} {d.Message}"))}");
 
         var core = Desugar.Desugarer.Desugar(file, diagnostics);
-        var typed = TypeChecker.Check(core, diagnostics);
+        var typed = TypeChecker.Check(core, PreludeFixture.Scope, diagnostics);
 
         return (typed, diagnostics.ToSortedArray());
     }
@@ -56,5 +56,24 @@ public abstract class TypeCheckerTestBase
         var program = Check(source);
         var let = program.Program.Body.ShouldBeOfType<CoreLet>();
         return program.TypeOf(let.Value);
+    }
+
+    /// <summary>Tipo do valor do <c>def</c> com o nome dado.</summary>
+    protected static LapisType TypeOfDef(string source, string name)
+    {
+        var program = Check(source);
+        var current = program.Program.Body;
+
+        while (current is CoreLet let)
+        {
+            if (!let.IsSynthetic && let.Name == name)
+            {
+                return program.TypeOf(let.Value);
+            }
+
+            current = let.Body;
+        }
+
+        throw new InvalidOperationException($"'{name}' não encontrado no programa");
     }
 }

@@ -162,6 +162,26 @@ public sealed class Desugarer
                     DesugarExpression(n.Callee),
                     [.. n.Arguments.Select(DesugarExpression)]);
 
+            case ArrayExpression n:
+                return _factory.Array(n.Span, [.. n.Elements.Select(DesugarExpression)]);
+
+            // A checagem de limites é semântica do nó Index (spec §41), não uma
+            // expansão feita aqui: expandi-la exigiria referenciar `Result` antes
+            // da resolução de nomes e tornaria a eliminação de bounds check do
+            // partial evaluator uma análise sobre `If` em vez de uma decisão sobre
+            // o próprio acesso.
+            case IndexExpression n:
+                return _factory.Index(n.Span, DesugarExpression(n.Target), DesugarExpression(n.Index));
+
+            case MemberExpression n:
+                return _factory.Field(n.Span, DesugarExpression(n.Target), n.Name, n.NameSpan);
+
+            case EnumExpression n:
+                return _factory.EnumDef(
+                    n.Span,
+                    [.. n.TypeParameters.Select(p => p.Name)],
+                    [.. n.Variants.Select(v => new CoreVariantDecl(v.Name, v.Payload, v.Span))]);
+
             case ErrorExpression n:
                 // O parser já reportou; um literal Void mantém a árvore bem-formada.
                 return _factory.Unit(n.Span);

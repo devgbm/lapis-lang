@@ -3,6 +3,14 @@ using Lapis.Diagnostics;
 
 namespace Lapis.Runtime;
 
+/// <summary>Resultado de um acesso a array, antes de virar um <c>Result</c> da linguagem.</summary>
+public readonly record struct IndexOutcome(Value? Value, bool IsInBounds)
+{
+    public static IndexOutcome InBounds(Value value) => new(value, true);
+
+    public static readonly IndexOutcome OutOfBounds = new(null, false);
+}
+
 /// <summary>
 /// As operações fundamentais do runtime (spec §29).
 ///
@@ -120,6 +128,16 @@ public static class Primitives
 
         return left.Equals(right);
     }
+
+    /// <summary>
+    /// Acesso a array com checagem de limites (spec §41). O runtime não conhece
+    /// <c>Result</c>: quem converte este resultado em <c>Result.Ok</c> /
+    /// <c>Result.Err</c> é o evaluator, usando as definições do prelude (spec §16).
+    /// </summary>
+    public static IndexOutcome ArrayGet(ArrayValue array, long index) =>
+        index >= 0 && index < array.Elements.Length
+            ? IndexOutcome.InBounds(array.Elements[(int)index])
+            : IndexOutcome.OutOfBounds;
 
     private static InternalCompilerException Mismatch(string op, Value left, Value right) =>
         new($"'{op}' não se aplica a {left.Type.ToDisplayString()} e {right.Type.ToDisplayString()}");

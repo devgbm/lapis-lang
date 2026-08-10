@@ -15,13 +15,13 @@ public abstract class EvaluatorTestBase
         var diagnostics = new DiagnosticBag();
         var file = Parser.Parser.Parse(SourceText.From(source), diagnostics);
         var core = Desugar.Desugarer.Desugar(file, diagnostics);
-        var typed = TypeChecker.TypeChecker.Check(core, diagnostics);
+        var typed = TypeChecker.TypeChecker.Check(core, PreludeFixture.Scope, diagnostics);
 
         diagnostics.HasErrors.ShouldBeFalse(
             $"erros de compilação: {string.Join(", ", diagnostics.Select(d => $"{d.Code} {d.Message}"))}");
 
         var output = new StringOutput();
-        var result = Evaluator.Run(typed, new RuntimeContext(output));
+        var result = Evaluator.Run(typed, PreludeFixture.Scope, new RuntimeContext(output));
 
         return new RunOutcome(result, output.Text);
     }

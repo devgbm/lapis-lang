@@ -311,12 +311,71 @@ public sealed class Parser
     {
         var expression = ParsePrimary();
 
-        while (Current.Kind == TokenKind.OpenParen)
+        while (true)
         {
-            expression = ParseCall(expression);
+            switch (Current.Kind)
+            {
+                case TokenKind.OpenParen:
+                    expression = ParseCall(expression);
+                    continue;
+
+                case TokenKind.OpenBracket:
+                    expression = ParseIndex(expression);
+                    continue;
+
+                case TokenKind.Dot:
+                    expression = ParseMember(expression);
+                    continue;
+
+                default:
+                    return expression;
+            }
+        }
+    }
+
+    private Expression ParseIndex(Expression target)
+    {
+        _tokens.Advance(); // '['
+
+        var index = ParseExpression();
+        var end = Current.Span.End;
+
+        if (!_tokens.Match(TokenKind.CloseBracket))
+        {
+            Report(DiagnosticCodes.ExpectedCloseBracket, Current.Span, "esperado ']' para fechar a indexação");
+            end = PreviousEnd();
         }
 
-        return expression;
+        return new IndexExpression(target, index)
+        {
+            Span = SourceSpan.FromBounds(target.Span.Start, end),
+        };
+    }
+
+    private Expression ParseMember(Expression target)
+    {
+        _tokens.Advance(); // '.'
+
+        var nameToken = Current;
+
+        if (Current.Kind != TokenKind.Identifier)
+        {
+            Report(DiagnosticCodes.ExpectedIdentifier, Current.Span, "esperado um nome após '.'");
+
+            return new MemberExpression(target, "?")
+            {
+                Span = SourceSpan.FromBounds(target.Span.Start, PreviousEnd()),
+                NameSpan = nameToken.Span,
+            };
+        }
+
+        _tokens.Advance();
+
+        return new MemberExpression(target, nameToken.Text)
+        {
+            Span = SourceSpan.FromBounds(target.Span.Start, nameToken.Span.End),
+            NameSpan = nameToken.Span,
+        };
     }
 
     private Expression ParseCall(Expression callee)
@@ -388,6 +447,12 @@ public sealed class Parser
             case TokenKind.IfKeyword:
                 return ParseIf();
 
+            case TokenKind.OpenBracket:
+                return ParseArrayLiteral();
+
+            case TokenKind.EnumKeyword:
+                return ParseEnum();
+
             default:
                 var code = token.Kind == TokenKind.EndOfFile
                     ? DiagnosticCodes.UnexpectedEndOfFile
@@ -417,6 +482,174 @@ public sealed class Parser
         }
 
         return inner;
+    }
+
+    private Expression ParseArrayLiteral()
+    {
+        var start = Current.Span.Start;
+        _tokens.Advance(); // '['
+
+        var elements = ImmutableArray.CreateBuilder<Expression>();
+
+        while (Current.Kind != TokenKind.CloseBracket && !_tokens.AtEnd)
+        {
+            var before = _tokens.Mark();
+            elements.Add(ParseExpression());
+
+            if (!_tokens.Match(TokenKind.Comma))
+            {
+                break;
+            }
+
+            if (_tokens.Mark() == before)
+            {
+                _tokens.Advance();
+            }
+        }
+
+        if (!_tokens.Match(TokenKind.CloseBracket))
+        {
+            Report(DiagnosticCodes.ExpectedCloseBracket, Current.Span, "esperado ']' para fechar o array");
+        }
+
+        return new ArrayExpression(elements.ToImmutable()) { Span = SpanFrom(start) };
+    }
+
+    /// <summary>
+    /// <c>enum&lt;T, E&gt; { Ok(T), Err(E) }</c>. O enum não tem nome próprio: o nome
+    /// vem do <c>def</c> que o recebe (spec §15).
+    /// </summary>
+    private Expression ParseEnum()
+    {
+        var start = Current.Span.Start;
+        _tokens.Advance(); // 'enum'
+
+        var typeParameters = ParseTypeParameterList();
+        var variants = ImmutableArray.CreateBuilder<VariantSyntax>();
+
+        if (!_tokens.Match(TokenKind.OpenBrace))
+        {
+            Report(DiagnosticCodes.UnexpectedToken, Current.Span, "esperado '{' no corpo do enum");
+            return new EnumExpression(typeParameters, variants.ToImmutable()) { Span = SpanFrom(start) };
+        }
+
+        while (Current.Kind != TokenKind.CloseBrace && !_tokens.AtEnd)
+        {
+            var before = _tokens.Mark();
+            variants.Add(ParseVariant());
+
+            if (!_tokens.Match(TokenKind.Comma))
+            {
+                break;
+            }
+
+            if (_tokens.Mark() == before)
+            {
+                _tokens.Advance();
+            }
+        }
+
+        if (!_tokens.Match(TokenKind.CloseBrace))
+        {
+            Report(DiagnosticCodes.UnclosedBrace, Current.Span, "esperado '}' para fechar o enum");
+        }
+
+        return new EnumExpression(typeParameters, variants.ToImmutable()) { Span = SpanFrom(start) };
+    }
+
+    private VariantSyntax ParseVariant()
+    {
+        var start = Current.Span.Start;
+        var name = "?";
+
+        if (Current.Kind == TokenKind.Identifier)
+        {
+            name = Current.Text;
+            _tokens.Advance();
+        }
+        else
+        {
+            Report(DiagnosticCodes.ExpectedIdentifier, Current.Span, "esperado o nome da variante");
+        }
+
+        var payload = ImmutableArray<TypeSyntax>.Empty;
+
+        if (_tokens.Match(TokenKind.OpenParen))
+        {
+            var builder = ImmutableArray.CreateBuilder<TypeSyntax>();
+
+            while (Current.Kind != TokenKind.CloseParen && !_tokens.AtEnd)
+            {
+                var before = _tokens.Mark();
+                builder.Add(ParseType());
+
+                if (!_tokens.Match(TokenKind.Comma))
+                {
+                    break;
+                }
+
+                if (_tokens.Mark() == before)
+                {
+                    _tokens.Advance();
+                }
+            }
+
+            if (!_tokens.Match(TokenKind.CloseParen))
+            {
+                Report(DiagnosticCodes.UnexpectedToken, Current.Span, "esperado ')' na carga da variante");
+            }
+
+            payload = builder.ToImmutable();
+        }
+
+        return new VariantSyntax(name, payload) { Span = SpanFrom(start) };
+    }
+
+    /// <summary>
+    /// Parâmetros genéricos de uma declaração: sempre <b>nomeados</b> (Q1). Const
+    /// generics (<c>N: Int</c>) chegam no M4.
+    /// </summary>
+    private ImmutableArray<TypeParameterSyntax> ParseTypeParameterList()
+    {
+        if (Current.Kind != TokenKind.Less)
+        {
+            return [];
+        }
+
+        _tokens.Advance();
+        var parameters = ImmutableArray.CreateBuilder<TypeParameterSyntax>();
+
+        while (Current.Kind != TokenKind.Greater && !_tokens.AtEnd)
+        {
+            var before = _tokens.Mark();
+
+            if (Current.Kind == TokenKind.Identifier)
+            {
+                parameters.Add(new TypeParameterSyntax(Current.Text) { Span = Current.Span });
+                _tokens.Advance();
+            }
+            else
+            {
+                Report(DiagnosticCodes.ExpectedIdentifier, Current.Span, "esperado o nome do parâmetro genérico");
+            }
+
+            if (!_tokens.Match(TokenKind.Comma))
+            {
+                break;
+            }
+
+            if (_tokens.Mark() == before)
+            {
+                _tokens.Advance();
+            }
+        }
+
+        if (!_tokens.Match(TokenKind.Greater))
+        {
+            Report(DiagnosticCodes.UnexpectedToken, Current.Span, "esperado '>' nos parâmetros genéricos");
+        }
+
+        return parameters.ToImmutable();
     }
 
     private BlockExpression ParseBlock()
@@ -544,7 +777,7 @@ public sealed class Parser
                     DiagnosticCodes.ParameterRequiresType,
                     Current.Span,
                     $"o parâmetro '{name}' requer anotação de tipo");
-                type = new NamedTypeSyntax("?") { Span = Current.Span };
+                type = NamedTypeSyntax.Of("?", Current.Span);
             }
 
             parameters.Add(new ParameterSyntax(name, type) { Span = SpanFrom(parameterStart) });
@@ -638,8 +871,7 @@ public sealed class Parser
         switch (token.Kind)
         {
             case TokenKind.Identifier:
-                _tokens.Advance();
-                return new NamedTypeSyntax(token.Text) { Span = token.Span };
+                return ParseNamedType();
 
             case TokenKind.FnKeyword:
                 return ParseFunctionType();
@@ -662,8 +894,60 @@ public sealed class Parser
                     DiagnosticCodes.ExpectedType,
                     token.Span,
                     $"esperado um tipo, encontrado {token.Kind.Describe()}");
-                return new NamedTypeSyntax("?") { Span = token.Span };
+                return NamedTypeSyntax.Of("?", token.Span);
         }
+    }
+
+    /// <summary>
+    /// <c>Nome</c> ou <c>Nome&lt;A, B&gt;</c>. Em posição de tipo não há ambiguidade
+    /// com o operador `&lt;`: a gramática de tipos não tem comparação.
+    /// </summary>
+    private TypeSyntax ParseNamedType()
+    {
+        var token = _tokens.Advance();
+        var arguments = ImmutableArray<TypeSyntax>.Empty;
+
+        if (Current.Kind == TokenKind.Less)
+        {
+            _tokens.Advance();
+            var builder = ImmutableArray.CreateBuilder<TypeSyntax>();
+
+            while (Current.Kind != TokenKind.Greater && !_tokens.AtEnd)
+            {
+                var before = _tokens.Mark();
+                builder.Add(ParseType());
+
+                if (!_tokens.Match(TokenKind.Comma))
+                {
+                    break;
+                }
+
+                if (_tokens.Mark() == before)
+                {
+                    _tokens.Advance();
+                }
+            }
+
+            if (builder.Count == 0)
+            {
+                Report(
+                    DiagnosticCodes.EmptyGenericArgumentList,
+                    Current.Span,
+                    "lista de argumentos genéricos vazia");
+            }
+
+            if (!_tokens.Match(TokenKind.Greater))
+            {
+                Report(DiagnosticCodes.UnexpectedToken, Current.Span, "esperado '>' nos argumentos genéricos");
+            }
+
+            arguments = builder.ToImmutable();
+        }
+
+        return new NamedTypeSyntax(token.Text, arguments)
+        {
+            Span = SourceSpan.FromBounds(token.Span.Start, PreviousEnd()),
+        };
     }
 
     private TypeSyntax ParseFunctionType()

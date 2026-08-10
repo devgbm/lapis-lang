@@ -23,6 +23,7 @@ public sealed class TypeChecker
     private readonly Dictionary<int, LapisType> _nodeTypes = [];
     private readonly Dictionary<int, Resolution> _resolutions = [];
     private readonly Stack<FunctionContext> _functions = new();
+    private PreludeScope? _prelude;
     private int _nextBindingId;
 
     private TypeChecker(DiagnosticBag diagnostics)
@@ -31,13 +32,17 @@ public sealed class TypeChecker
         _types = new TypeResolver(diagnostics);
     }
 
-    public static TypedProgram Check(CoreProgram program, DiagnosticBag diagnostics)
+    /// <param name="prelude">
+    /// Definições do prelude. <c>null</c> apenas ao checar o próprio
+    /// <c>prelude.ls</c>, que não usa indexação.
+    /// </param>
+    public static TypedProgram Check(CoreProgram program, PreludeScope? prelude, DiagnosticBag diagnostics)
     {
         ArgumentNullException.ThrowIfNull(program);
         ArgumentNullException.ThrowIfNull(diagnostics);
 
-        var checker = new TypeChecker(diagnostics);
-        var scope = checker.CreateRootScope();
+        var checker = new TypeChecker(diagnostics) { _prelude = prelude };
+        var scope = checker.CreateRootScope(prelude);
 
         checker.CheckExpression(program.Body, scope);
 
@@ -47,8 +52,8 @@ public sealed class TypeChecker
             checker._resolutions.ToImmutableDictionary());
     }
 
-    /// <summary>Escopo raiz com os nativos (plano 09 §9.2).</summary>
-    private Scope CreateRootScope()
+    /// <summary>Escopo raiz: nativos (plano 09 §9.2) mais os bindings do prelude.</summary>
+    private Scope CreateRootScope(PreludeScope? prelude)
     {
         var scope = Scope.Root();
 
@@ -62,7 +67,15 @@ public sealed class TypeChecker
                 BindingKind.Native));
         }
 
-        return scope;
+        foreach (var binding in prelude?.Bindings ?? [])
+        {
+            scope.Declare(new BindingInfo(
+                NextBindingId(), binding.Name, binding.Type, SourceSpan.Synthetic, BindingKind.Native));
+        }
+
+        // O programa do usuário roda num escopo filho: sombrear `Result` é
+        // permitido e não muda a semântica de `[]` (plano 09 §9.4).
+        return scope.Child();
     }
 
     // ------------------------------------------------------------ despacho
@@ -80,6 +93,10 @@ public sealed class TypeChecker
             CoreIf n => CheckIf(n, scope),
             CoreBinary n => CheckBinary(n, scope),
             CoreUnary n => CheckUnary(n, scope),
+            CoreArray n => CheckArray(n, scope),
+            CoreIndex n => CheckIndex(n, scope),
+            CoreField n => CheckField(n, scope),
+            CoreEnumDef n => CheckEnumDef(n, scope),
             _ => throw InternalCompilerException.Unreachable(node, node.Span),
         };
 
@@ -111,9 +128,17 @@ public sealed class TypeChecker
     {
         var valueType = CheckExpression(node.Value, scope);
 
+        // Um `type`/`enum` não tem nome próprio (spec §14, §15): ele recebe o nome
+        // do `def` que o liga, e é esse nome que aparece em diagnósticos e na
+        // formatação de valores (`Result.Ok(20)`).
+        if (!node.IsSynthetic && valueType is MetaType meta && meta.Definition.Name == "<anônimo>")
+        {
+            meta.Definition.Name = node.Name;
+        }
+
         if (node.Annotation is not null)
         {
-            var declared = _types.Resolve(node.Annotation, node.Span);
+            var declared = _types.Resolve(node.Annotation, scope);
 
             if (!TypeRelations.IsAssignableTo(valueType, declared))
             {
@@ -161,7 +186,7 @@ public sealed class TypeChecker
 
         foreach (var parameter in node.Parameters)
         {
-            var type = _types.Resolve(parameter.Type, parameter.Span);
+            var type = _types.Resolve(parameter.Type, inner);
             parameterTypes.Add(type);
 
             if (inner.TryLookupLocal(parameter.Name, out var existing))
@@ -177,7 +202,7 @@ public sealed class TypeChecker
                 NextBindingId(), parameter.Name, type, parameter.Span, BindingKind.Parameter));
         }
 
-        var returnType = _types.Resolve(node.ReturnType, node.Span);
+        var returnType = _types.Resolve(node.ReturnType, inner);
         var signature = new FunctionType(parameterTypes.ToImmutable(), returnType, []);
 
         _functions.Push(new FunctionContext(returnType));
@@ -469,6 +494,194 @@ public sealed class TypeChecker
         }
 
         return operand;
+    }
+
+    // ------------------------------------------- arrays, índice, enums
+
+    private LapisType CheckArray(CoreArray node, Scope scope)
+    {
+        if (node.Elements.IsEmpty)
+        {
+            // Sem anotação não há como saber o tipo do elemento (spec §18).
+            _diagnostics.ReportError(
+                DiagnosticCodes.EmptyArrayNeedsAnnotation,
+                node.Span,
+                "array vazio requer anotação de tipo");
+            return ErrorType.Instance;
+        }
+
+        var first = CheckExpression(node.Elements[0], scope);
+
+        for (var i = 1; i < node.Elements.Length; i++)
+        {
+            var element = CheckExpression(node.Elements[i], scope);
+
+            if (first is ErrorType || element is ErrorType)
+            {
+                first = ErrorType.Instance;
+                continue;
+            }
+
+            if (element != first)
+            {
+                _diagnostics.ReportError(
+                    DiagnosticCodes.HeterogeneousArray,
+                    node.Elements[i].Span,
+                    $"elementos de array devem ter o mesmo tipo: {first.ToDisplayString()} "
+                    + $"e {element.ToDisplayString()}");
+                return ErrorType.Instance;
+            }
+        }
+
+        return first is ErrorType ? ErrorType.Instance : new ArrayType(first);
+    }
+
+    /// <summary>
+    /// A regra fundamental da spec §21: <c>T[][Int]</c> tem tipo
+    /// <c>Result&lt;T, IndexError&gt;</c>, nunca <c>T</c>. A indexação pode falhar, e
+    /// isso aparece no tipo.
+    /// </summary>
+    private LapisType CheckIndex(CoreIndex node, Scope scope)
+    {
+        var target = CheckExpression(node.Target, scope);
+        var index = CheckExpression(node.Index, scope);
+
+        if (index is not PrimitiveType { Kind: PrimitiveKind.Int } and not ErrorType and not NeverType)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.IndexMustBeInt,
+                node.Index.Span,
+                $"índice deve ser Int, encontrado {index.ToDisplayString()}");
+        }
+
+        if (target is ErrorType || index is ErrorType)
+        {
+            return ErrorType.Instance;
+        }
+
+        if (target is not ArrayType array)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.NotIndexable,
+                node.Target.Span,
+                $"{target.ToDisplayString()} não é indexável");
+            return ErrorType.Instance;
+        }
+
+        // As definições vêm do prelude resolvido, não de uma busca por nome: assim
+        // sombrear `Result` no programa do usuário não muda a semântica de `[]`.
+        var prelude = _prelude
+            ?? throw new InternalCompilerException("indexação sem prelude carregado", node.Span);
+
+        return new NamedType(
+            prelude.Result,
+            [array.Element, new NamedType(prelude.IndexError, [])]);
+    }
+
+    /// <summary>
+    /// Acesso a membro. Sobre um <c>MetaType</c> de enum, seleciona uma variante
+    /// (<c>IndexError.OutOfBounds</c>) — a única forma de nomear variantes (Q3).
+    /// </summary>
+    private LapisType CheckField(CoreField node, Scope scope)
+    {
+        var target = CheckExpression(node.Target, scope);
+
+        if (target is ErrorType)
+        {
+            return ErrorType.Instance;
+        }
+
+        if (target is not MetaType meta || meta.Definition.Kind != TypeDefinitionKind.Enum)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.UnknownField,
+                node.NameSpan,
+                $"{target.ToDisplayString()} não possui o campo '{node.Name}'");
+            return ErrorType.Instance;
+        }
+
+        var definition = meta.Definition;
+        var variantIndex = definition.IndexOfVariant(node.Name);
+
+        if (variantIndex < 0)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.UnknownVariant,
+                node.NameSpan,
+                $"{definition.Name} não possui a variante '{node.Name}'");
+            return ErrorType.Instance;
+        }
+
+        _resolutions[node.NodeId] = new VariantResolution(definition, variantIndex);
+
+        // Um enum genérico precisaria dos argumentos de tipo aqui, e sem inferência
+        // (Q7) não há de onde tirá-los — a sintaxe para fornecê-los em posição de
+        // expressão chega no M4. Enums não genéricos funcionam integralmente.
+        if (definition.IsGeneric)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.CannotDetermineGenericArguments,
+                node.NameSpan,
+                $"não foi possível determinar os argumentos genéricos de '{definition.Name}'");
+            return ErrorType.Instance;
+        }
+
+        var variant = definition.Variants[variantIndex];
+        var instance = new NamedType(definition, []);
+
+        // Variante nulária é o próprio valor; com carga, é um construtor.
+        return variant.Payload.IsDefaultOrEmpty
+            ? instance
+            : FunctionType.Of(variant.Payload, instance);
+    }
+
+    private LapisType CheckEnumDef(CoreEnumDef node, Scope scope)
+    {
+        var typeParameters = node.TypeParameters
+            .Select(name => new TypeParameterType(name))
+            .ToImmutableArray();
+
+        var definition = new TypeDefinition("<anônimo>", TypeDefinitionKind.Enum, typeParameters, node.Span);
+
+        // Os parâmetros ficam visíveis enquanto as cargas das variantes são
+        // resolvidas, e saem em seguida — eles não vazam para o resto do programa.
+        foreach (var parameter in typeParameters)
+        {
+            _types.TypeParameters[parameter.Name] = parameter;
+        }
+
+        try
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var variants = ImmutableArray.CreateBuilder<VariantInfo>(node.Variants.Length);
+
+            foreach (var variant in node.Variants)
+            {
+                if (!seen.Add(variant.Name))
+                {
+                    _diagnostics.ReportError(
+                        DiagnosticCodes.DuplicateDefinition,
+                        variant.Span,
+                        $"variante '{variant.Name}' declarada mais de uma vez");
+                }
+
+                var payload = variant.Payload.Select(t => _types.Resolve(t, scope)).ToImmutableArray();
+                variants.Add(new VariantInfo(variant.Name, payload, variant.Span));
+            }
+
+            definition.Variants = variants.ToImmutable();
+        }
+        finally
+        {
+            foreach (var parameter in typeParameters)
+            {
+                _types.TypeParameters.Remove(parameter.Name);
+            }
+        }
+
+        _resolutions[node.NodeId] = new TypeDefinitionResolution(definition);
+
+        return new MetaType(definition);
     }
 
     // ------------------------------------------------------------ auxiliar

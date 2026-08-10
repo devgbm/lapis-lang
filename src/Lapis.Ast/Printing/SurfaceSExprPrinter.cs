@@ -168,6 +168,47 @@ public static class SurfaceSExprPrinter
                 Close(builder, indent);
                 break;
 
+            case ArrayExpression n:
+                Open(builder, indent, "array");
+
+                foreach (var element in n.Elements)
+                {
+                    PrintExpression(builder, element, indent + 1);
+                }
+
+                Close(builder, indent);
+                break;
+
+            case IndexExpression n:
+                Open(builder, indent, "index");
+                PrintExpression(builder, n.Target, indent + 1);
+                PrintExpression(builder, n.Index, indent + 1);
+                Close(builder, indent);
+                break;
+
+            case MemberExpression n:
+                Open(builder, indent, $"member {n.Name}");
+                PrintExpression(builder, n.Target, indent + 1);
+                Close(builder, indent);
+                break;
+
+            case EnumExpression n:
+                var typeParameters = n.TypeParameters.IsDefaultOrEmpty
+                    ? string.Empty
+                    : "<" + string.Join(" ", n.TypeParameters.Select(p => p.Name)) + ">";
+                Open(builder, indent, $"enum{typeParameters}");
+
+                foreach (var variant in n.Variants)
+                {
+                    var payload = variant.Payload.IsDefaultOrEmpty
+                        ? string.Empty
+                        : " " + string.Join(" ", variant.Payload.Select(PrintType));
+                    Line(builder, indent + 1, $"(variant {variant.Name}{payload})");
+                }
+
+                Close(builder, indent);
+                break;
+
             default:
                 Line(builder, indent, $"(<desconhecido {expression.GetType().Name}>)");
                 break;
@@ -176,7 +217,8 @@ public static class SurfaceSExprPrinter
 
     public static string PrintType(TypeSyntax type) => type switch
     {
-        NamedTypeSyntax n => n.Name,
+        NamedTypeSyntax { Arguments.IsDefaultOrEmpty: true } n => n.Name,
+        NamedTypeSyntax n => $"{n.Name}<{string.Join(", ", n.Arguments.Select(PrintType))}>",
         ArrayTypeSyntax n => PrintType(n.Element) + "[]",
         FunctionTypeSyntax n =>
             $"fn({string.Join(", ", n.Parameters.Select(PrintType))}) {PrintType(n.Return)}",

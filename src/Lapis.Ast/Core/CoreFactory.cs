@@ -52,6 +52,19 @@ public sealed class CoreFactory
 
     public CoreUnary Unary(SourceSpan span, UnaryOperator op, CoreExpr operand) => new(Next(), span, op, operand);
 
+    public CoreArray Array(SourceSpan span, ImmutableArray<CoreExpr> elements) => new(Next(), span, elements);
+
+    public CoreIndex Index(SourceSpan span, CoreExpr target, CoreExpr index) => new(Next(), span, target, index);
+
+    public CoreField Field(SourceSpan span, CoreExpr target, string name, SourceSpan nameSpan) =>
+        new(Next(), span, target, name) { NameSpan = nameSpan };
+
+    public CoreEnumDef EnumDef(
+        SourceSpan span,
+        ImmutableArray<string> typeParameters,
+        ImmutableArray<CoreVariantDecl> variants) =>
+        new(Next(), span, typeParameters, variants);
+
     public CoreProgram Program(CoreExpr body) => new(body, _nextNodeId);
 
     private int Next() => _nextNodeId++;

@@ -38,22 +38,24 @@ public sealed class Evaluator
 
     private readonly TypedProgram _program;
     private readonly RuntimeContext _context;
+    private readonly PreludeScope? _prelude;
     private int _callDepth;
 
-    private Evaluator(TypedProgram program, RuntimeContext context)
+    private Evaluator(TypedProgram program, PreludeScope? prelude, RuntimeContext context)
     {
         _program = program;
+        _prelude = prelude;
         _context = context;
         _context.Invoke = (callee, arguments) => InvokeFromNative(callee, arguments);
     }
 
-    public static EvaluationResult Run(TypedProgram program, RuntimeContext context)
+    public static EvaluationResult Run(TypedProgram program, PreludeScope? prelude, RuntimeContext context)
     {
         ArgumentNullException.ThrowIfNull(program);
         ArgumentNullException.ThrowIfNull(context);
 
-        var evaluator = new Evaluator(program, context);
-        var environment = evaluator.CreateRootEnvironment();
+        var evaluator = new Evaluator(program, prelude, context);
+        var environment = CreateRootEnvironment(prelude);
         var completion = evaluator.Evaluate(program.Program.Body, environment);
 
         return completion.Kind switch
@@ -74,8 +76,12 @@ public sealed class Evaluator
         };
     }
 
-    private Environment CreateRootEnvironment() =>
-        Environment.Empty.ExtendAll([.. Natives.All.Select(n => (n.Name, (Value)n))]);
+    private static Environment CreateRootEnvironment(PreludeScope? prelude) =>
+        Environment.Empty.ExtendAll(
+        [
+            .. Natives.All.Select(n => (n.Name, (Value)n)),
+            .. (prelude?.Bindings ?? []).Select(b => (b.Name, b.Value)),
+        ]);
 
     // ------------------------------------------------------------ despacho
 
@@ -90,6 +96,10 @@ public sealed class Evaluator
         CoreIf n => EvaluateIf(n, environment),
         CoreBinary n => EvaluateBinary(n, environment),
         CoreUnary n => EvaluateUnary(n, environment),
+        CoreArray n => EvaluateArray(n, environment),
+        CoreIndex n => EvaluateIndex(n, environment),
+        CoreField n => EvaluateField(n),
+        CoreEnumDef n => EvaluateEnumDef(n),
         _ => throw InternalCompilerException.Unreachable(node, node.Span),
     };
 
@@ -201,6 +211,101 @@ public sealed class Evaluator
         return Completion.Normal(value);
     }
 
+    private Completion EvaluateArray(CoreArray node, Environment environment)
+    {
+        var elements = ImmutableArray.CreateBuilder<Value>(node.Elements.Length);
+
+        // Elementos em ordem, como todo o resto (plano 08 §8.3).
+        foreach (var element in node.Elements)
+        {
+            var evaluated = Evaluate(element, environment);
+
+            if (!evaluated.IsNormal)
+            {
+                return evaluated;
+            }
+
+            elements.Add(evaluated.Value);
+        }
+
+        var elementType = ((ArrayType)_program.TypeOf(node)).Element;
+
+        return Completion.Normal(new ArrayValue(elements.ToImmutable(), elementType));
+    }
+
+    /// <summary>
+    /// Indexação com checagem de limites (spec §41). Fora de limites <b>nunca</b>
+    /// lança e nunca aborta: produz <c>Result.Err(IndexError.OutOfBounds)</c>
+    /// (spec §30).
+    ///
+    /// O <c>Result</c> construído é o do prelude, resolvido por identidade — não
+    /// por busca de nome — para que sombrear `Result` não mude a semântica de `[]`.
+    /// </summary>
+    private Completion EvaluateIndex(CoreIndex node, Environment environment)
+    {
+        var target = Evaluate(node.Target, environment);
+
+        if (!target.IsNormal)
+        {
+            return target;
+        }
+
+        var index = Evaluate(node.Index, environment);
+
+        if (!index.IsNormal)
+        {
+            return index;
+        }
+
+        if (target.Value is not ArrayValue array || index.Value is not IntValue offset)
+        {
+            throw new InternalCompilerException(
+                "indexação sobre valores inesperados; o checker deveria ter rejeitado", node.Span);
+        }
+
+        var prelude = _prelude
+            ?? throw new InternalCompilerException("indexação sem prelude carregado", node.Span);
+
+        var outcome = Primitives.ArrayGet(array, offset.Value);
+
+        return Completion.Normal(outcome.IsInBounds
+            ? prelude.MakeOk(outcome.Value!, array.ElementType)
+            : prelude.MakeIndexError(array.ElementType));
+    }
+
+    private Completion EvaluateField(CoreField node)
+    {
+        if (_program.ResolutionOf<VariantResolution>(node) is not { } resolution)
+        {
+            throw new InternalCompilerException(
+                "acesso a membro sem resolução; o checker deveria ter rejeitado", node.Span);
+        }
+
+        var definition = resolution.Enum;
+        var variant = definition.Variants[resolution.VariantIndex];
+
+        // Variante nulária já é o valor; com carga, é um construtor a ser chamado.
+        if (variant.Payload.IsDefaultOrEmpty)
+        {
+            return Completion.Normal(new EnumValue(definition, resolution.VariantIndex, [], []));
+        }
+
+        var signature = FunctionType.Of(variant.Payload, new NamedType(definition, []));
+
+        return Completion.Normal(
+            new VariantConstructorValue(definition, resolution.VariantIndex, signature, []));
+    }
+
+    private Completion EvaluateEnumDef(CoreEnumDef node)
+    {
+        if (_program.ResolutionOf<TypeDefinitionResolution>(node) is not { } resolution)
+        {
+            throw new InternalCompilerException("enum sem definição resolvida", node.Span);
+        }
+
+        return Completion.Normal(new TypeValue(resolution.Definition));
+    }
+
     private Completion EvaluateCall(CoreCall node, Environment environment)
     {
         // O callee é avaliado antes dos argumentos; argumentos da esquerda para a direita.
@@ -236,6 +341,12 @@ public sealed class Evaluator
         if (callee is NativeFunctionValue native)
         {
             return Completion.Normal(native.Implementation(arguments, _context));
+        }
+
+        if (callee is VariantConstructorValue constructor)
+        {
+            return Completion.Normal(new EnumValue(
+                constructor.Definition, constructor.VariantIndex, arguments, constructor.TypeArguments));
         }
 
         if (callee is not ClosureValue closure)

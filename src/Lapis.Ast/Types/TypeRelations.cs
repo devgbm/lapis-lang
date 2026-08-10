@@ -59,12 +59,24 @@ public static class TypeRelations
     /// comparar closures não é decidível e destruiria a equivalência
     /// PE/evaluator (plano 06 §6.7).
     /// </summary>
-    public static bool IsComparable(LapisType type) => type switch
+    public static bool IsComparable(LapisType type) => IsComparable(type, []);
+
+    private static bool IsComparable(LapisType type, HashSet<int> visiting) => type switch
     {
         ErrorType => true,
         PrimitiveType p => p.Kind != PrimitiveKind.Void,
-        ArrayType a => IsComparable(a.Element),
+        ArrayType a => IsComparable(a.Element, visiting),
         FunctionType => false,
+
+        // Um enum é comparável se todas as cargas forem; um struct, se todos os
+        // campos forem. O conjunto `visiting` protege contra tipos mutuamente
+        // recursivos, que a v0.2 ainda não permite construir mas que virão.
+        NamedType n => !visiting.Add(n.Definition.Id) || IsDefinitionComparable(n.Definition, visiting),
+
         _ => false,
     };
+
+    private static bool IsDefinitionComparable(TypeDefinition definition, HashSet<int> visiting) =>
+        definition.Variants.All(v => v.Payload.All(t => IsComparable(t, visiting)))
+        && definition.Fields.All(f => IsComparable(f.Type, visiting));
 }
