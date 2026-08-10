@@ -36,10 +36,15 @@ def FieldInfo = type {
     typeName: Str;
 };
 
+def PayloadInfo = type {
+    name: Str;          // vazio quando a carga não é nomeada
+    typeName: Str;
+};
+
 def VariantInfo = type {
     name: Str;
     arity: Int;
-    payloadTypeNames: Str[];
+    payload: PayloadInfo[];
 };
 
 def TypeInfo = type {
@@ -193,6 +198,8 @@ genérica ou a instanciada? Perguntas boas, sem consumidor ainda.
 | `Reflect_Struct_HasNoVariants` | `reflect(User).variants` | vazio |
 | `Reflect_Enum_Variants` | `reflect(Color).variants` | `Red`, `Green`, `Blue` |
 | `Reflect_Enum_VariantArity` | `Result` | `Ok` e `Err` com aridade 1 |
+| `Reflect_Enum_PayloadNames` | `Result` | `Ok.payload[0].name == "value"` |
+| `Reflect_Enum_UnnamedPayload` | `enum { Wrap(Int) }` | nome vazio |
 | `Reflect_Generic_TypeParameterNames` | `reflect(Result)` | `["T", "E"]` |
 | `Reflect_Kind` | struct vs. enum | `TypeKind.Struct` / `TypeKind.Enum` |
 

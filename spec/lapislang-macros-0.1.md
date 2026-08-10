@@ -11,9 +11,10 @@
 > sejam definidas pela própria linguagem — o princípio §58.2 ("runtime mínimo")
 > aplicado à *sintaxe*.
 >
-> **Estado:** Q19–Q22 decididas pelo autor. Segue aberta apenas **Q23** (ligação de
-> carga em `@match`), registrada em
-> [`../plans/appendix-c-decisions.md`](../plans/appendix-c-decisions.md).
+> **Estado:** Q19–Q24 decididas pelo autor. O único ponto ainda em aberto é o
+> **mecanismo** que garante a variante no acesso à carga (Q25), registrado em
+> [`../plans/appendix-c-decisions.md`](../plans/appendix-c-decisions.md) — a spec
+> adota a análise de dominância como resposta padrão.
 
 ---
 
@@ -34,7 +35,7 @@ um conflito real com a 0.2 já implementada.
 | 7 | `routes.contains(...)`/`routes.add(...)` → **primitivas de contexto** | não há method syntax nem mutação na linguagem (§8, §23) |
 | 8 | Regras de macro: ordenadas → **todas testadas, exatamente uma deve casar** | a proposta pedia ordem *e* detecção de ambiguidade, o que é contraditório |
 | 9 | `goto`/`label` ganham semântica de **join point**, não de salto arbitrário | a Core é orientada a expressões e não tem nó `Block` (Q10) |
-| 10 | `@match` compara **variantes**, não desestrutura carga | decisão do autor (Q20): elimina as primitivas `enumTag`/`enumPayload` que o M3 havia rejeitado |
+| 10 | `@match` compara **variantes**; a carga vira **campo** (`result.value`) | decisão do autor (Q20, Q23): elimina `enumTag`/`enumPayload` e reaproveita a máquina de campos do M3 |
 | 11 | `goto` pode saltar **para trás**, mas nunca para fora do próprio escopo | decisão do autor; traz laços e, com eles, o fim da garantia de terminação |
 | 12 | `if`, `while` e `match` viram macros do prelude | decisão do autor (Q22); o token `if` sobrevive dentro de `goto ... if ...` |
 | 13 | Fases de implementação reescritas | a proposta mandava construir a Surface AST, que já existe desde o M1 |
@@ -220,6 +221,12 @@ As categorias da primeira versão:
 | `Identifier` | um identificador nu | `IdentifierExpression` |
 | `Literal` | qualquer literal | `IntLiteral` \| `FloatLiteral` \| `StrLiteral` \| `BoolLiteral` |
 | `Int` `Float` `Str` `Bool` | um literal daquele tipo | o literal correspondente |
+| `Pattern` | `Enum.Variante`, um literal, ou `_` | o cabeçalho de um braço |
+
+`Pattern` existe porque despacho por caso é comum e as categorias primitivas não o
+cobrem: `_` não é expressão, e `Result.Ok` precisa ser lido como caminho de variante,
+não como acesso a membro. É a categoria que `@match` usa, e qualquer macro de
+despacho pode usar.
 
 As capturas de literal tipado (`Str:path`) usam os nomes dos primitivos da 0.2 —
 `Str`, não `String`.
@@ -230,17 +237,25 @@ As capturas de literal tipado (`Str:path`) usam os nomes dos primitivos da 0.2 �
 ## 5.2 Repetição
 
 ```text
-<Categoria>:<nome>*  separado por <token>
+<Categoria>:<nome>*        separado por <token>
+( <sub-padrão> )*          separado por <token>
 ```
 
-Necessário para `@match`, que precisa de N braços:
+A primeira forma repete **uma** captura; a segunda repete um **grupo**, e é o que
+`@match` precisa, porque um braço são duas coisas:
 
 ```c
-match Expression:scrutinee { MatchArm:arms* separado por , }
+match Expression:scrutinee { (Pattern:arm Block:body)* separado por , }
 ```
 
-Uma captura repetida liga uma **lista** de árvores, e no `expand` é expandida com
-`arms...` (elipse).
+Cada captura do grupo liga uma **lista**, e as listas são paralelas: `arm[i]` é o
+cabeçalho do braço cujo corpo é `body[i]`. No `expand`, `arm...` e `body...`
+expandem em paralelo.
+
+> A repetição de grupo evita a saída fácil de inventar uma categoria `MatchArm` só
+> para `@match`. Categorias são do sistema sintático e servem a qualquer macro;
+> privilegiar uma construção seria contrariar §9, que diz que macros definem sua
+> própria sintaxe.
 
 ---
 
@@ -700,26 +715,68 @@ macro while
 `@while` é a razão de `goto` poder voltar (§10.2), e é também o primeiro programa
 LapisLang capaz de não terminar. O evaluator conta saltos e aborta com `LAP0303`.
 
-## 12.3 `@match` compara variantes
+## 12.3 `@match` compara variantes; a carga é campo
 
-**Decisão do autor (Q20):** `@match` **não desestrutura carga**. Ele compara a
-variante, e só. Isso elimina inteiramente as primitivas `enumTag`/`enumPayload` —
-que eram exatamente o que o M3 havia rejeitado por ferir o princípio §58.2
-("runtime mínimo").
+**Decisão do autor (Q20 + Q23).** Um braço nomeia **só a variante**, e a carga é
+lida como **campo do escrutinado**:
 
-O que basta é que enums sejam **comparáveis**, e eles já são desde o M3:
+```c
+@match result {
+    Result.Ok  { return result.value },
+    Result.Err { return result.error }
+}
+```
+
+Duas consequências, e as duas simplificam:
+
+1. `enumTag` e `enumPayload` **não são necessários**. Comparar variantes basta, e
+   enums já são comparáveis desde o M3 — o comentário do `CoreNodes.cs` que
+   rejeitava aquelas primitivas continua correto.
+2. A carga cai na **máquina de campos que o M3 já construiu** para `type`. Ler
+   `result.value` é a mesma operação que ler `user.name`.
+
+### Carga nomeada
+
+Para haver campo, a carga precisa de nome. A declaração de `enum` ganha a mesma
+forma que `type` já usa:
+
+```c
+def Result = enum<T, E> {
+    Ok(value: T),
+    Err(error: E)
+};
+```
+
+O nome é **opcional**: `Ok(T)` continua válido, e apenas não é legível por campo.
+Isso mantém todo programa 0.2 funcionando — mas o prelude passa a nomear as cargas
+de `Result` e `Option`, porque é o que torna `@match` utilizável.
+
+**Nomes de carga são únicos dentro do enum** (`LAP0523`). É o que faz o campo
+determinar a variante sozinho: `result.value` só pode ser `Ok`. Sem essa regra o
+checker precisaria de análise de fluxo só para saber o *tipo*, e não só para
+garantir a segurança.
+
+### O braço
+
+```text
+macro_match_arm = variant_path block
+                | literal block
+                | "_" block ;
+```
+
+Sem `=>` e sem parênteses de padrão: o braço é um caminho de variante seguido de um
+bloco. `Result.Ok { ... }` não colide com a construção de `type`, que leva ponto
+inicial (`.Result { ... }`, Q2).
+
+### A expansão
 
 ```c
 macro match
-    match Expression:scrutinee { MatchArm:arms* separado por , }
-
+    match Expression:scrutinee { (Pattern:arm Block:body)* separado por , }
     constraint { /* exaustividade — §12.4 */ }
-
     expand {
-        def subject = scrutinee;
-
-        goto arm0 if subject == Color.Red;
-        goto arm1 if subject == Color.Green;
+        goto arm0 if scrutinee == Result.Ok;
+        goto arm1 if scrutinee == Result.Err;
         goto done;
 
         label arm0;  /* corpo 0 */  goto done;
@@ -734,18 +791,45 @@ na Core.
 ### Comparação com variante portadora de carga
 
 Para variantes nulárias (`Color.Red`) o `==` já funciona hoje. Para variantes com
-carga, `Result.Ok` é um **construtor**, não um valor — e funções não são
-comparáveis (`LAP0281`).
+carga, `Result.Ok` é um **construtor**, não um valor — e funções não são comparáveis
+(`LAP0281`).
 
 A regra nova, mínima:
 
 > Comparar um valor de enum com um **construtor de variante** não aplicado compara
 > **apenas a variante**, ignorando a carga. `r == Result.Ok` tem tipo `Bool`.
 
-É uma regra de tipo e uma linha no evaluator — muito menos que duas nativas, e
-mantém a conta a favor de `@match`.
+Uma regra de tipo e uma linha no evaluator.
 
-## 12.4 Exaustividade por `constraint` e reflection
+## 12.4 Ler a carga com segurança
+
+`result.value` tem tipo conhecido — `value` só existe em `Ok`, e nomes de carga são
+únicos. Falta a outra metade: **garantir que a variante seja mesmo `Ok`** ali.
+
+Fora de um braço, o acesso é indefensável:
+
+```c
+def r: Result<Int, IndexError> = xs[0];
+
+print(r.value);        // e se for Err?
+```
+
+**A regra:** o acesso a um campo de carga só é aceito quando **dominado** por uma
+comparação que fixa a variante — `scrutinee == Result.Ok`. Não sendo, é `LAP0524`.
+
+É uma consulta de dominância sobre o grafo que `Labeled` já expõe (§10.3): um join
+alcançado **apenas** por arestas guardadas por `x == E.V` pode assumir a variante.
+
+> **A análise não é custo extra.** É a mesma que o plano 14 constrói para
+> *bounds-check elimination* — a pesquisa que motiva o projeto. Ela chega um
+> milestone antes e se paga duas vezes: elimina a checagem de limites **e** torna a
+> leitura de carga segura sem `Result` aninhado.
+
+**Enquanto essa análise não existir**, `Match` permanece na Core para os casos com
+carga. É o critério de saída que o autor já estabeleceu, aplicado a uma parte
+específica: o nó só sai quando o substituto estiver funcional.
+
+## 12.5 Exaustividade por `constraint` e reflection
 
 Q6 exige `match` exaustivo. Com `@match` sendo macro, quem impõe é a `constraint`,
 usando reflection para descobrir as variantes:
@@ -770,47 +854,16 @@ constraint {
 
 **O que faz isso funcionar é uma decisão já tomada.** Q3 exige variantes
 qualificadas — `Color.Red`, nunca `Red`. Então os próprios braços nomeiam o enum, e
-a `constraint` descobre qual é **sem precisar do tipo do escrutinado** — que, em
-tempo de expansão, ainda não existe.
+a `constraint` descobre qual é **sem precisar do tipo do escrutinado**, que em tempo
+de expansão ainda não existe.
 
 Sem Q3 isto seria impossível: a exaustividade dependeria do type checker, que roda
 depois da expansão. É um caso em que uma decisão tomada por ergonomia acabou pagando
 uma dívida arquitetural que ninguém tinha visto.
 
 **Limite conhecido:** braços só de literais ou só `_` não nomeiam enum nenhum. Aí a
-`constraint` exige `_`, que é a mesma regra que o checker aplica hoje a `Int`,
-`Float` e `Str`.
-
-## 12.5 ⚠️ O que se perde: ligação de carga
-
-Q20 tem uma consequência que precisa estar escrita, não subentendida.
-
-O `match` de hoje **liga a carga**:
-
-```c
-match result {
-    Result.Ok(value) => return value,        // `value` é o conteúdo
-    Result.Err(error) => return fallback
-}
-```
-
-Comparando só a variante, `value` não tem de onde sair. O `examples/result.ls`, que
-é o exemplo canônico de tratamento de erro da linguagem, **não é expressável** com
-`@match` como especificado em §12.3.
-
-Isso não invalida Q20 — a decisão de não ter `enumTag`/`enumPayload` continua
-valendo. O que falta é decidir **como** a carga é lida, e há três caminhos:
-
-| Caminho | Custo | Observação |
-|---|---|---|
-| Acesso a campo na variante (`r.value`) | uma regra no checker | carga vira campo nomeado; combina com `type` |
-| Um acessor no prelude por enum, gerado por macro | zero primitivas | verboso, mas usa só o que já existe |
-| Manter `Match` da Core só para desestruturação | zero trabalho novo | contradiz Q22 |
-
-**Está registrado como Q23 e aguarda decisão.** Enquanto ela não vier, o plano 20
-mantém `Match` na Core para os casos com carga — que é exatamente o critério de
-saída que o autor já havia estabelecido: os nós só saem quando o substituto estiver
-funcional.
+`constraint` exige `_` — a mesma regra que o checker aplica hoje a `Int`, `Float` e
+`Str`.
 
 ---
 
@@ -858,4 +911,4 @@ invocação e o do ponto dentro da macro que o originou.
 11. O runtime não conhece macros.
 12. A Core permanece pequena — e só encolhe quando o substituto está pronto.
 13. `if`, `while` e `match` são prelude, não compilador (Q22).
-14. `@match` compara variantes; não desestrutura (Q20).
+14. `@match` compara variantes; a carga é campo do escrutinado (Q20, Q23).

@@ -58,9 +58,9 @@ abstract record MacroPattern : SurfaceNode;
   sealed record PatternSequence(ImmutableArray<MacroPattern> Items) : MacroPattern;
   sealed record PatternCapture(SyntaxCategory Category, string Name) : MacroPattern;
   sealed record PatternLiteral(string Text) : MacroPattern;
-  sealed record PatternRepeat(PatternCapture Item, string Separator) : MacroPattern;
+  sealed record PatternRepeat(MacroPattern Item, string Separator) : MacroPattern;
 
-enum SyntaxCategory { Expression, Statement, Block, Type, Identifier, Literal, Int, Float, Str, Bool }
+enum SyntaxCategory { Expression, Statement, Block, Type, Identifier, Literal, Int, Float, Str, Bool, Pattern }
 
 sealed record MacroInvocation(
     string Name,
@@ -136,7 +136,8 @@ O matcher roda um `Parser` sobre os tokens da invocação, guiado pelo padrão:
 | `PatternCapture(Identifier, x)` | exige um `Identifier` |
 | `PatternCapture(Str, s)` | exige um `StringLiteral` |
 | `PatternLiteral("in")` | exige o token exato |
-| `PatternRepeat(item, ",")` | repete até acabarem os tokens |
+| `PatternRepeat(item, ",")` | repete até acabarem os tokens; um grupo liga listas paralelas |
+| `PatternCapture(Pattern, a)` | `Enum.Variante`, literal ou `_` |
 
 **Diagnósticos suprimidos durante a tentativa**, exatamente como no backtracking de
 Q5 (parser §4.4): uma regra que não casa não é erro, é a próxima regra.
@@ -254,7 +255,8 @@ construíveis. Limite de **64** níveis, com `LAP0505` — a mesma postura do li
 | `Macro_SingleRule` | `macro m match Expression:e expand { e };` | 1 regra |
 | `Macro_MultipleRules` | duas cláusulas `match`/`expand` | 2 regras |
 | `Macro_PatternWithLiteral` | `match Identifier:i in Expression:c Block:b` | `PatternLiteral("in")` |
-| `Macro_PatternWithRepeat` | `MatchArm:arms* separado por ,` | `PatternRepeat` |
+| `Macro_PatternWithRepeat` | `Type:t* separado por ,` | `PatternRepeat` |
+| `Macro_PatternWithGroupRepeat` | `(Pattern:a Block:b)* separado por ,` | listas paralelas |
 | `Macro_UnknownCategory` | `match Foo:x` | `LAP0504` |
 | `Macro_RequiresExpand` | `match` sem `expand` | `LAP0101` |
 | `Macro_IsNotAValue` | `def m = macro ...;` | `LAP0510` |

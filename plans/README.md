@@ -63,8 +63,8 @@ critérios de conclusão satisfeitos.
 ### Metaprogramação (proposta)
 
 Especificação: [`../spec/lapislang-macros-0.1.md`](../spec/lapislang-macros-0.1.md).
-Q19–Q22 e Q24 decididas; segue aberta apenas **Q23** (ligação de carga em `@match`)
-no [Apêndice C](appendix-c-decisions.md).
+Q19–Q24 decididas; segue em proposta apenas **Q25** (o mecanismo que garante a
+variante no acesso à carga) no [Apêndice C](appendix-c-decisions.md).
 
 | # | Plano | Projeto | Milestone |
 |---|---|---|---|
@@ -198,7 +198,7 @@ spec**. O registro completo, com justificativa e consequências, está no
 **Nenhuma lacuna da 0.2 segue aguardando decisão.** A spec foi atualizada de acordo —
 hoje está na **0.2.3**, com o changelog de cada decisão no topo do arquivo.
 
-A proposta de metaprogramação abriu seis novas. **Cinco já decididas:**
+A proposta de metaprogramação abriu sete novas. **Seis decididas:**
 
 | # | Lacuna | Decisão |
 |---|---|---|
@@ -206,11 +206,13 @@ A proposta de metaprogramação abriu seis novas. **Cinco já decididas:**
 | Q20 | `@match` desestrutura carga? | Não: compara variantes. Dissolve a necessidade de `enumTag`/`enumPayload` |
 | Q21 | que linguagem roda em `constraint` | a própria, no mesmo evaluator |
 | Q22 | `if`/`while`/`match` viram prelude? | Sim. `match` deixa de ser keyword; `if` sobrevive só em `goto ... if ...` |
+| Q23 | como a carga é lida | **campo do escrutinado**: `result.value`. Cai na máquina de campos do M3 |
 | Q24 | `goto` salta para trás? | Sim, sem sair do escopo. Traz `@while` — e o fim da terminação por construção |
 
-**Segue aberta uma:** **Q23** — como a carga de uma variante é lida, já que `@match`
-não desestrutura. Sem resposta, `examples/result.ls` não é expressável e `Match`
-permanece na Core para os casos com carga.
+**Em proposta, uma:** **Q25** — o mecanismo que garante a variante no ponto do
+acesso. A spec adota análise de dominância sobre o grafo de `Labeled`, que é a mesma
+que o plano 14 constrói para bounds-check elimination. Enquanto ela não existir,
+`Match` permanece na Core para os casos com carga.
 
 ---
 

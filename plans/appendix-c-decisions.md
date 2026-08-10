@@ -27,7 +27,8 @@ implementação.
 | Q20 | `@match` compara variantes; sem `enumTag`/`enumPayload` | ✅ decidido |
 | Q21 | `constraint` roda na própria LapisLang, no mesmo evaluator | ✅ decidido |
 | Q22 | `if`, `while` e `match` viram macros do prelude | ✅ decidido |
-| Q23 | como a carga de uma variante é lida sem desestruturação | ⏳ aguardando |
+| Q23 | como a carga de uma variante é lida sem desestruturação | ✅ decidido |
+| Q25 | mecanismo que garante a variante no acesso à carga | 🟡 proposto |
 | Q24 | `goto` pode saltar para trás; fim da terminação por construção | ✅ decidido |
 
 **A spec 0.2 precisa ser atualizada** em quatro pontos por causa destas decisões:
@@ -622,38 +623,41 @@ Q23, porque sem ligação de carga `Match` não pode sair inteiro.
 
 ---
 
-## Q23 ⏳ — Como se lê a carga de uma variante
+## Q23 ✅ — A carga é um campo do escrutinado
 
 **Problema.** Q20 decidiu que `@match` compara variantes e não desestrutura. Isso
-elimina `enumTag`/`enumPayload` — mas elimina junto a forma de ler a carga:
+elimina `enumTag`/`enumPayload` — mas eliminaria junto a forma de ler a carga, e
+`examples/result.ls` deixaria de ser expressável.
+
+**✅ Decidido pelo autor.** O braço nomeia só a variante; a carga é **campo do
+escrutinado**:
 
 ```c
-match result {
-    Result.Ok(value) => return value,      // de onde sai `value`?
-    Result.Err(error) => return fallback
+@match result {
+    Result.Ok  { return result.value },
+    Result.Err { return result.error }
 }
 ```
 
-**`examples/result.ls` — o exemplo canônico de tratamento de erro da linguagem —
-não é expressável** com `@match` como Q20 o define. Não é caso de canto: `Result` é
-o tipo que a spec §21 usa para toda indexação.
+**Por que é a resposta certa:** a carga cai na **máquina de campos que o M3 já
+construiu** para `type`. Ler `result.value` é a mesma operação que ler `user.name` —
+mesma resolução, mesmo `FieldResolution`, mesmo caminho no evaluator. Zero primitiva
+nova.
 
-**Caminhos:**
+**Duas consequências que a decisão traz junto:**
 
-| Caminho | Custo | Observação |
-|---|---|---|
-| Acesso a campo na variante (`r.value`) | uma regra no checker | carga vira campo nomeado; combina com `type`, e o checker já sabe fazer isso para structs |
-| Acessor gerado por macro, um por enum | zero primitivas | só usa o que já existe; verboso |
-| Manter `Match` da Core só para desestruturação | zero trabalho novo | contradiz Q22 pela metade |
+1. **A carga precisa de nome na declaração**, como um `type`:
+   ```c
+   def Result = enum<T, E> { Ok(value: T), Err(error: E) };
+   ```
+   O nome é opcional — `Ok(T)` continua válido e apenas não é legível por campo —,
+   então nenhum programa 0.2 quebra. O prelude passa a nomear as cargas de `Result`
+   e `Option`.
 
-**Recomendação:** o primeiro. Dar nome à carga na declaração —
-`enum { Ok(value: T), Err(error: E) }` — faz `r.value` cair na máquina de campos que
-o M3 já construiu, sem primitiva nova e sem análise de fluxo. O custo é uma mudança
-de sintaxe na declaração de enum.
-
-**Enquanto não houver decisão, `Match` permanece na Core** para os casos com carga —
-o mesmo critério que o autor já aplicou a `If`/`Match`: o nó só sai quando o
-substituto estiver funcional.
+2. **Nomes de carga são únicos dentro do enum** (`LAP0523`). É o que faz o campo
+   determinar a variante sozinho: `result.value` só pode ser `Ok`. Com isso o
+   **tipo** do acesso sai sem análise de fluxo — só a **segurança** precisa dela,
+   que é Q25.
 
 ---
 
@@ -682,6 +686,44 @@ recursão.
 
 **O que não se perde:** a pilha de C#. Um salto para trás é mais uma volta do laço
 que consome completions no evaluator, não uma chamada recursiva.
+
+---
+
+## Q25 🟡 — Como o checker garante a variante no acesso à carga
+
+**Problema.** `result.value` tem tipo conhecido (Q23). Falta a outra metade:
+garantir que a variante *seja* `Ok` ali. Fora de um braço o acesso é indefensável:
+
+```c
+def r: Result<Int, IndexError> = xs[0];
+print(r.value);        // e se for Err?
+```
+
+Não decidir isso deixa a linguagem numa de duas posições ruins: acesso inseguro
+(contra o princípio §58.3 — exceção de C# é bug da implementação), ou acesso
+devolvendo `Result` aninhado, que anula a ergonomia que Q23 comprou.
+
+**Proposta.** O acesso só é aceito quando **dominado** por uma comparação que fixa a
+variante. É uma consulta de dominância sobre o grafo que `Labeled` já expõe: um join
+alcançado **apenas** por arestas guardadas por `x == E.V` pode assumir a variante.
+Não sendo, é `LAP0524`.
+
+**Por que não é custo extra.** É a mesma análise que o plano 14 constrói para
+*bounds-check elimination* — a pesquisa que motiva o projeto. Ela chega um milestone
+antes e se paga duas vezes: elimina a checagem de limites **e** torna a leitura de
+carga segura.
+
+**Alternativas, se ela escorregar:**
+
+| Alternativa | Custo | Problema |
+|---|---|---|
+| `r.value` devolve `Result<T, VariantError>` | zero análise | anula a ergonomia de Q23; exige match dentro do match |
+| aceitar sem checar, abortando em runtime | zero análise | contraria §30 e §58.3 |
+| manter `Match` da Core para casos com carga | zero trabalho | contraria Q22 pela metade |
+
+**A terceira é o comportamento padrão enquanto a análise não existir** — e é o
+critério de saída que o autor já estabeleceu: o nó só sai quando o substituto
+estiver funcional.
 
 ---
 

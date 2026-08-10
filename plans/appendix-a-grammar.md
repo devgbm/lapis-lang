@@ -126,7 +126,8 @@ type_expr      = "type" generic_params? "{" field_decl* "}" ;
 field_decl     = IDENT ":" type ";" ;
 
 enum_expr      = "enum" generic_params? "{" ( variant ( "," variant )* ","? )? "}" ;
-variant        = IDENT ( "(" type ( "," type )* ")" )? ;
+variant        = IDENT ( "(" payload ( "," payload )* ")" )? ;
+payload        = ( IDENT ":" )? type ;      (* nome opcional — Q23 *)
 ```
 
 O tipo de retorno de `fn` é opcional; ausente ⇒ `Void` (spec §6).
@@ -298,9 +299,11 @@ macro_rule     = "match" macro_pattern
                  "expand" block ;
 
 macro_pattern  = macro_item+ ;
-macro_item     = IDENT ":" IDENT              (* captura: Expression:e   *)
-               | IDENT ":" IDENT "*" "separado" "por" token   (* repetição *)
-               | IDENT ;                      (* literal sintático: `in`  *)
+macro_item     = IDENT ":" IDENT              (* captura: Expression:e     *)
+               | repetition                   (* Q23: grupos, para @match  *)
+               | IDENT ;                      (* literal sintático: `in`   *)
+
+repetition     = ( IDENT ":" IDENT | "(" macro_pattern ")" ) "*" "separado" "por" token ;
 
 (* invocação *)
 macro_call     = "@" IDENT macro_tokens ;
@@ -311,6 +314,11 @@ label_stmt     = "label" IDENT ";" ;
 
 (* compile time — plano 18 *)
 throw_expr     = "throw" expression ;
+
+(* braço de @match — plano 20; sem `=>`, sem padrão.
+   Nome distinto do `match_arm` de §A.4, que sai com a keyword `match` (Q22). *)
+macro_match_arm = ( variant_path | literal | "_" ) block ;
+variant_path    = IDENT "." IDENT ;
 ```
 
 `macro_tokens` **não é uma produção da gramática**: a invocação é delimitada por
@@ -320,8 +328,13 @@ de macros — "macros definem sua própria sintaxe": `@foreach user in users { }
 parseia com a gramática da linguagem, e não deveria.
 
 Categorias de captura: `Expression`, `Statement`, `Block`, `Type`, `Identifier`,
-`Literal`, `Int`, `Float`, `Str`, `Bool`. **A proposta original usava `String`**;
-o primitivo se chama `Str` desde a 0.2.
+`Literal`, `Int`, `Float`, `Str`, `Bool`, `Pattern`. **A proposta original usava
+`String`**; o primitivo se chama `Str` desde a 0.2.
+
+`Pattern` captura o cabeçalho de um braço — `Enum.Variante`, um literal ou `_` — e
+existe porque as categorias primitivas não o cobrem: `_` não é expressão. A
+repetição de **grupo** (`(Pattern:a Block:b)*`) é o que evita inventar uma categoria
+`MatchArm` privilegiada só para `@match`.
 
 Rótulos são `IDENT` comuns. **A proposta original escrevia `$end`**, que não lexa:
 identificadores são `[A-Za-z_][A-Za-z0-9_]*` (spec §7).
@@ -367,6 +380,11 @@ condicional a partir do qual `@if`, `@while` e `@match` são construídos; deriv
 do próprio `if` seria circular.
 
 Saldo: entram seis, sai uma.
+
+**Carga nomeada (Q23).** `variant` passa a aceitar `Ok(value: T)` além de `Ok(T)`. O
+nome é opcional e só é exigido para ler a carga por campo (`result.value`); todo
+programa 0.2 continua válido. Nomes de carga são únicos dentro do enum
+(`LAP0523`), porque é o campo que determina a variante.
 
 `Int`, `Float`, `Bool`, `Str`, `Void`, `Result`, `IndexError`, `Option`, `print`,
 `array_length` **não** são reservadas — são bindings do prelude ou nomes

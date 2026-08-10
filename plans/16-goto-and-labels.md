@@ -32,7 +32,9 @@ os planos 14 (bounds-check elimination) e 15 (tracing) querem analisar.
 - salto entre funções — um `label` é local à função, como `return`;
 - salto para dentro de um bloco ainda não aberto;
 - remoção de `If`/`Match` da Core — plano 20, e só quando as macros funcionarem;
-- construção de um CFG explícito — plano 14 já o quer, e passa a tê-lo de graça.
+- construção de um CFG explícito — plano 14 já o quer, e passa a tê-lo de graça;
+  o mesmo grafo é o que o plano 20 usa para garantir a variante no acesso à carga
+  (Q25).
 
 ---
 
