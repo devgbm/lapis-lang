@@ -58,6 +58,21 @@ public sealed record ErrorType : LapisType
     public override string ToDisplayString() => "<erro>";
 }
 
+/// <summary>
+/// Tipo top, interno e não escrevível em código-fonte. Existe apenas para tipar
+/// o parâmetro de primitivas que aceitam qualquer valor — hoje só <c>print</c>.
+///
+/// Nenhuma sintaxe produz <c>Any</c> e nenhum valor tem <c>Any</c> como tipo, então
+/// ele não é uma brecha no sistema de tipos: só aparece na assinatura de um
+/// nativo. Ver Q7 no apêndice C.
+/// </summary>
+public sealed record AnyType : LapisType
+{
+    public static readonly AnyType Instance = new();
+
+    public override string ToDisplayString() => "Any";
+}
+
 public sealed record ArrayType(LapisType Element) : LapisType
 {
     public override string ToDisplayString() => $"{Element.ToDisplayString()}[]";

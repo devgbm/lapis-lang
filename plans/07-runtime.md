@@ -111,7 +111,7 @@ public static class Primitives
     public static Value Add(Value l, Value r);       // Int+Int, Float+Float, Str+Str
     public static Value Subtract(Value l, Value r);
     public static Value Multiply(Value l, Value r);
-    public static ArithmeticOutcome Divide(Value l, Value r);   // pode falhar
+    public static Value Divide(Value l, Value r);               // total (Q9)
     public static Value Negate(Value v);
     public static Value Not(Value v);
     public static BoolValue Compare(BinaryOperator op, Value l, Value r);
@@ -123,12 +123,11 @@ public static class Primitives
 Todas assumem que o checker já validou os tipos: um tipo inesperado é
 `InternalCompilerException`, não diagnóstico.
 
-**Divisão por zero.** Decisão: `Int` divisão por zero **aborta o programa** com
-erro de execução da linguagem (exit code 1) e mensagem com span, porque a
-alternativa (retornar `Result`) mudaria o tipo de `/` e contradiz a spec §25/§26,
-que tratam `/` como operação aritmética comum. `Float` segue IEEE 754 (`inf`,
-`nan`), sem aborto. Registrado no Apêndice C como decisão a revisar; a spec não
-cobre o caso.
+**Divisão por zero (Q9).** `Int` divisão por zero produz `long.MaxValue`;
+`Float` segue IEEE 754. A divisão é **total**, então nenhuma operação binária
+falha e o evaluator não tem caminho de aborto aritmético. Único caso de borda:
+`MinValue / -1` estoura em Int64 e envolve para `MinValue`, coerente com o resto
+da aritmética.
 
 **Bounds check** (spec §41): `ArrayGet` sempre verifica `0 <= index < length` e
 devolve `IndexOutcome.InBounds(value)` ou `IndexOutcome.OutOfBounds`. Quem
@@ -155,7 +154,7 @@ Regras (fixadas agora porque os golden files dependem delas):
 | `StrValue("hi")` | `hi` (sem aspas em `print`; **com** aspas em `FormatDebug`) |
 | `VoidValue` | `()` |
 | `ArrayValue` | `[1, 2, 3]` |
-| `EnumValue` | `Ok(20)`, `OutOfBounds` |
+| `EnumValue` | `Result.Ok(20)`, `IndexError.OutOfBounds` — qualificado, como a linguagem exige escrever (Q3) |
 | `StructValue` | `User { id: 1, name: "g" }` |
 | `ClosureValue` | `<fn(Int, Int) Int>` |
 | `TypeValue` | `<type User>` |
@@ -225,7 +224,9 @@ teste próprio, para não multiplicar projetos).
 |---|---|
 | `Add_Int`, `Add_Float`, `Add_Str` | resultados corretos |
 | `Add_MismatchedTypes_Throws` | `InternalCompilerException` (checker deveria ter pego) |
-| `Divide_Int_ByZero` | `ArithmeticOutcome.DivideByZero` |
+| `Divide_Int_ByZero_IsMaxValue` | `long.MaxValue`, para qualquer sinal do dividendo |
+| `Divide_MinValueByMinusOne_Wraps` | `long.MinValue` |
+| `Divide_IsTotal_ForEveryIntPair` | nenhuma combinação lança |
 | `Divide_Float_ByZero_IsInfinity` | IEEE 754 |
 | `Divide_Int_Truncates` | `7/2 == 3` |
 | `Divide_Int_NegativeTruncation` | `-7/2 == -3` (truncamento para zero, como C#) |
@@ -249,8 +250,8 @@ teste próprio, para não multiplicar projetos).
 | `Format_Str_NoQuotes_InPrint` | `hi` |
 | `Format_Str_Quotes_InDebug` | `"hi"` |
 | `Format_Array_Nested` | `[[1], [2]]` |
-| `Format_Enum_Nullary` | `OutOfBounds` |
-| `Format_Enum_WithPayload` | `Ok(20)` |
+| `Format_Enum_Nullary` | `IndexError.OutOfBounds` |
+| `Format_Enum_WithPayload` | `Result.Ok(20)` |
 | `Format_Struct` | `User { id: 1, name: "g" }` |
 | `Format_Closure` | `<fn(Int, Int) Int>` |
 

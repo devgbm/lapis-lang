@@ -21,6 +21,12 @@ public static class TypeRelations
             return true;
         }
 
+        // Qualquer valor cabe onde uma primitiva declara Any (hoje só `print`).
+        if (target is AnyType)
+        {
+            return true;
+        }
+
         return source == target;
     }
 

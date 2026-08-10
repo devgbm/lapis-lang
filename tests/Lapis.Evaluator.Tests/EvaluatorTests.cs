@@ -44,9 +44,12 @@ public sealed class CoreEvaluationTests : EvaluatorTestBase
     [InlineData("!false", "true")]
     public void Comparisons(string expression, string expected) => Eval(expression).ShouldBe(expected);
 
+    /// <summary>Q9: a divisão é total; por zero produz o maior <c>Int</c>.</summary>
     [Fact]
-    public void IntDivisionByZero_Aborts() =>
-        ExpectAbort("def x = 1 / 0;").ShouldBe(DiagnosticCodes.DivisionByZero);
+    public void IntDivisionByZero_IsMaxValue() => Eval("1 / 0").ShouldBe("9223372036854775807");
+
+    [Fact]
+    public void IntDivisionByZero_IgnoresSignOfDividend() => Eval("-1 / 0").ShouldBe("9223372036854775807");
 
     [Fact]
     public void FloatDivisionByZero_IsInfinity() => Eval("1.0 / 0.0").ShouldBe("Infinity");

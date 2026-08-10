@@ -21,7 +21,7 @@ def values = [10, 20, 30];
 def x = values[1];
 ```
 
-⇒ o PE prova `0 <= 1 < 3` e residualiza `def x = Ok(20);` sem checagem de limites.
+⇒ o PE prova `0 <= 1 < 3` e residualiza `def x = Result.Ok(20);` sem checagem de limites.
 
 ---
 
@@ -109,7 +109,7 @@ O nó `Index` na Core **não** distingue "checado" de "não checado", e não dev
 a semântica é sempre checada (spec §41). A eliminação é representada assim:
 
 - se o PE prova `0 <= i < len`, ele **residualiza o resultado direto**:
-  `Ok(<acesso>)`, usando um nó `CoreIndexUnchecked` interno ao PE, que:
+  `Result.Ok(<acesso>)`, usando um nó `CoreIndexUnchecked` interno ao PE, que:
   - só existe na Core produzida pelo PE;
   - é rejeitado pelo type checker se aparecer num programa de entrada;
   - é avaliado pelo evaluator **sem** o check.
@@ -135,7 +135,7 @@ Isso só é válido quando o `Result` é **consumido imediatamente** por um `mat
 estático:
 
 ```c
-match values[1] { Ok(v) => v, Err(e) => 0 }
+match values[1] { Result.Ok(v) => v, Result.Err(e) => 0 }
 ```
 
 ⇒ `20`, sem construir o `EnumValue`.
@@ -234,13 +234,13 @@ Contra-exemplos encontrados viram casos fixos em
 
 | Teste | Entrada | Residual |
 |---|---|---|
-| `BCE_StaticArray_StaticIndex` | `[10,20,30][1]` | `Ok(20)` — **spec §42** |
+| `BCE_StaticArray_StaticIndex` | `[10,20,30][1]` | `Result.Ok(20)` — **spec §42** |
 | `BCE_StaticArray_RefinedIndex` | índice provado em `[0,2]` | acesso sem check |
 | `BCE_StaticArray_UnprovableIndex` | índice `Top` | check preservado |
 | `BCE_PartiallyProvable_LowerOnly` | prova `i >= 0` mas não `i < len` | check preservado |
 | `BCE_DynamicArray_KnownLength` | comprimento conhecido, índice refinado | check eliminado |
 | `BCE_GuardedAccess_Realistic` | exemplo de §14.2 | check interno eliminado |
-| `BCE_OutOfBoundsProven` | índice provado `>= len` | residualiza `Err(OutOfBounds)` direto |
+| `BCE_OutOfBoundsProven` | índice provado `>= len` | residualiza `Result.Err(...)` direto |
 | `BCE_NeverEliminatesUnsafely` | property: para toda eliminação, executar o original em 1000 entradas confirma que nenhum acesso era inválido |
 | `BCE_Unchecked_RejectedInSource` | `IndexUnchecked` num programa de entrada ⇒ diagnóstico |
 | `BCE_DebugAssertions_Enabled_InTestSuite` | a suíte roda com asserções ligadas |
@@ -249,7 +249,7 @@ Contra-exemplos encontrados viram casos fixos em
 
 | Teste | Entrada | Residual |
 |---|---|---|
-| `MatchOnKnownOk_SelectsArm` | `match Ok(20) { Ok(v)=>v, Err(_)=>0 }` | `20` |
+| `MatchOnKnownOk_SelectsArm` | `match Result.Ok(20) { Result.Ok(v)=>v, Result.Err(_)=>0 }` | `20` |
 | `MatchOnKnownErr_SelectsArm` | | `0` |
 | `MatchOnStaticIndex_Simplifies` | `match values[1] { ... }` | `20` |
 | `MatchOnEscapingResult_NotSimplified` | `Result` retornado | `EnumValue` preservado |

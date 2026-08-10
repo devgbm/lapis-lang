@@ -1,12 +1,16 @@
 // Result e pattern matching (spec §16, §22).
+//
+// Variantes de enum exigem qualificação completa: `Result.Ok`, não `Ok`
+// (decisão Q3 em plans/appendix-c-decisions.md).
+//
 // Saída esperada:
 //   20
 //   0
 
 def unwrapOr = fn(result: Result<Int, IndexError>, fallback: Int) Int {
     match result {
-        Ok(value) => return value,
-        Err(error) => return fallback
+        Result.Ok(value) => return value,
+        Result.Err(error) => return fallback
     }
 };
 

@@ -178,15 +178,8 @@ public sealed class Evaluator
             return right;
         }
 
-        var outcome = Primitives.Apply(node.Operator, left.Value, right.Value);
-
-        if (outcome.DivisionByZero)
-        {
-            return Completion.Abort(
-                DiagnosticCodes.DivisionByZero, node.OperatorSpan, "divisão inteira por zero");
-        }
-
-        return Completion.Normal(outcome.Unwrap());
+        // Nenhuma operação binária falha (Q9): não há caminho de aborto aqui.
+        return Completion.Normal(Primitives.Apply(node.Operator, left.Value, right.Value));
     }
 
     private Completion EvaluateUnary(CoreUnary node, Environment environment)

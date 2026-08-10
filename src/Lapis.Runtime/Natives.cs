@@ -11,13 +11,18 @@ namespace Lapis.Runtime;
 /// </summary>
 public static class Natives
 {
-    /// <summary><c>print: fn&lt;T&gt;(value: T) Void</c> — nativo porque tem efeito de I/O.</summary>
+    /// <summary>
+    /// <c>print: fn(Any) Void</c> — nativo porque tem efeito de I/O.
+    ///
+    /// Não é genérico: como argumentos genéricos passaram a ser sempre explícitos
+    /// (Q7), uma assinatura <c>fn&lt;T&gt;(T) Void</c> obrigaria a escrever
+    /// <c>print&lt;Int&gt;(x)</c> em todo programa — inclusive nos exemplos da spec.
+    /// O parâmetro usa o tipo interno <c>Any</c>, que nenhuma sintaxe produz.
+    /// </summary>
     public const string PrintName = "print";
 
-    private static readonly TypeParameterType PrintTypeParameter = new("T");
-
     public static readonly FunctionType PrintSignature =
-        new([PrintTypeParameter], PrimitiveType.Void, [PrintTypeParameter]);
+        FunctionType.Of([AnyType.Instance], PrimitiveType.Void);
 
     public static NativeFunctionValue Print { get; } = new(
         PrintName,

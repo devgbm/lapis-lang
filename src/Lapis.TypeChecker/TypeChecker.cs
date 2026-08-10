@@ -281,19 +281,21 @@ public sealed class TypeChecker
         }
 
         var arguments = argumentTypes.ToImmutable();
-        var inference = GenericInference.Infer(signature, arguments);
 
-        if (!inference.Success)
+        // Q7: argumentos genéricos são sempre explícitos, nunca inferidos. Como a
+        // sintaxe de declaração de generics é do M4, nenhuma função genérica é
+        // construível ainda — a checagem existe para o dia em que for.
+        if (signature.IsGeneric)
         {
             _diagnostics.ReportError(
-                DiagnosticCodes.CannotInferGenericParameter,
+                DiagnosticCodes.GenericArityMismatch,
                 node.Span,
-                $"não foi possível inferir o parâmetro genérico '{inference.UninferredParameter}'");
+                $"a função espera {signature.TypeParameters.Length} argumentos genéricos explícitos");
             return ErrorType.Instance;
         }
 
-        var instantiated = inference.Instantiated;
-        _resolutions[node.NodeId] = new CallResolution(inference.TypeArguments, instantiated);
+        var instantiated = signature;
+        _resolutions[node.NodeId] = new CallResolution([], instantiated);
 
         if (instantiated.Parameters.Length != arguments.Length)
         {

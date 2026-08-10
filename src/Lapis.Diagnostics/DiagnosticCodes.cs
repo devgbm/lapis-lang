@@ -87,6 +87,9 @@ public static class DiagnosticCodes
     public const string CannotInferGenericParameter = "LAP0297";
 
     // LAP03xx — Execução
-    public const string DivisionByZero = "LAP0301";
+    //
+    // LAP0301 (divisão por zero) foi aposentado: a divisão inteira por zero passou
+    // a produzir o maior Int (Q9), então a operação é total e não há o que relatar.
+    // O código não é reciclado.
     public const string CallDepthExceeded = "LAP0302";
 }

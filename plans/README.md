@@ -135,21 +135,31 @@ Derivados da spec §58, valem para todos os planos:
 
 ---
 
-## Questões abertas na spec
+## Lacunas da spec — decididas
 
-Estas lacunas foram resolvidas provisoriamente para destravar a implementação.
-Cada uma está registrada em [Apêndice C](appendix-c-decisions.md) com a decisão
-tomada, e **deve ser confirmada pelo autor da spec**:
+Estas lacunas foram levantadas durante o planejamento e **decididas pelo autor da
+spec**. O registro completo, com justificativa e consequências, está no
+[Apêndice C](appendix-c-decisions.md).
 
-| # | Lacuna | Decisão provisória |
+| # | Lacuna | Decisão |
 |---|---|---|
-| Q1 | §13/§14 usam a forma de *uso* (`type<"value", 1, true, Int, ...>`) na *declaração* de generics | Declaração usa parâmetros nomeados: `type<T, N: Int>`; uso passa valores: `FixedArray<Int, 3>` |
-| Q2 | §24 tem `Construct` na Core AST, mas nenhuma sintaxe de construção de `type` é definida | `User { id: 1, name: "x" }` + acesso `user.id`, com restrição de literal-em-condição |
-| Q3 | §15/§16 usam `Ok(10)` (nu) e `IndexError.OutOfBounds` (qualificado) | Ambos válidos: `def` de enum injeta variantes no escopo, com diagnóstico em colisão |
-| Q4 | §44 não lista `!`, `&&`, `\|\|` | Adicionados como extensão sinalizada (necessários para `Bool` ser útil) |
-| Q5 | `identity<Int>(10)` conflita com `a < b` na gramática | Backtracking limitado: só é generic se o `>` for imediatamente seguido de `(` |
-| Q6 | §22 não define exaustividade de `match` | `match` é expressão ⇒ exaustividade obrigatória; `_` permitido |
-| Q7 | `print` na spec §34 é chamado sem argumentos genéricos explícitos | `print: fn<T>(value: T) Void` + inferência de 1ª ordem no call site |
+| Q1 | §13/§14 usam a forma de *uso* na *declaração* de generics | Declaração com parâmetros nomeados: `type<T, N: Int>`; uso passa valores: `FixedArray<Int, 3>` |
+| Q2 | §24 tem `Construct` na Core AST, mas nenhuma sintaxe de construção é definida | **Ponto inicial**: `.User { id: 1, name: "x" }`. Elimina a ambiguidade com `if`/`match` sem regra contextual |
+| Q3 | §15/§16 usam `Ok(10)` (nu) e `IndexError.OutOfBounds` (qualificado) | **Qualificação completa obrigatória**: `Result.Ok(1)`. Sem injeção de variantes no escopo |
+| Q4 | §44 não lista `!`, `&&`, `\|\|` | Adicionados, com curto-circuito |
+| Q5 | `identity<Int>(10)` conflita com `a < b` | Backtracking limitado: só é generic se o `>` for seguido de `(` |
+| Q6 | §22 não define exaustividade de `match` | Exaustividade obrigatória; `_` permitido |
+| Q7 | inferência de argumentos genéricos | **Sempre explícitos.** `print` deixa de ser genérico (`fn(Any) Void`) para não obrigar `print<Int>(x)` |
+| Q8 | a spec não menciona recursão | **Sem recursão na v0.2** |
+| Q9 | divisão inteira por zero | Produz o maior `Int`. A divisão vira total — sem caminho de aborto, e o PE ganha aritmética sempre pura |
+
+**A spec 0.2 precisa ser atualizada** em quatro pontos: §15/§16/§22 (variantes
+qualificadas), §44 (os três tokens), §14/§24 (sintaxe de construção) e §25/§26
+(divisão por zero).
+
+Segue aguardando decisão apenas **Q16** (statements que terminam em bloco
+dispensam `;`), já implementado porque o exemplo `abs` da própria spec §12
+depende dele.
 
 ---
 

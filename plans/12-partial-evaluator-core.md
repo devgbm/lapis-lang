@@ -155,8 +155,10 @@ Regras:
    `print(30)` é residualizado como `print(30)`. Executá-lo moveria a saída do
    programa para o tempo de compilação — violação direta de §40.
 2. **Chamada a função desconhecida é impura**, por conservadorismo.
-3. **`/` com denominador não comprovadamente diferente de zero é impura** (pode
-   abortar). Com denominador conhecido `≠ 0`, é pura.
+3. ~~`/` com denominador não comprovadamente diferente de zero é impura.~~
+   **Não se aplica mais:** com Q9 a divisão é total (por zero produz o maior
+   `Int`), então toda aritmética é pura e dobrável sem análise de efeito. Este é
+   um ganho direto da decisão sobre divisão.
 4. Nós puros: literais, variáveis, aritmética sobre operandos puros,
    `Array`/`Index`/`Field`/`Construct` sobre filhos puros, `Lambda` (criar uma
    closure não tem efeito).
@@ -276,7 +278,7 @@ void AssertPE(string source, StaticEnvironment env, string expectedResidual)
 | `PE_Comparison_Folds` | `1 < 2` | `true` |
 | `PE_StrConcat_Folds` | `"a" + "b"` | `"ab"` |
 | `PE_Float_Folds_Exactly` | `0.1 + 0.2` | mesmo bit pattern do evaluator |
-| `PE_DivByZero_NotFolded` | `1 / 0` | inalterado (§12.4 regra 3) |
+| `PE_DivByZero_Folds` | `1 / 0` | `9223372036854775807` (Q9: divisão é total) |
 | `PE_DivByKnownNonZero_Folds` | `10 / 2` | `5` |
 | `PE_Not_Folds` | `!true` | `false` |
 
@@ -325,7 +327,7 @@ void AssertPE(string source, StaticEnvironment env, string expectedResidual)
 | `PE_Effects_NotReordered` | `print(1); print(2);` mantém ordem |
 | `PE_Effects_NotEliminated` | valor descartado, efeito preservado |
 | `PE_UnknownCall_TreatedAsImpure` | não é dobrado nem duplicado |
-| `PE_AbortingExpression_NotHoisted` | `1/0` só executa se o original executaria |
+| `PE_NoArithmeticIsImpure` | property: nenhuma expressão aritmética é classificada como impura |
 
 ### Arrays e indexação
 
@@ -333,8 +335,8 @@ void AssertPE(string source, StaticEnvironment env, string expectedResidual)
 |---|---|---|
 | `PE_Array_AllStatic_Folds` | `[1,2,3]` | valor de array |
 | `PE_Array_PartlyDynamic` | `[1, x]` | `[1, x]` |
-| `PE_Index_Static_InBounds` | `[10,20,30][1]` | `Ok(20)` — spec §42 |
-| `PE_Index_Static_OutOfBounds` | `[1,2,3][5]` | `Err(OutOfBounds)` |
+| `PE_Index_Static_InBounds` | `[10,20,30][1]` | `Result.Ok(20)` — spec §42 |
+| `PE_Index_Static_OutOfBounds` | `[1,2,3][5]` | `Result.Err(IndexError.OutOfBounds)` |
 | `PE_Index_DynamicIndex_Kept` | `[1,2,3][i]` | inalterado |
 
 ### Equivalência e invariantes (spec §40, §54)

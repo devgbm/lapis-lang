@@ -74,8 +74,7 @@ postfix        = primary postfix_op* ;
 postfix_op     = "(" arg_list? ")"                      (* chamada *)
                | generic_args "(" arg_list? ")"         (* chamada genérica — ver A.7 *)
                | "[" expression "]"                     (* indexação *)
-               | "." IDENT                              (* acesso a membro *)
-               | "{" field_init_list? "}" ;             (* construção — ver A.8 *)
+               | "." IDENT ;                            (* acesso a membro *)
 
 arg_list       = expression ( "," expression )* ","? ;
 ```
@@ -94,6 +93,7 @@ primary        = INT | FLOAT | STRING | "true" | "false"
                | IDENT
                | block
                | array_literal
+               | construct_expr                         (* ver A.8 *)
                | fn_expr
                | type_expr
                | enum_expr
@@ -102,14 +102,16 @@ primary        = INT | FLOAT | STRING | "true" | "false"
 
 array_literal  = "[" ( expression ( "," expression )* ","? )? "]" ;
 
-if_expr        = "if" expression_no_struct block ( "else" ( block | if_expr ) )? ;
+if_expr        = "if" expression block ( "else" ( block | if_expr ) )? ;
 
-match_expr     = "match" expression_no_struct "{" match_arm ( "," match_arm )* ","? "}" ;
+match_expr     = "match" expression "{" match_arm ( "," match_arm )* ","? "}" ;
 match_arm      = pattern "=>" expression ;
 ```
 
-`expression_no_struct` é a mesma gramática de `expression` com a produção
-`postfix_op = "{" ... "}"` desabilitada (ver A.8).
+Note que a condição de `if` e o escrutinado de `match` usam `expression` sem
+restrição alguma. Isso é possível porque a construção de `type` começa com `.`
+(A.8): não há mais como confundir o `{` de um bloco com o de um literal de
+struct.
 
 ---
 
@@ -191,35 +193,60 @@ tipo e faz backtrack se encontrar `{` após o tipo de retorno.
 ## A.8 Construção de struct — Q2
 
 ```ebnf
+construct_expr  = "." IDENT generic_args? "{" field_init_list? "}" ;
 field_init_list = field_init ( "," field_init )* ","? ;
 field_init      = IDENT ":" expression ;
 ```
 
 A spec §24 inclui `Construct` na Core AST mas nunca define a sintaxe de
-superfície. Adotado: `TypeName { campo: valor, ... }`, com acesso via `.campo`.
+superfície. Adotado: **ponto inicial** seguido do nome do tipo.
 
-Para evitar a ambiguidade com o `{` de `if`/`match`, a forma
-`postfix_op = "{" ... "}"` é desabilitada dentro da condição de `if` e do
-escrutinado de `match` (`expression_no_struct`). Para construir nessas posições,
-parentetize: `if (P { a: 1 }).b { ... }`.
+```c
+def u = .User { id: 1, name: "Gabriel" };
+def b = .Box<Int> { value: 1 };
+def n = u.name;                              // acesso continua sem ponto inicial
+```
+
+O `.` inicial não é decoração: é o que torna a gramática livre de contexto neste
+ponto. Nenhuma outra expressão começa com `.`, então o parser decide entre bloco
+e construção olhando **um único token**, sem precisar saber se está numa condição
+de `if`. Por isso `if .Point { x: 1 }.valid { ... }` é válido sem parênteses.
+
+O `.` de construção (prefixo) e o `.` de acesso a membro (pós-fixo) nunca
+colidem: um só aparece onde se espera o início de uma expressão, o outro só
+depois de uma expressão completa.
 
 ---
 
 ## A.9 Padrões
 
 ```ebnf
-pattern        = "_"
-               | path ( "(" pattern ( "," pattern )* ")" )?
-               | literal_pattern ;
+pattern         = "_"
+                | binding_pattern
+                | variant_pattern
+                | literal_pattern ;
 
-path           = IDENT ( "." IDENT )* ;
-
+binding_pattern = IDENT ;                                    (* liga um nome novo *)
+variant_pattern = IDENT "." IDENT ( "(" pattern ( "," pattern )* ")" )? ;
 literal_pattern = INT | FLOAT | STRING | "true" | "false" | "-" INT | "-" FLOAT ;
 ```
 
-Um `path` de um único `IDENT` sem argumentos é ambíguo (binding novo ou variante
-nulária). O parser emite `IdentifierPattern`; o checker resolve pelo escopo
-(Q3).
+**Q3 tornou os padrões não ambíguos.** Como variantes exigem qualificação
+completa, um `IDENT` sozinho é *sempre* um binding novo e `Enum.Variante` é
+*sempre* um padrão de variante — o parser decide sem consultar o escopo, e o
+`IdentifierPattern` ambíguo do projeto original deixa de existir.
+
+```c
+match resultado {
+    Result.Ok(valor) => valor,
+    Result.Err(erro) => 0
+}
+
+match cor {
+    Color.Red => "vermelho",
+    outra => "outra"          // `outra` liga um nome
+}
+```
 
 ---
 
@@ -244,7 +271,7 @@ block_comment  = "/*" ... "*/" ;              (* não aninha *)
 | 5 | `+` `-` | esquerda |
 | 6 | `*` `/` | esquerda |
 | 7 | `-` `!` unários | prefixo |
-| 8 | `()` `[]` `.` `<>()` `{}` | esquerda |
+| 8 | `()` `[]` `.` `<>()` | esquerda |
 
 ---
 
