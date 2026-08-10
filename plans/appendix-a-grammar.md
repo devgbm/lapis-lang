@@ -15,8 +15,27 @@ statement      = def_statement
 
 def_statement  = "def" IDENT ( ":" type )? "=" expression ";" ;
 
-expr_statement = expression ";" ;
+expr_statement = block_like_expression ";"?      (* ponto-e-vírgula opcional *)
+               | expression ";" ;
 ```
+
+**Expressões que terminam em bloco dispensam o `;`.** `block_like_expression` é
+`block`, `if_expr` e `match_expr`. Sem essa regra o próprio exemplo `abs` da
+spec §12 não parsearia:
+
+```c
+def abs = fn(x: Int) Int {
+    if x < 0 {
+        return -x;      // o `if` não é seguido de `;`
+    }
+
+    return x;
+};
+```
+
+A regra é a mesma do Rust e não introduz ambiguidade: dentro de um bloco, a
+decisão entre "cauda" e "statement" continua sendo tomada pelo token seguinte
+(`}` ⇒ cauda).
 
 ---
 
