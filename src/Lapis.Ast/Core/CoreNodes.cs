@@ -68,13 +68,37 @@ public sealed class CoreLet(
 
 public sealed record CoreParameter(string Name, TypeSyntax Type, SourceSpan Span);
 
+/// <summary>Parâmetro genérico declarado: <c>T</c> ou <c>N: Int</c> (Q1).</summary>
+public sealed record CoreTypeParameter(string Name, TypeSyntax? ConstType, SourceSpan Span)
+{
+    public bool IsConst => ConstType is not null;
+}
+
+/// <summary>
+/// Argumento genérico ainda não classificado (Apêndice A §A.7). Os três casos são
+/// sintáticos: um tipo, um valor, ou um identificador nu que só o escopo desempata.
+/// </summary>
+public abstract record CoreGenericArgument
+{
+    public required SourceSpan Span { get; init; }
+}
+
+public sealed record CoreTypeArgument(TypeSyntax Type) : CoreGenericArgument;
+
+public sealed record CoreValueArgument(CoreExpr Value) : CoreGenericArgument;
+
+public sealed record CoreNameArgument(string Name) : CoreGenericArgument;
+
 public sealed class CoreLambda(
     int nodeId,
     SourceSpan span,
+    ImmutableArray<CoreTypeParameter> typeParameters,
     ImmutableArray<CoreParameter> parameters,
     TypeSyntax? returnType,
     CoreExpr body) : CoreExpr(nodeId, span)
 {
+    public ImmutableArray<CoreTypeParameter> TypeParameters { get; } = typeParameters;
+
     public ImmutableArray<CoreParameter> Parameters { get; } = parameters;
 
     /// <summary>Ausente significa <c>Void</c> (spec §6).</summary>
@@ -95,6 +119,24 @@ public sealed class CoreCall(
     public CoreExpr Callee { get; } = callee;
 
     public ImmutableArray<CoreExpr> Arguments { get; } = arguments;
+}
+
+/// <summary>
+/// <c>alvo&lt;A, B&gt;</c> — aplicação de argumentos genéricos.
+///
+/// Permanece como nó da Core, e não é apagado pelo desugar, porque o partial
+/// evaluator precisa ver onde cada especialização foi pedida: é exatamente a
+/// fronteira entre o que o checker instancia e o que o PE monomorfiza (plano 13).
+/// </summary>
+public sealed class CoreInstantiate(
+    int nodeId,
+    SourceSpan span,
+    CoreExpr target,
+    ImmutableArray<CoreGenericArgument> arguments) : CoreExpr(nodeId, span)
+{
+    public CoreExpr Target { get; } = target;
+
+    public ImmutableArray<CoreGenericArgument> Arguments { get; } = arguments;
 }
 
 public sealed class CoreReturn(int nodeId, SourceSpan span, CoreExpr? value) : CoreExpr(nodeId, span)
@@ -187,10 +229,10 @@ public sealed record CoreVariantDecl(string Name, ImmutableArray<TypeSyntax> Pay
 public sealed class CoreEnumDef(
     int nodeId,
     SourceSpan span,
-    ImmutableArray<string> typeParameters,
+    ImmutableArray<CoreTypeParameter> typeParameters,
     ImmutableArray<CoreVariantDecl> variants) : CoreExpr(nodeId, span)
 {
-    public ImmutableArray<string> TypeParameters { get; } = typeParameters;
+    public ImmutableArray<CoreTypeParameter> TypeParameters { get; } = typeParameters;
 
     public ImmutableArray<CoreVariantDecl> Variants { get; } = variants;
 }
@@ -200,10 +242,10 @@ public sealed record CoreFieldDecl(string Name, TypeSyntax Type, SourceSpan Span
 public sealed class CoreTypeDef(
     int nodeId,
     SourceSpan span,
-    ImmutableArray<string> typeParameters,
+    ImmutableArray<CoreTypeParameter> typeParameters,
     ImmutableArray<CoreFieldDecl> fields) : CoreExpr(nodeId, span)
 {
-    public ImmutableArray<string> TypeParameters { get; } = typeParameters;
+    public ImmutableArray<CoreTypeParameter> TypeParameters { get; } = typeParameters;
 
     public ImmutableArray<CoreFieldDecl> Fields { get; } = fields;
 }
@@ -214,12 +256,12 @@ public sealed class CoreConstruct(
     int nodeId,
     SourceSpan span,
     string typeName,
-    ImmutableArray<TypeSyntax> typeArguments,
+    ImmutableArray<CoreGenericArgument> typeArguments,
     ImmutableArray<CoreFieldInit> fields) : CoreExpr(nodeId, span)
 {
     public string TypeName { get; } = typeName;
 
-    public ImmutableArray<TypeSyntax> TypeArguments { get; } = typeArguments;
+    public ImmutableArray<CoreGenericArgument> TypeArguments { get; } = typeArguments;
 
     public ImmutableArray<CoreFieldInit> Fields { get; } = fields;
 

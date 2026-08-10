@@ -18,11 +18,25 @@ public sealed record VariableResolution(BindingId Binding) : Resolution;
 
 /// <summary>Argumentos genéricos e o tipo já instanciado de uma chamada.</summary>
 public sealed record CallResolution(
-    ImmutableArray<LapisType> TypeArguments,
+    ImmutableArray<GenericArgument> TypeArguments,
     FunctionType Instantiated) : Resolution;
 
+/// <summary>
+/// Os argumentos com que um <c>Instantiate</c> foi resolvido, e os parâmetros a
+/// que correspondem.
+///
+/// O evaluator usa os pares const para estender o ambiente da closure: um
+/// parâmetro const é um valor de verdade dentro do corpo (spec §13).
+/// </summary>
+public sealed record InstantiateResolution(
+    ImmutableArray<GenericParameter> Parameters,
+    ImmutableArray<GenericArgument> Arguments) : Resolution;
+
 /// <summary>A variante selecionada por um acesso a membro sobre um enum.</summary>
-public sealed record VariantResolution(TypeDefinition Enum, int VariantIndex) : Resolution;
+public sealed record VariantResolution(
+    TypeDefinition Enum,
+    int VariantIndex,
+    ImmutableArray<GenericArgument> TypeArguments) : Resolution;
 
 /// <summary>O índice do campo selecionado por um acesso sobre uma instância de <c>type</c>.</summary>
 public sealed record FieldResolution(int FieldIndex) : Resolution;

@@ -162,6 +162,12 @@ public sealed class Desugarer
                     DesugarExpression(n.Callee),
                     [.. n.Arguments.Select(DesugarExpression)]);
 
+            case InstantiateExpression n:
+                return _factory.Instantiate(
+                    n.Span,
+                    DesugarExpression(n.Target),
+                    DesugarGenericArguments(n.Arguments));
+
             case ArrayExpression n:
                 return _factory.Array(n.Span, [.. n.Elements.Select(DesugarExpression)]);
 
@@ -179,7 +185,7 @@ public sealed class Desugarer
             case EnumExpression n:
                 return _factory.EnumDef(
                     n.Span,
-                    [.. n.TypeParameters.Select(p => p.Name)],
+                    DesugarTypeParameters(n.TypeParameters),
                     [.. n.Variants.Select(v => new CoreVariantDecl(v.Name, v.Payload, v.Span))]);
 
             case MatchExpression n:
@@ -191,14 +197,14 @@ public sealed class Desugarer
             case TypeExpression n:
                 return _factory.TypeDef(
                     n.Span,
-                    [.. n.TypeParameters.Select(p => p.Name)],
+                    DesugarTypeParameters(n.TypeParameters),
                     [.. n.Fields.Select(f => new CoreFieldDecl(f.Name, f.Type, f.Span))]);
 
             case ConstructExpression n:
                 return _factory.Construct(
                     n.Span,
                     n.TypeName,
-                    n.TypeArguments,
+                    DesugarGenericArguments(n.TypeArguments),
                     [.. n.Fields.Select(f => new CoreFieldInit(f.Name, DesugarExpression(f.Value), f.Span, f.NameSpan))],
                     n.TypeNameSpan);
 
@@ -279,8 +285,33 @@ public sealed class Desugarer
 
         var body = DesugarExpression(node.Body);
 
-        return _factory.Lambda(node.Span, parameters, node.ReturnType, body, EndOf(node.Body.Span));
+        return _factory.Lambda(
+            node.Span,
+            DesugarTypeParameters(node.TypeParameters),
+            parameters,
+            node.ReturnType,
+            body,
+            EndOf(node.Body.Span));
     }
+
+    private static ImmutableArray<CoreTypeParameter> DesugarTypeParameters(
+        ImmutableArray<TypeParameterSyntax> parameters) =>
+        [.. parameters.Select(p => new CoreTypeParameter(p.Name, p.ConstType, p.Span))];
+
+    /// <summary>
+    /// Um argumento genérico atravessa o desugar quase intacto: só o caso de valor
+    /// vira Core, porque é o único que contém uma expressão. A escolha entre tipo e
+    /// constante para um identificador nu é do checker, que conhece o escopo.
+    /// </summary>
+    private ImmutableArray<CoreGenericArgument> DesugarGenericArguments(
+        ImmutableArray<GenericArgumentSyntax> arguments) =>
+        [.. arguments.Select<GenericArgumentSyntax, CoreGenericArgument>(a => a switch
+        {
+            TypeArgumentSyntax t => new CoreTypeArgument(t.Type) { Span = t.Span },
+            NameArgumentSyntax n => new CoreNameArgument(n.Name) { Span = n.Span },
+            ValueArgumentSyntax v => new CoreValueArgument(DesugarExpression(v.Value)) { Span = v.Span },
+            _ => throw InternalCompilerException.Unreachable(a, a.Span),
+        })];
 
     /// <summary>
     /// Normalização de padrões. Totalmente sintática: com Q3, um identificador

@@ -91,7 +91,7 @@ public sealed record TypeParameterType(string Name) : LapisType
 /// tipos distintos, porque <see cref="TypeDefinition"/> é comparado por
 /// referência.
 /// </summary>
-public sealed record NamedType(TypeDefinition Definition, ImmutableArray<LapisType> Arguments) : LapisType
+public sealed record NamedType(TypeDefinition Definition, ImmutableArray<GenericArgument> Arguments) : LapisType
 {
     public override string ToDisplayString() =>
         Arguments.IsDefaultOrEmpty
@@ -122,20 +122,46 @@ public sealed record NamedType(TypeDefinition Definition, ImmutableArray<LapisTy
 /// <c>Color</c> tem tipo <c>MetaType(NamedType(Color))</c>.
 ///
 /// Existe porque tipos e enums são expressões de primeira classe (spec §14, §15).
+///
+/// <see cref="Arguments"/> guarda os argumentos genéricos já aplicados: o tipo de
+/// <c>Result&lt;Int, IndexError&gt;</c> em posição de expressão, do qual
+/// <c>.Ok</c> extrai um construtor já instanciado.
 /// </summary>
-public sealed record MetaType(TypeDefinition Definition) : LapisType
+public sealed record MetaType(TypeDefinition Definition, ImmutableArray<GenericArgument> Arguments) : LapisType
 {
-    public override string ToDisplayString() => $"<tipo {Definition.Name}>";
+    public MetaType(TypeDefinition definition)
+        : this(definition, [])
+    {
+    }
 
-    public bool Equals(MetaType? other) => other is not null && ReferenceEquals(Definition, other.Definition);
+    public override string ToDisplayString() =>
+        Arguments.IsDefaultOrEmpty
+            ? $"<tipo {Definition.Name}>"
+            : $"<tipo {Definition.Name}<{string.Join(", ", Arguments.Select(a => a.ToDisplayString()))}>>";
 
-    public override int GetHashCode() => Definition.Id;
+    public bool Equals(MetaType? other) =>
+        other is not null
+        && ReferenceEquals(Definition, other.Definition)
+        && Arguments.SequenceEqual(other.Arguments);
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Definition.Id);
+
+        foreach (var argument in Arguments)
+        {
+            hash.Add(argument);
+        }
+
+        return hash.ToHashCode();
+    }
 }
 
 public sealed record FunctionType(
     ImmutableArray<LapisType> Parameters,
     LapisType Return,
-    ImmutableArray<TypeParameterType> TypeParameters) : LapisType
+    ImmutableArray<GenericParameter> TypeParameters) : LapisType
 {
     public static FunctionType Of(IEnumerable<LapisType> parameters, LapisType returnType) =>
         new([.. parameters], returnType, []);
@@ -145,7 +171,7 @@ public sealed record FunctionType(
     public override string ToDisplayString()
     {
         var generics = IsGeneric
-            ? "<" + string.Join(", ", TypeParameters.Select(p => p.Name)) + ">"
+            ? "<" + string.Join(", ", TypeParameters.Select(p => p.ToDisplayString())) + ">"
             : string.Empty;
 
         return $"fn{generics}({string.Join(", ", Parameters.Select(p => p.ToDisplayString()))}) {Return.ToDisplayString()}";

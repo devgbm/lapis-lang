@@ -195,7 +195,7 @@ public sealed class PrimitiveTests
     {
         var factory = new Ast.Core.CoreFactory();
         var lambda = factory.Lambda(
-            SourceSpan.Synthetic, [], null, factory.Unit(SourceSpan.Synthetic), SourceSpan.Synthetic);
+            SourceSpan.Synthetic, [], [], null, factory.Unit(SourceSpan.Synthetic), SourceSpan.Synthetic);
 
         return new ClosureValue(lambda, Environment.Empty, Ast.Types.FunctionType.Of([], Ast.Types.PrimitiveType.Void));
     }

@@ -92,6 +92,8 @@ public sealed class InfrastructureTests
     [InlineData("functions.ls")]
     [InlineData("arrays.ls")]
     [InlineData("result.ls")]
+    [InlineData("types.ls")]
+    [InlineData("generics.ls")]
     public void Examples_FromSpecSection35_Exist(string fileName)
     {
         File.Exists(Path.Combine(RepoLayout.Root, "examples", fileName)).ShouldBeTrue();

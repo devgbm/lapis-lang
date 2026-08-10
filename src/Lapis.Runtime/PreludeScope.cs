@@ -58,10 +58,14 @@ public sealed class PreludeScope
     public LapisType IndexErrorType { get; }
 
     public EnumValue MakeOk(Value payload, LapisType okType) =>
-        new(Result, OkVariantIndex, [payload], [okType, IndexErrorType]);
+        new(Result, OkVariantIndex, [payload], IndexResultArguments(okType));
 
     public EnumValue MakeIndexError(LapisType okType) =>
-        new(Result, ErrVariantIndex, [OutOfBounds], [okType, IndexErrorType]);
+        new(Result, ErrVariantIndex, [OutOfBounds], IndexResultArguments(okType));
+
+    /// <summary>Os argumentos genéricos de <c>Result&lt;T, IndexError&gt;</c> (spec §21).</summary>
+    public ImmutableArray<GenericArgument> IndexResultArguments(LapisType okType) =>
+        GenericArgument.OfTypes([okType, IndexErrorType]);
 
     private static TypeDefinition RequireEnum(
         ImmutableArray<PreludeBinding> bindings,

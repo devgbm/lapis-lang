@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Text;
 using Lapis.Ast.Core;
 using Lapis.Ast.Printing;
@@ -48,7 +49,7 @@ public static class CoreSExprPrinter
                     " ",
                     n.Parameters.Select(p => $"({p.Name} {SurfaceSExprPrinter.PrintType(p.Type)})"));
                 var returnType = n.ReturnType is null ? "Void" : SurfaceSExprPrinter.PrintType(n.ReturnType);
-                Open(builder, indent, $"{tag}lambda ({parameters}) {returnType}");
+                Open(builder, indent, $"{tag}lambda{PrintTypeParameters(n.TypeParameters)} ({parameters}) {returnType}");
                 PrintExpression(builder, n.Body, indent + 1, ids);
                 Close(builder, indent);
                 break;
@@ -62,6 +63,12 @@ public static class CoreSExprPrinter
                     PrintExpression(builder, argument, indent + 1, ids);
                 }
 
+                Close(builder, indent);
+                break;
+
+            case CoreInstantiate n:
+                Open(builder, indent, $"{tag}instantiate {PrintGenericArguments(n.Arguments)}");
+                PrintExpression(builder, n.Target, indent + 1, ids);
                 Close(builder, indent);
                 break;
 
@@ -125,10 +132,7 @@ public static class CoreSExprPrinter
                 break;
 
             case CoreEnumDef n:
-                var typeParameters = n.TypeParameters.IsDefaultOrEmpty
-                    ? string.Empty
-                    : "<" + string.Join(" ", n.TypeParameters) + ">";
-                Open(builder, indent, $"{tag}enum{typeParameters}");
+                Open(builder, indent, $"{tag}enum{PrintTypeParameters(n.TypeParameters)}");
 
                 foreach (var variant in n.Variants)
                 {
@@ -156,10 +160,7 @@ public static class CoreSExprPrinter
                 break;
 
             case CoreTypeDef n:
-                var typeDefParams = n.TypeParameters.IsDefaultOrEmpty
-                    ? string.Empty
-                    : "<" + string.Join(" ", n.TypeParameters) + ">";
-                Open(builder, indent, $"{tag}type{typeDefParams}");
+                Open(builder, indent, $"{tag}type{PrintTypeParameters(n.TypeParameters)}");
 
                 foreach (var field in n.Fields)
                 {
@@ -170,10 +171,7 @@ public static class CoreSExprPrinter
                 break;
 
             case CoreConstruct n:
-                var constructArgs = n.TypeArguments.IsDefaultOrEmpty
-                    ? string.Empty
-                    : "<" + string.Join(", ", n.TypeArguments.Select(SurfaceSExprPrinter.PrintType)) + ">";
-                Open(builder, indent, $"{tag}construct {n.TypeName}{constructArgs}");
+                Open(builder, indent, $"{tag}construct {n.TypeName}{PrintGenericArguments(n.TypeArguments)}");
 
                 foreach (var field in n.Fields)
                 {
@@ -189,6 +187,29 @@ public static class CoreSExprPrinter
                 throw InternalCompilerException.Unreachable(node, node.Span);
         }
     }
+
+    public static string PrintTypeParameters(ImmutableArray<CoreTypeParameter> parameters) =>
+        parameters.IsDefaultOrEmpty
+            ? string.Empty
+            : "<" + string.Join(", ", parameters.Select(PrintTypeParameter)) + ">";
+
+    public static string PrintTypeParameter(CoreTypeParameter parameter) =>
+        parameter.ConstType is null
+            ? parameter.Name
+            : $"{parameter.Name}: {SurfaceSExprPrinter.PrintType(parameter.ConstType)}";
+
+    public static string PrintGenericArguments(ImmutableArray<CoreGenericArgument> arguments) =>
+        arguments.IsDefaultOrEmpty
+            ? string.Empty
+            : "<" + string.Join(", ", arguments.Select(PrintGenericArgument)) + ">";
+
+    public static string PrintGenericArgument(CoreGenericArgument argument) => argument switch
+    {
+        CoreTypeArgument a => SurfaceSExprPrinter.PrintType(a.Type),
+        CoreNameArgument a => a.Name,
+        CoreValueArgument a => CoreSourcePrinter.PrintExpressionCompact(a.Value),
+        _ => throw new InternalCompilerException($"argumento genérico inesperado: {argument.GetType().Name}"),
+    };
 
     public static string PrintPattern(CorePattern pattern) => pattern switch
     {

@@ -1,6 +1,8 @@
 using System.Collections.Immutable;
 using Lapis.Ast;
 using Lapis.Ast.Core;
+using Lapis.Ast.Printing;
+using Lapis.Ast.Surface;
 using Lapis.Ast.Typed;
 using Lapis.Ast.Types;
 using Lapis.Diagnostics;
@@ -89,6 +91,7 @@ public sealed class TypeChecker
             CoreLet n => CheckLet(n, scope),
             CoreLambda n => CheckLambda(n, scope),
             CoreCall n => CheckCall(n, scope),
+            CoreInstantiate n => CheckInstantiate(n, scope),
             CoreReturn n => CheckReturn(n, scope),
             CoreIf n => CheckIf(n, scope),
             CoreBinary n => CheckBinary(n, scope),
@@ -184,8 +187,25 @@ public sealed class TypeChecker
 
     private LapisType CheckLambda(CoreLambda node, Scope scope)
     {
-        var parameterTypes = ImmutableArray.CreateBuilder<LapisType>(node.Parameters.Length);
         var inner = scope.Child();
+        var typeParameters = DeclareTypeParameters(node.TypeParameters, inner, declareConstValues: true);
+
+        try
+        {
+            return CheckLambdaBody(node, inner, typeParameters);
+        }
+        finally
+        {
+            RemoveTypeParameters(typeParameters);
+        }
+    }
+
+    private LapisType CheckLambdaBody(
+        CoreLambda node,
+        Scope inner,
+        ImmutableArray<GenericParameter> typeParameters)
+    {
+        var parameterTypes = ImmutableArray.CreateBuilder<LapisType>(node.Parameters.Length);
 
         foreach (var parameter in node.Parameters)
         {
@@ -206,7 +226,7 @@ public sealed class TypeChecker
         }
 
         var returnType = _types.Resolve(node.ReturnType, inner);
-        var signature = new FunctionType(parameterTypes.ToImmutable(), returnType, []);
+        var signature = new FunctionType(parameterTypes.ToImmutable(), returnType, typeParameters);
 
         _functions.Push(new FunctionContext(returnType));
 
@@ -233,6 +253,201 @@ public sealed class TypeChecker
 
         return signature;
     }
+
+    /// <summary>
+    /// Traz os parâmetros genéricos de uma declaração para escopo (Q1). Os de tipo
+    /// entram como <see cref="TypeParameterType"/>; os const entram <b>também</b>
+    /// como valores, porque dentro do corpo <c>N</c> é um valor do tipo declarado
+    /// (spec §13) — quem sabe qual valor é o partial evaluator, não o checker.
+    /// </summary>
+    private ImmutableArray<GenericParameter> DeclareTypeParameters(
+        ImmutableArray<CoreTypeParameter> declared,
+        Scope scope,
+        bool declareConstValues)
+    {
+        if (declared.IsDefaultOrEmpty)
+        {
+            return [];
+        }
+
+        var parameters = ImmutableArray.CreateBuilder<GenericParameter>(declared.Length);
+
+        foreach (var parameter in declared.Where(p => !p.IsConst))
+        {
+            _types.TypeParameters[parameter.Name] = new TypeParameterType(parameter.Name);
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var parameter in declared)
+        {
+            if (!seen.Add(parameter.Name))
+            {
+                _diagnostics.ReportError(
+                    DiagnosticCodes.DuplicateDefinition,
+                    parameter.Span,
+                    $"parâmetro genérico '{parameter.Name}' declarado mais de uma vez");
+            }
+
+            if (parameter.ConstType is null)
+            {
+                parameters.Add(GenericParameter.OfType(parameter.Name));
+                continue;
+            }
+
+            var constType = _types.Resolve(parameter.ConstType, scope);
+            parameters.Add(new GenericParameter(parameter.Name, constType));
+
+            if (declareConstValues)
+            {
+                scope.Declare(new BindingInfo(
+                    NextBindingId(), parameter.Name, constType, parameter.Span, BindingKind.Parameter));
+            }
+        }
+
+        return parameters.ToImmutable();
+    }
+
+    private void RemoveTypeParameters(ImmutableArray<GenericParameter> parameters)
+    {
+        foreach (var parameter in parameters.Where(p => !p.IsConst))
+        {
+            _types.TypeParameters.Remove(parameter.Name);
+        }
+    }
+
+    /// <summary>
+    /// <c>alvo&lt;A, B&gt;</c> — instanciação explícita (Q7). O checker apenas
+    /// <b>substitui</b>: não monomorfiza corpo nenhum. Especializar corpos é
+    /// trabalho do partial evaluator, e essa divisão é o objeto de pesquisa do
+    /// projeto (plano 06 §6.8).
+    /// </summary>
+    private LapisType CheckInstantiate(CoreInstantiate node, Scope scope)
+    {
+        var target = CheckExpression(node.Target, scope);
+        var raw = node.Arguments.Select(a => ReadGenericArgument(a, scope)).ToList();
+
+        switch (target)
+        {
+            case ErrorType or NeverType:
+                return target;
+
+            // `Result<Int, IndexError>` — um tipo genérico aplicado, do qual `.Ok`
+            // extrai um construtor já instanciado.
+            case MetaType meta when meta.Arguments.IsDefaultOrEmpty:
+                {
+                    var definition = meta.Definition;
+                    var arguments = GenericArguments.Resolve(
+                        _diagnostics, definition.Name, definition.TypeParameters, raw, node.Span);
+
+                    return arguments is null
+                        ? ErrorType.Instance
+                        : new MetaType(definition, arguments.Value);
+                }
+
+            case FunctionType signature when signature.IsGeneric:
+                {
+                    var arguments = GenericArguments.Resolve(
+                        _diagnostics, DescribeCallee(node.Target), signature.TypeParameters, raw, node.Span);
+
+                    if (arguments is null)
+                    {
+                        return ErrorType.Instance;
+                    }
+
+                    _resolutions[node.NodeId] = new InstantiateResolution(
+                        signature.TypeParameters, arguments.Value);
+
+                    return Instantiate(signature, arguments.Value);
+                }
+
+            default:
+                _diagnostics.ReportError(
+                    DiagnosticCodes.GenericArityMismatch,
+                    node.Span,
+                    $"{target.ToDisplayString()} não é genérico e não aceita argumentos genéricos");
+
+                return ErrorType.Instance;
+        }
+    }
+
+    /// <summary>Substitui os parâmetros de tipo pelos argumentos e apaga a genericidade.</summary>
+    private static FunctionType Instantiate(FunctionType signature, ImmutableArray<GenericArgument> arguments)
+    {
+        var bindings = BuildSubstitution(signature.TypeParameters, arguments);
+
+        return new FunctionType(
+            [.. signature.Parameters.Select(p => TypeSubstitution.Apply(p, bindings))],
+            TypeSubstitution.Apply(signature.Return, bindings),
+            []);
+    }
+
+    /// <summary>
+    /// Lê um argumento genérico em <b>posição de expressão</b>, onde uma função
+    /// literal é um argumento legítimo (spec §13).
+    /// </summary>
+    private RawGenericArgument ReadGenericArgument(CoreGenericArgument argument, Scope scope)
+    {
+        switch (argument)
+        {
+            case CoreTypeArgument a:
+                return RawGenericArgument.OfType(_types.Resolve(a.Type, scope), a.Span);
+
+            case CoreNameArgument a:
+                return ReadNameArgument(a, scope);
+
+            case CoreValueArgument a:
+                var type = CheckExpression(a.Value, scope);
+
+                return a.Value switch
+                {
+                    CoreLiteral literal => RawGenericArgument.OfConstant(
+                        new ConstArgument(literal.Value), a.Span),
+
+                    CoreLambda lambda when type is FunctionType signature =>
+                        RawGenericArgument.OfConstant(
+                            new ConstFunctionArgument(CoreSourcePrinter.PrintExpressionCompact(lambda), signature),
+                            a.Span),
+
+                    _ => RawGenericArgument.RuntimeValue(a.Span),
+                };
+
+            default:
+                throw new InternalCompilerException(
+                    $"argumento genérico inesperado: {argument.GetType().Name}", argument.Span);
+        }
+    }
+
+    private RawGenericArgument ReadNameArgument(CoreNameArgument argument, Scope scope)
+    {
+        if (TypeResolver.IsPrimitiveName(argument.Name) || _types.IsTypeParameter(argument.Name))
+        {
+            return RawGenericArgument.OfType(
+                _types.Resolve(NamedTypeSyntax.Of(argument.Name, argument.Span), scope), argument.Span);
+        }
+
+        if (!scope.TryLookup(argument.Name, out var binding))
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.UnknownVariable, argument.Span, $"'{argument.Name}' não existe");
+
+            return RawGenericArgument.Error(argument.Span);
+        }
+
+        // Um parâmetro const em escopo é um valor, mas não um valor *conhecido*:
+        // seu valor só aparece quando o PE especializa. Repassá-lo adiante como
+        // argumento const exigiria constantes simbólicas, que a 0.2 não tem.
+        return binding.Type is MetaType meta
+            ? RawGenericArgument.OfType(new NamedType(meta.Definition, meta.Arguments), argument.Span)
+            : RawGenericArgument.RuntimeValue(argument.Span);
+    }
+
+    private static string DescribeCallee(CoreExpr callee) => callee switch
+    {
+        CoreVariable v => v.Name,
+        CoreField f => f.Name,
+        _ => "a função",
+    };
 
     private LapisType CheckReturn(CoreReturn node, Scope scope)
     {
@@ -310,20 +525,33 @@ public sealed class TypeChecker
 
         var arguments = argumentTypes.ToImmutable();
 
-        // Q7: argumentos genéricos são sempre explícitos, nunca inferidos. Como a
-        // sintaxe de declaração de generics é do M4, nenhuma função genérica é
-        // construível ainda — a checagem existe para o dia em que for.
+        // Q7: argumentos genéricos são sempre explícitos, nunca inferidos. Uma
+        // assinatura ainda genérica aqui significa que a chamada não passou pelo
+        // `<...>` — não há de onde deduzir os argumentos.
         if (signature.IsGeneric)
         {
+            var names = string.Join(", ", signature.TypeParameters.Select(p => p.Name));
+
             _diagnostics.ReportError(
                 DiagnosticCodes.GenericArityMismatch,
                 node.Span,
-                $"a função espera {signature.TypeParameters.Length} argumentos genéricos explícitos");
+                $"a função espera {signature.TypeParameters.Length} argumentos genéricos explícitos",
+                new DiagnosticNote($"não há inferência: escreva '<{names}>' antes de '('"));
+
             return ErrorType.Instance;
         }
 
         var instantiated = signature;
-        _resolutions[node.NodeId] = new CallResolution([], instantiated);
+
+        // Os argumentos genéricos, quando há, ficam no `Instantiate` que produziu
+        // este callee — o `CallResolution` os repete para quem só olha a chamada.
+        var typeArguments = node.Callee is CoreInstantiate callee
+            && _resolutions.TryGetValue(callee.NodeId, out var resolution)
+            && resolution is InstantiateResolution instantiation
+                ? instantiation.Arguments
+                : ImmutableArray<GenericArgument>.Empty;
+
+        _resolutions[node.NodeId] = new CallResolution(typeArguments, instantiated);
 
         if (instantiated.Parameters.Length != arguments.Length)
         {
@@ -576,9 +804,7 @@ public sealed class TypeChecker
         var prelude = _prelude
             ?? throw new InternalCompilerException("indexação sem prelude carregado", node.Span);
 
-        return new NamedType(
-            prelude.Result,
-            [array.Element, new NamedType(prelude.IndexError, [])]);
+        return new NamedType(prelude.Result, prelude.IndexResultArguments(array.Element));
     }
 
     /// <summary>
@@ -621,27 +847,31 @@ public sealed class TypeChecker
             return ErrorType.Instance;
         }
 
-        _resolutions[node.NodeId] = new VariantResolution(definition, variantIndex);
-
-        // Um enum genérico precisaria dos argumentos de tipo aqui, e sem inferência
-        // (Q7) não há de onde tirá-los — a sintaxe para fornecê-los em posição de
-        // expressão chega no M4. Enums não genéricos funcionam integralmente.
-        if (definition.IsGeneric)
+        // Um enum genérico precisa dos argumentos de tipo aqui, e sem inferência
+        // (Q7) só há um lugar de onde tirá-los: o `Enum<...>` que instanciou o
+        // alvo. `Result.Ok(1)` é ambíguo; `Result<Int, IndexError>.Ok(1)` não.
+        if (definition.IsGeneric && meta.Arguments.IsDefaultOrEmpty)
         {
             _diagnostics.ReportError(
                 DiagnosticCodes.CannotDetermineGenericArguments,
                 node.NameSpan,
-                $"não foi possível determinar os argumentos genéricos de '{definition.Name}'");
+                $"não foi possível determinar os argumentos genéricos de '{definition.Name}'",
+                new DiagnosticNote($"escreva '{definition.Name}<...>.{node.Name}'"));
+
             return ErrorType.Instance;
         }
 
+        _resolutions[node.NodeId] = new VariantResolution(definition, variantIndex, meta.Arguments);
+
         var variant = definition.Variants[variantIndex];
-        var enumInstance = new NamedType(definition, []);
+        var enumInstance = new NamedType(definition, meta.Arguments);
+        var bindings = BuildSubstitution(definition.TypeParameters, meta.Arguments);
 
         // Variante nulária é o próprio valor; com carga, é um construtor.
         return variant.Payload.IsDefaultOrEmpty
             ? enumInstance
-            : FunctionType.Of(variant.Payload, enumInstance);
+            : FunctionType.Of(
+                variant.Payload.Select(t => TypeSubstitution.Apply(t, bindings)), enumInstance);
     }
 
     private LapisType CheckStructField(CoreField node, NamedType instance)
@@ -662,23 +892,17 @@ public sealed class TypeChecker
 
         // O tipo declarado do campo pode mencionar parâmetros do tipo; os
         // argumentos da instância os substituem.
-        var bindings = BuildSubstitution(definition, instance.Arguments);
+        var bindings = BuildSubstitution(definition.TypeParameters, instance.Arguments);
 
         return TypeSubstitution.Apply(definition.Fields[index].Type, bindings);
     }
 
     private LapisType CheckTypeDef(CoreTypeDef node, Scope scope)
     {
-        var typeParameters = node.TypeParameters
-            .Select(name => new TypeParameterType(name))
-            .ToImmutableArray();
-
+        // Parâmetros const de um `type` participam da identidade do tipo, mas não
+        // do corpo: não há posição de valor entre as declarações de campo.
+        var typeParameters = DeclareTypeParameters(node.TypeParameters, scope, declareConstValues: false);
         var definition = new TypeDefinition("<anônimo>", TypeDefinitionKind.Struct, typeParameters, node.Span);
-
-        foreach (var parameter in typeParameters)
-        {
-            _types.TypeParameters[parameter.Name] = parameter;
-        }
 
         try
         {
@@ -702,10 +926,7 @@ public sealed class TypeChecker
         }
         finally
         {
-            foreach (var parameter in typeParameters)
-            {
-                _types.TypeParameters.Remove(parameter.Name);
-            }
+            RemoveTypeParameters(typeParameters);
         }
 
         _resolutions[node.NodeId] = new TypeDefinitionResolution(definition);
@@ -736,20 +957,13 @@ public sealed class TypeChecker
         }
 
         var definition = meta.Definition;
-        var arguments = node.TypeArguments.Select(t => _types.Resolve(t, scope)).ToImmutableArray();
+        var raw = node.TypeArguments.Select(a => ReadGenericArgument(a, scope)).ToList();
 
-        if (arguments.Length != definition.TypeParameters.Length)
+        var resolved = GenericArguments.Resolve(
+            _diagnostics, definition.Name, definition.TypeParameters, raw, node.TypeNameSpan);
+
+        if (resolved is null)
         {
-            var code = arguments.IsEmpty
-                ? DiagnosticCodes.GenericTypeNeedsArguments
-                : DiagnosticCodes.GenericArityMismatch;
-
-            _diagnostics.ReportError(
-                code,
-                node.TypeNameSpan,
-                $"'{definition.Name}' espera {definition.TypeParameters.Length} argumentos genéricos, "
-                + $"fornecidos {arguments.Length}");
-
             foreach (var field in node.Fields)
             {
                 CheckExpression(field.Value, scope);
@@ -758,7 +972,8 @@ public sealed class TypeChecker
             return ErrorType.Instance;
         }
 
-        var bindings = BuildSubstitution(definition, arguments);
+        var arguments = resolved.Value;
+        var bindings = BuildSubstitution(definition.TypeParameters, arguments);
         var initialized = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var field in node.Fields)
@@ -812,18 +1027,10 @@ public sealed class TypeChecker
 
     private LapisType CheckEnumDef(CoreEnumDef node, Scope scope)
     {
-        var typeParameters = node.TypeParameters
-            .Select(name => new TypeParameterType(name))
-            .ToImmutableArray();
-
-        var definition = new TypeDefinition("<anônimo>", TypeDefinitionKind.Enum, typeParameters, node.Span);
-
         // Os parâmetros ficam visíveis enquanto as cargas das variantes são
         // resolvidas, e saem em seguida — eles não vazam para o resto do programa.
-        foreach (var parameter in typeParameters)
-        {
-            _types.TypeParameters[parameter.Name] = parameter;
-        }
+        var typeParameters = DeclareTypeParameters(node.TypeParameters, scope, declareConstValues: false);
+        var definition = new TypeDefinition("<anônimo>", TypeDefinitionKind.Enum, typeParameters, node.Span);
 
         try
         {
@@ -848,10 +1055,7 @@ public sealed class TypeChecker
         }
         finally
         {
-            foreach (var parameter in typeParameters)
-            {
-                _types.TypeParameters.Remove(parameter.Name);
-            }
+            RemoveTypeParameters(typeParameters);
         }
 
         _resolutions[node.NodeId] = new TypeDefinitionResolution(definition);
@@ -1060,7 +1264,7 @@ public sealed class TypeChecker
         // Os tipos da carga vêm da declaração e trazem os parâmetros de tipo do
         // enum; substituir pelos argumentos da instância é o que faz `v` ser `Int`
         // em `match r { Result.Ok(v) => ... }` com `r: Result<Int, IndexError>`.
-        var bindings = BuildSubstitution(definition, named.Arguments);
+        var bindings = BuildSubstitution(definition.TypeParameters, named.Arguments);
 
         // Sub-padrões têm sua própria cobertura: um coringa dentro de
         // `Result.Ok(_)` cobre a carga, não o `match` inteiro.
@@ -1085,15 +1289,22 @@ public sealed class TypeChecker
         public HashSet<ConstantValue> Literals { get; } = [];
     }
 
+    /// <summary>
+    /// Mapeia parâmetros de tipo nos argumentos correspondentes. Parâmetros const
+    /// ficam de fora: eles são valores, e valor nenhum aparece em posição de tipo.
+    /// </summary>
     private static Dictionary<string, LapisType> BuildSubstitution(
-        TypeDefinition definition,
-        ImmutableArray<LapisType> arguments)
+        ImmutableArray<GenericParameter> parameters,
+        ImmutableArray<GenericArgument> arguments)
     {
         var bindings = new Dictionary<string, LapisType>(StringComparer.Ordinal);
 
-        for (var i = 0; i < definition.TypeParameters.Length && i < arguments.Length; i++)
+        for (var i = 0; i < parameters.Length && i < arguments.Length; i++)
         {
-            bindings[definition.TypeParameters[i].Name] = arguments[i];
+            if (arguments[i] is TypeArgument argument)
+            {
+                bindings[parameters[i].Name] = argument.Type;
+            }
         }
 
         return bindings;

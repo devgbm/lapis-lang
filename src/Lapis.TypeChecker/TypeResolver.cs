@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Lapis.Ast;
 using Lapis.Ast.Surface;
 using Lapis.Ast.Types;
 using Lapis.Diagnostics;
@@ -28,6 +29,8 @@ public sealed class TypeResolver(DiagnosticBag diagnostics)
 
     /// <summary>Parâmetros de tipo em escopo, ao resolver o corpo de uma declaração genérica.</summary>
     public Dictionary<string, TypeParameterType> TypeParameters { get; } = new(StringComparer.Ordinal);
+
+    public bool IsTypeParameter(string name) => TypeParameters.ContainsKey(name);
 
     public LapisType Resolve(TypeSyntax? syntax, Scope scope)
     {
@@ -84,25 +87,74 @@ public sealed class TypeResolver(DiagnosticBag diagnostics)
         }
 
         var definition = meta.Definition;
-        var arguments = named.Arguments.Select(a => Resolve(a, scope)).ToImmutableArray();
 
-        if (arguments.Length != definition.TypeParameters.Length)
+        var raw = named.Arguments.Select(a => Read(a, scope)).ToList();
+        var arguments = GenericArguments.Resolve(
+            diagnostics, definition.Name, definition.TypeParameters, raw, named.Span);
+
+        return arguments is null ? ErrorType.Instance : new NamedType(definition, arguments.Value);
+    }
+
+    /// <summary>
+    /// Lê um argumento genérico em <b>posição de tipo</b>. Aqui um valor const só
+    /// pode ser um literal: uma função literal como argumento exige posição de
+    /// expressão (Q17), e <c>fn(Int) Int</c> escrito num tipo é um tipo de função.
+    /// </summary>
+    private RawGenericArgument Read(GenericArgumentSyntax argument, Scope scope)
+    {
+        switch (argument)
         {
-            var code = arguments.IsEmpty
-                ? DiagnosticCodes.GenericTypeNeedsArguments
-                : DiagnosticCodes.GenericArityMismatch;
+            case TypeArgumentSyntax a:
+                return RawGenericArgument.OfType(Resolve(a.Type, scope), a.Span);
 
-            diagnostics.ReportError(
-                code,
-                named.Span,
-                $"'{definition.Name}' espera {definition.TypeParameters.Length} argumentos "
-                + $"genéricos, fornecidos {arguments.Length}");
+            case ValueArgumentSyntax { Value: var value }:
+                return ReadLiteral(value) is { } constant
+                    ? RawGenericArgument.OfConstant(new ConstArgument(constant), argument.Span)
+                    : RawGenericArgument.RuntimeValue(argument.Span);
 
-            return ErrorType.Instance;
+            case NameArgumentSyntax a:
+                return ReadName(a, scope);
+
+            default:
+                throw InternalCompilerException.Unreachable(argument, argument.Span);
+        }
+    }
+
+    private RawGenericArgument ReadName(NameArgumentSyntax argument, Scope scope)
+    {
+        if (Primitives.TryGetValue(argument.Name, out var primitive))
+        {
+            return RawGenericArgument.OfType(primitive, argument.Span);
         }
 
-        return new NamedType(definition, arguments);
+        if (TypeParameters.TryGetValue(argument.Name, out var parameter))
+        {
+            return RawGenericArgument.OfType(parameter, argument.Span);
+        }
+
+        if (!scope.TryLookup(argument.Name, out var binding))
+        {
+            diagnostics.ReportError(
+                DiagnosticCodes.UnknownType, argument.Span, $"'{argument.Name}' não existe");
+
+            return RawGenericArgument.Error(argument.Span);
+        }
+
+        // Um nome ligado a um valor é uma leitura válida como constante — só não
+        // é constante, porque seu valor só existe em execução.
+        return binding.Type is MetaType meta
+            ? RawGenericArgument.OfType(new NamedType(meta.Definition, meta.Arguments), argument.Span)
+            : RawGenericArgument.RuntimeValue(argument.Span);
     }
+
+    private static ConstantValue? ReadLiteral(Expression value) => value switch
+    {
+        IntLiteral v => new ConstInt(v.Value),
+        FloatLiteral v => new ConstFloat(v.Value),
+        BoolLiteral v => v.Value ? ConstBool.True : ConstBool.False,
+        StrLiteral v => new ConstStr(v.Value),
+        _ => null,
+    };
 
     private LapisType ReportUnexpectedArguments(NamedTypeSyntax named, LapisType resolved)
     {

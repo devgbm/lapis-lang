@@ -5,7 +5,7 @@
 // válida até na condição de um `if`, sem parênteses.
 //
 // Saída esperada:
-//   User { id: 1, name: "Gabriel" }
+//   User { id: 1, name: "Gabriel", active: true }
 //   Gabriel
 //   ativo
 //   verde

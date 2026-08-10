@@ -397,7 +397,7 @@ public sealed class ArrayAndEnumDesugarTests : DesugarTestBase
         var program = Compile("def R = enum<T, E> { Ok(T), Err(E) };");
 
         var enumDef = program.Body.ShouldBeOfType<CoreLet>().Value.ShouldBeOfType<CoreEnumDef>();
-        enumDef.TypeParameters.ShouldBe(["T", "E"]);
+        enumDef.TypeParameters.Select(p => p.Name).ShouldBe(["T", "E"]);
         enumDef.Variants.Select(v => v.Name).ShouldBe(["Ok", "Err"]);
     }
 }
