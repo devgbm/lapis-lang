@@ -39,12 +39,12 @@ sealed record StrValue(string Value)    : Value;
 sealed record VoidValue                 : Value;          // singleton
 sealed record ArrayValue(ImmutableArray<Value> Elements, LapisType ElementType) : Value;
 sealed record ClosureValue(CoreLambda Lambda, Environment Captured,
-                           ImmutableArray<SemanticGenericArg> GenericArguments) : Value;
+                           ImmutableArray<GenericArgument> GenericArguments) : Value;
 sealed record EnumValue(TypeDefinition Definition, int VariantIndex,
                         ImmutableArray<Value> Payload,
-                        ImmutableArray<SemanticGenericArg> GenericArguments) : Value;
+                        ImmutableArray<GenericArgument> GenericArguments) : Value;
 sealed record StructValue(TypeDefinition Definition, ImmutableArray<Value> Fields,
-                          ImmutableArray<SemanticGenericArg> GenericArguments) : Value;
+                          ImmutableArray<GenericArgument> GenericArguments) : Value;
 sealed record TypeValue(LapisType Type) : Value;
 sealed record NativeFunctionValue(string Name, FunctionType Signature,
                                   Func<ImmutableArray<Value>, Value> Implementation) : Value;

@@ -144,14 +144,24 @@ match(LiteralPat(c), v)        = v == c (igualdade estrutural)
 O checker garante exaustividade (`LAP0262`), então "nenhum braço casou" é
 `InternalCompilerException`.
 
-### 8.6 Chamadas e generics
+### 8.6 Chamadas e generics ✅
 
-`ClosureValue` guarda os argumentos genéricos resolvidos pelo checker
-(`CallResolution`). Na v0.2 o evaluator **não** monomorfiza: o corpo genérico é
-avaliado como está, e os argumentos genéricos só importam para (a) construir
-valores de enum/struct com os tipos certos, e (b) alimentar `Format`. Const
-generics ficam disponíveis como bindings normais no ambiente da closure — é isso
-que os torna acessíveis dentro do corpo.
+Na v0.2 o evaluator **não** monomorfiza: o corpo genérico é avaliado como está.
+A divisão é deliberada — quem especializa corpos é o partial evaluator (plano 13),
+e é exatamente essa fronteira que o projeto estuda.
+
+`Instantiate` é o nó que faz a ponte:
+
+| Tipo de argumento | Efeito em execução |
+|---|---|
+| tipo | nenhum — o checker já substituiu, e o valor não muda |
+| const | estende o ambiente da closure com o nome do parâmetro |
+
+Por isso `scale<3>` e `scale<10>` são closures independentes, cada uma com seu
+`N`. Os argumentos genéricos aparecem ainda em dois lugares: na construção de
+valores de enum/struct, que carregam seus argumentos para `Format` e para o PE,
+e na `VariantResolution`, que é de onde `Result<Int, IndexError>.Ok` tira os
+argumentos sem precisar avaliar o alvo.
 
 ### 8.7 Sem recursão em v0.2
 

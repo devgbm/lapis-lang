@@ -1,12 +1,19 @@
 # LapisLang — Language & Research Specification
 
-**Versão:** 0.2.1
+**Versão:** 0.2.2
 **Extensão:** `.ls`
 **CLI:** `lapis`
 **Implementação inicial:** C#
 **Paradigma:** expression-oriented, statically typed, functional-oriented
 **Objetivo:** pesquisa de avaliação e partial evaluation
 
+> Changelog 0.2.1 → 0.2.2 — precisões trazidas pela implementação dos generics (M4).
+>
+> - **A variante de um enum genérico exige os argumentos antes do ponto** (Q7): `Option<Int>.Some(20)`, nunca `Option.Some(20)`. Sem inferência não há de onde tirar `T`. Seções §13 e §16.
+> - **`alvo<A, B>` é um operador pós-fixo próprio**, e não parte da chamada: aplica argumentos genéricos a qualquer expressão genérica — função, `type` ou `enum`. Seção §13.
+> - **Desambiguação de `<` precisada** (Q5): a leitura genérica também vence quando o token após o `>` não pode iniciar uma expressão, porque aí a leitura relacional ficaria sem operando à direita. É o que faz o exemplo de const generics desta seção parsear. Seção §13.
+> - **Uma função literal como argumento genérico só é escrevível em posição de expressão** (Q17): em posição de tipo, `fn(Int) Int` é um tipo de função. Seção §13.
+>
 > Changelog 0.2 → 0.2.1 — lacunas fechadas durante a implementação.
 > Cada item corresponde a uma decisão registrada em `plans/appendix-c-decisions.md`.
 >
@@ -562,6 +569,46 @@ A ausência de inferência é deliberada: o type checker deve ser simples e
 previsível (§47). Inferência poderá ser adicionada depois sem quebrar programas
 existentes, já que a forma explícita continuará válida.
 
+A mesma regra alcança os `enum` genéricos. `Option.Some(20)` não diz qual é o
+`T`, então os argumentos vêm **antes** do ponto:
+
+```c
+def Option = enum<T> { Some(T), None };
+
+Option.Some(20);        // erro: argumentos genéricos indetermináveis
+Option<Int>.Some(20);   // correto
+Option<Int>.None;       // correto — variante nulária também precisa
+```
+
+## `alvo<A, B>` é um operador pós-fixo
+
+Aplicar argumentos genéricos não faz parte da chamada: é uma operação por si só,
+que aceita qualquer expressão genérica — uma função, um `type` ou um `enum`. É
+por isso que uma única forma cobre todos os usos:
+
+```c
+identity<Int>            // a função já instanciada, ainda não chamada
+identity<Int>(10)        // instanciar e chamar
+Option<Int>              // o tipo já instanciado
+Option<Int>.Some(20)     // instanciar, selecionar a variante e construir
+```
+
+## Ambiguidade de `<`
+
+`identity<Int>(10)` e `a < b` começam igual. O parser tenta ler uma lista de
+argumentos genéricos e aceita essa leitura quando o token seguinte ao `>` de
+fechamento é:
+
+* `(` — uma chamada;
+* `.` — uma variante de enum;
+* qualquer token que **não** possa iniciar uma expressão — porque aí a leitura
+  relacional ficaria sem operando à direita, e não há ambiguidade a resolver. É
+  o que torna válido o `def t = SomeType<...>;` do exemplo abaixo.
+
+Em qualquer outro caso, `<` é o operador relacional. A consequência conhecida é
+que `a < b > (c)` é lido como chamada genérica; `(a < b) > (c)` expressa a
+comparação sem ambiguidade.
+
 ## Exemplo com valores constantes
 
 Declaração, com os parâmetros nomeados:
@@ -587,6 +634,34 @@ Nesse exemplo, os parâmetros genéricos misturam:
 * `fn() Int { return 1; }` — um valor de função conhecido em tempo de especialização.
 
 O type checker deve validar que cada argumento genérico é compatível com a posição esperada (tipo vs. valor constante vs. tipo de valor constante esperado, quando aplicável).
+
+Um identificador nu é ambíguo por construção: em `Foo<N>`, nada na sintaxe diz
+se `N` nomeia um tipo ou uma constante. Quem desempata é o parâmetro
+correspondente na declaração de `Foo`.
+
+Um parâmetro const é um **valor** dentro do corpo, do tipo declarado:
+
+```c
+def scale = fn<N: Int>(x: Int) Int {
+    return x * N;
+};
+
+scale<3>(5);    // 15
+```
+
+É o caso interessante para partial evaluation: `N` é conhecido no ponto da
+instanciação, mesmo quando `x` só existe em execução.
+
+### Função literal como argumento
+
+`fn(Int) Int` é um **tipo** de função; `fn(a: Int) Int { ... }` é um **valor**.
+Só o valor tem corpo, e é esse `{` que distingue os dois.
+
+A distinção só existe em posição de expressão. Dentro de uma anotação de tipo —
+`def x: Foo<fn(Int) Int> = ...` — `fn(Int) Int` é sempre um tipo de função, e
+uma função literal não é escrevível ali. Um `type` com parâmetro const de função
+é, portanto, construível mas não anotável; como não há inferência a contrariar,
+a anotação nunca é obrigatória.
 
 A sintaxe genérica geral continua:
 
@@ -716,10 +791,9 @@ def Result = enum<T, E> {
 Uma variante é sempre acessada através do nome do enum:
 
 ```c
-Result.Ok(10)
-Result.Err(error)
 Color.Red
 IndexError.OutOfBounds
+Result<Int, IndexError>.Ok(10)
 ```
 
 A forma nua (`Ok(10)`) **não** é válida: o nome de uma variante não entra no
@@ -728,6 +802,17 @@ resolução de nomes trivial — `Ok` sozinho é simplesmente uma variável
 inexistente.
 
 A mesma regra vale em padrões de `match` (§22).
+
+Se o enum for **genérico**, os argumentos vêm antes do ponto, porque sem
+inferência (§13) não há de onde tirá-los:
+
+```c
+Result<Int, IndexError>.Ok(10)
+Option<Str>.None
+```
+
+Em padrões de `match` isso não é necessário: ali o tipo do escrutinado já fixa os
+argumentos, e `Result.Ok(value)` continua sendo a forma correta (§22).
 
 Enums são valores de primeira classe.
 
@@ -746,11 +831,21 @@ def Result = enum<T, E> {
 };
 ```
 
-Construção e uso, sempre qualificados:
+Construção e uso, sempre qualificados — e, por ser genérico, com os argumentos
+antes do ponto:
 
 ```c
-def ok = Result.Ok(10);
-def erro = Result.Err(IndexError.OutOfBounds);
+def ok = Result<Int, IndexError>.Ok(10);
+def erro = Result<Int, IndexError>.Err(IndexError.OutOfBounds);
+```
+
+Já em padrões o tipo do escrutinado fixa os argumentos, e a forma curta basta:
+
+```c
+match r {
+    Result.Ok(value) => return value,
+    Result.Err(error) => return 0
+}
 ```
 
 O runtime não deve possuir uma implementação semântica especial de `Result`.
@@ -1000,6 +1095,7 @@ Expr
  ├── Let
  ├── Lambda
  ├── Call
+ ├── Instantiate
  ├── Return
  ├── If
  ├── Binary
@@ -1025,6 +1121,10 @@ Diferenças em relação ao esboço original, todas apuradas durante a implement
   (§14, §15) e portanto precisam existir na Core.
 * **`&&` e `||` não aparecem.** São desugarados para `If`, o que mantém os dois
   fora da Core e preserva o curto-circuito.
+* **`Instantiate` foi adicionado.** É `alvo<A, B>` (§13). Sobrevive ao desugar de
+  propósito: o partial evaluator precisa ver onde cada especialização foi pedida,
+  e é essa a fronteira entre o que o type checker instancia por substituição e o
+  que o PE monomorfiza.
 
 O objetivo é minimizar a quantidade de operações semânticas.
 
@@ -1773,7 +1873,7 @@ Logo:
 e residualizar diretamente:
 
 ```c
-def x = Result.Ok(20);
+def x = Result<Int, IndexError>.Ok(20);
 ```
 
 Em uma etapa posterior, caso o sistema de tipos/representação permita, o `Ok` também poderá ser simplificado.

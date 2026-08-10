@@ -40,13 +40,13 @@ critérios de conclusão satisfeitos.
 |---|---|---|---|
 | 00 | [Arquitetura e convenções](00-architecture-and-conventions.md) | — | M0 ✅ |
 | 01 | [Esqueleto da solução e CI](01-solution-skeleton.md) | `LapisLang.slnx` | M0 ✅ |
-| 02 | [AST (Surface + Core + Types)](02-ast.md) | `Lapis.Ast` | M1–M3 ✅ |
+| 02 | [AST (Surface + Core + Types)](02-ast.md) | `Lapis.Ast` | M1–M4 ✅ |
 | 03 | [Lexer](03-lexer.md) | `Lapis.Lexer` | M1 ✅ |
-| 04 | [Parser](04-parser.md) | `Lapis.Parser` | M1–M3 ✅ · M4 ⬜ |
+| 04 | [Parser](04-parser.md) | `Lapis.Parser` | M1–M4 ✅ |
 | 05 | [Desugar → Core AST](05-desugar.md) | `Lapis.Desugar` | M1–M3 ✅ |
-| 06 | [Type Checker](06-typechecker.md) | `Lapis.TypeChecker` | M1–M3 ✅ · M4 ⬜ |
+| 06 | [Type Checker](06-typechecker.md) | `Lapis.TypeChecker` | M1–M4 ✅ |
 | 07 | [Runtime (valores, ambiente, primitivas)](07-runtime.md) | `Lapis.Runtime` | M1–M2 ✅ |
-| 08 | [Evaluator](08-evaluator.md) | `Lapis.Evaluator` | M1–M3 ✅ |
+| 08 | [Evaluator](08-evaluator.md) | `Lapis.Evaluator` | M1–M4 ✅ |
 | 09 | [Prelude (`Result`, `IndexError`, `print`)](09-prelude.md) | `Lapis.Runtime` + `prelude.ls` | M2 ✅ |
 | 10 | [CLI `lapis`](10-cli.md) | `Lapis.Cli` | M1 ✅ · M5 ⬜ |
 | 11 | [Testes de integração e conformidade](11-integration-and-conformance-tests.md) | `tests/` | M1–M5 |
@@ -79,7 +79,7 @@ critérios de conclusão satisfeitos.
 | **M1** ✅ | Walking skeleton | `lapis hello.ls` imprime `30` (spec §60) — cadeia completa | 02, 03, 04, 05, 06, 07, 08, 10 |
 | **M2** ✅ | Arrays & Result | `[10,20,30][1] → Ok(20)`, `[..][3] → Err(OutOfBounds)` | 04, 06, 07, 08, 09 |
 | **M3** ✅ | Enums, match, tipos | `enum`, `match` exaustivo, `type` + construção + acesso a campo | 02, 04, 05, 06, 08 |
-| **M4** | Generics | `fn<T>` escritos pelo programador, sempre com argumentos explícitos (Q7) + const generics | 06 |
+| **M4** ✅ | Generics | `fn<T>` escritos pelo programador, sempre com argumentos explícitos (Q7) + const generics | 02, 04, 06, 08 |
 | **M5** | Conformidade | suíte golden `tests/conformance/**/*.ls`, `examples/` executando | 10, 11 |
 | **M6** | PE núcleo | constant folding, propagação, dead code, `lapis pe` | 12 |
 | **M7** | PE especialização | beta reduction, inlining, especialização de funções | 13 |
@@ -100,7 +100,7 @@ critérios de conclusão satisfeitos.
               ↓
         enums/match/type em 02,04,05,06,08          (M3)
               ↓
-        generics em 06                              (M4)
+        generics em 02,04,06,08                     (M4)
               ↓
              11                                     (M5)
               ↓
@@ -147,19 +147,22 @@ spec**. O registro completo, com justificativa e consequências, está no
 | Q2 | §24 tem `Construct` na Core AST, mas nenhuma sintaxe de construção é definida | **Ponto inicial**: `.User { id: 1, name: "x" }`. Elimina a ambiguidade com `if`/`match` sem regra contextual |
 | Q3 | §15/§16 usam `Ok(10)` (nu) e `IndexError.OutOfBounds` (qualificado) | **Qualificação completa obrigatória**: `Result.Ok(1)`. Sem injeção de variantes no escopo |
 | Q4 | §44 não lista `!`, `&&`, `\|\|` | Adicionados, com curto-circuito |
-| Q5 | `identity<Int>(10)` conflita com `a < b` | Backtracking limitado: só é generic se o `>` for seguido de `(` |
+| Q5 | `identity<Int>(10)` conflita com `a < b` | Backtracking limitado: é generic se o `>` for seguido de `(`, de `.`, ou de algo que não inicia expressão |
 | Q6 | §22 não define exaustividade de `match` | Exaustividade obrigatória; `_` permitido |
-| Q7 | inferência de argumentos genéricos | **Sempre explícitos.** `print` deixa de ser genérico (`fn(Any) Void`) para não obrigar `print<Int>(x)` |
+| Q7 | inferência de argumentos genéricos | **Sempre explícitos**, inclusive em variantes: `Option<Int>.Some(20)`. `print` deixa de ser genérico (`fn(Any) Void`) para não obrigar `print<Int>(x)` |
 | Q8 | a spec não menciona recursão | **Sem recursão na v0.2** |
 | Q9 | divisão inteira por zero | Produz o maior `Int`. A divisão vira total — sem caminho de aborto, e o PE ganha aritmética sempre pura |
 
-**A spec 0.2 precisa ser atualizada** em quatro pontos: §15/§16/§22 (variantes
-qualificadas), §44 (os três tokens), §14/§24 (sintaxe de construção) e §25/§26
-(divisão por zero).
+A spec foi atualizada de acordo — hoje está na **0.2.2**, com o changelog de cada
+decisão no topo do arquivo.
 
 Segue aguardando decisão apenas **Q16** (statements que terminam em bloco
 dispensam `;`), já implementado porque o exemplo `abs` da própria spec §12
 depende dele.
+
+Duas limitações novas entraram em vigor no M4, ambas registradas no apêndice C:
+**Q17** (função literal como argumento genérico só em posição de expressão) e
+**Q18** (parâmetro const não é repassável como argumento const).
 
 ---
 

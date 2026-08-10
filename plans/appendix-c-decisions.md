@@ -10,17 +10,19 @@ implementação.
 
 | # | Tema | Estado |
 |---|---|---|
-| Q1 | declaração de generics com parâmetros nomeados | ✅ decidido |
-| Q2 | construção de `type` com `.Nome { campo: valor }` | ✅ decidido |
-| Q3 | variantes de enum sempre qualificadas | ✅ decidido |
+| Q1 | declaração de generics com parâmetros nomeados | ✅ decidido · implementado |
+| Q2 | construção de `type` com `.Nome { campo: valor }` | ✅ decidido · implementado |
+| Q3 | variantes de enum sempre qualificadas | ✅ decidido · implementado |
 | Q4 | operadores `!`, `&&`, `\|\|` | ✅ decidido · implementado |
-| Q5 | desambiguação de `<` por backtracking | ✅ decidido |
-| Q6 | `match` exaustivo | ✅ decidido |
+| Q5 | desambiguação de `<` por backtracking | ✅ decidido · implementado |
+| Q6 | `match` exaustivo | ✅ decidido · implementado |
 | Q7 | argumentos genéricos sempre explícitos | ✅ decidido · implementado |
 | Q8 | sem recursão na v0.2 | ✅ decidido · implementado |
 | Q9 | `x / 0` produz o maior `Int` | ✅ decidido · implementado |
 | Q10–Q15 | decisões internas de implementação | 🟡 em vigor |
 | Q16 | statements que terminam em bloco dispensam `;` | ⏳ aguardando |
+| Q17 | função literal como argumento genérico só em posição de expressão | 🟡 em vigor |
+| Q18 | parâmetro const não é repassável como argumento const | 🟡 em vigor |
 
 **A spec 0.2 precisa ser atualizada** em quatro pontos por causa destas decisões:
 §15/§16/§22 (variantes qualificadas), §44 (tokens `!`, `&&`, `\|\|`), §14/§24
@@ -140,7 +142,7 @@ desugarados para `If` (plano 05 §5.2). Implementados no M1.
 
 **Problema.** `identity<Int>(10)` e `a < b > (c)` têm a mesma forma de tokens.
 
-**Decisão.** Backtracking limitado: só é chamada genérica se o `>` de fechamento
+**Decisão.** Backtracking limitado: só é leitura genérica se o `>` de fechamento
 for imediatamente seguido de `(`.
 
 **Limitação aceita.** `a < b > (c)` parseia como chamada genérica. Contorno:
@@ -151,6 +153,25 @@ descoberto como "bug".
 divergir da sintaxe que a spec exemplifica.
 
 **✅ Confirmado pelo autor da spec**, com a limitação aceita.
+
+### Ampliação no M4
+
+A regra "seguido de `(`" não cobria dois usos legítimos, e ambos apareceram assim
+que os generics saíram do papel:
+
+```c
+Result<Int, IndexError>.Ok(1);                          // seguido de '.'
+def t = SomeType<"value", 1, true, Int, fn() Int { return 1; }>;   // seguido de ';'
+```
+
+O segundo é o **exemplo de const generics da própria spec §13**.
+
+A regra passou a ser: aceita-se a leitura genérica quando o token após o `>` é
+`(`, é `.`, **ou não pode iniciar uma expressão**. O terceiro caso não é uma
+heurística nova — é a observação de que ali a leitura relacional não existe: `>`
+é binário e ficaria sem operando à direita. Onde as duas leituras são possíveis
+(`a < b > c`, `a < b > -c`) a relacional continua vencendo, e onde as duas
+existem mas Q5 já havia decidido (`a < b > (c)`) nada muda.
 
 ---
 
@@ -191,12 +212,18 @@ inclusive nos exemplos da spec, cujo §34 mostra `print(result)`. A saída adota
 Isso mantém `print(30)` exatamente como a spec escreve, e mantém a regra de
 generics limpa — porque `print` simplesmente não é uma função genérica.
 
-**Estado atual.** A regra está fixada no checker, mas ainda é vacuosa: a sintaxe
-de *declaração* de generics é do M4, então nenhuma função genérica é construível.
-Quando o M4 chegar, `identity<Int>(10)` funciona e `identity(10)` é erro.
+**Consequência sobre enums genéricos** (apurada no M4). A regra alcança também a
+construção de variantes: `Result.Ok(1)` não diz qual é o tipo do erro. Os
+argumentos vêm antes do ponto — `Result<Int, IndexError>.Ok(1)` — e a forma sem
+eles é `LAP0298`, com nota apontando a forma correta.
+
+Em **padrões** de `match` nada disso é necessário: ali o tipo do escrutinado já
+fixa os argumentos, e `Result.Ok(value)` continua sendo a forma correta.
 
 **Revisitar quando:** se `Any` começar a aparecer em mais de uma ou duas
-primitivas, é sinal de que a inferência deveria voltar.
+primitivas, é sinal de que a inferência deveria voltar. O outro gatilho é o
+incômodo de escrever `Option<Int>.None` — inferência a partir da anotação
+resolveria justamente esse caso.
 
 ---
 
@@ -367,6 +394,54 @@ residualizado.
 **Justificativa.** Executá-lo moveria a saída do programa para o tempo de
 compilação, violando `evaluate(P) ≡ evaluate(PE(P))` (spec §40) na dimensão que
 mais importa observar.
+
+---
+
+## Q17 🟡 — Função literal como argumento genérico só em posição de expressão
+
+**Problema.** A spec §13 admite uma função literal como argumento genérico
+(`Make: fn() Int` recebendo `fn() Int { return 1; }`). Mas `fn(Int) Int` dentro
+de uma anotação de tipo é um *tipo* de função, e as duas leituras colidem
+exatamente onde o parser não tem contexto para escolher.
+
+**Decisão.** Em posição de **tipo**, `fn` é sempre um tipo de função; a função
+literal só é escrevível em posição de **expressão**. Na prática:
+
+```c
+def Wrapper = type<Make: fn() Int> { tag: Int; };
+
+def w = .Wrapper<fn() Int { return 1; }> { tag: 0 };   // ok
+def w: Wrapper<fn() Int { return 1; }> = ...;          // não escrevível
+```
+
+**Consequência.** Um `type` com parâmetro const de função é construível mas não
+anotável. Como não há inferência a contrariar (Q7), a anotação nunca é
+obrigatória — nenhum programa fica sem saída.
+
+**Justificativa.** A alternativa seria fazer o backtracking `fn`-tipo/`fn`-valor
+também dentro da gramática de tipos, o que exige um printer de código-fonte para
+a Surface AST (hoje só a Core tem um) só para manter o round-trip do
+`CoreSourcePrinter`. Custo alto para um caso que a spec cita uma vez.
+
+**Revisitar quando:** se const generics de função virarem uso corrente.
+
+---
+
+## Q18 🟡 — Parâmetro const não é repassável como argumento const
+
+**Problema.** Dentro do corpo de `fn<N: Int>`, `N` é um valor. Repassá-lo a outra
+função genérica — `inner<N>()` — pareceria natural.
+
+**Decisão.** Não é aceito: `LAP0294` ("não é constante em tempo de compilação").
+
+**Justificativa.** `N` é um *parâmetro*: seu valor não existe no momento em que o
+checker olha o corpo, e só aparece quando o partial evaluator especializa a
+chamada externa. Aceitá-lo exigiria constantes simbólicas no modelo de tipos —
+`FixedArray<Int, N>` como um tipo genuinamente aberto — e é exatamente o tipo de
+complexidade que o §47 manda evitar nesta versão.
+
+**Revisitar quando:** o PE de especialização (plano 13) estiver de pé; é ele quem
+teria a informação para fechar essas constantes.
 
 ---
 

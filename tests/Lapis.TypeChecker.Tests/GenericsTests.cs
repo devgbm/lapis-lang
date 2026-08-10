@@ -46,6 +46,46 @@ public sealed class GenericFunctionTests : TypeCheckerTestBase
         TypeOfDef(Source, "r").ShouldBe(PrimitiveType.Int);
     }
 
+    /// <summary>
+    /// A substituição desce por dentro dos argumentos de um tipo nomeado: o
+    /// parâmetro <c>T</c> em <c>Result&lt;T, IndexError&gt;</c> precisa virar
+    /// <c>Int</c>, senão nada casa com o parâmetro instanciado.
+    /// </summary>
+    [Fact]
+    public void Generic_Substitution_InsideNamedTypeArguments()
+    {
+        const string Source = """
+            def unwrapOr = fn<T>(r: Result<T, IndexError>, fallback: T) T {
+                match r {
+                    Result.Ok(value) => return value,
+                    Result.Err(error) => return fallback
+                }
+            };
+
+            def r = unwrapOr<Int>([10, 20][1], 0);
+            """;
+
+        TypeOfDef(Source, "r").ShouldBe(PrimitiveType.Int);
+    }
+
+    /// <summary>
+    /// Uma assinatura genérica aninhada atravessa a substituição intacta: o
+    /// <c>T</c> interno é o dela, não o de fora.
+    /// </summary>
+    [Fact]
+    public void Generic_Substitution_DoesNotEnterNestedGenericSignature() =>
+        ShouldPass("""
+            def outer = fn<T>(value: T) T {
+                def inner = fn<T>(x: T) T {
+                    return x;
+                };
+
+                return inner<T>(value);
+            };
+
+            def r = outer<Int>(1);
+            """);
+
     /// <summary>Um parâmetro de tipo é visível no corpo, e só nele.</summary>
     [Fact]
     public void TypeParameter_DoesNotEscapeTheDeclaration() =>

@@ -28,9 +28,47 @@ public sealed class TypeResolver(DiagnosticBag diagnostics)
     public static bool IsPrimitiveName(string name) => Primitives.ContainsKey(name);
 
     /// <summary>Parâmetros de tipo em escopo, ao resolver o corpo de uma declaração genérica.</summary>
-    public Dictionary<string, TypeParameterType> TypeParameters { get; } = new(StringComparer.Ordinal);
+    private Dictionary<string, TypeParameterType> TypeParameters { get; } = new(StringComparer.Ordinal);
 
     public bool IsTypeParameter(string name) => TypeParameters.ContainsKey(name);
+
+    /// <summary>
+    /// Traz nomes de parâmetros de tipo para escopo e devolve o que eles
+    /// sombrearam, para <see cref="ExitTypeParameters"/> restaurar.
+    ///
+    /// O par existe por causa do aninhamento: um <c>fn&lt;T&gt;</c> dentro de
+    /// outro <c>fn&lt;T&gt;</c> liga o seu próprio <c>T</c>, e ao sair o de fora
+    /// tem de voltar — remover às cegas apagaria os dois.
+    /// </summary>
+    public Dictionary<string, TypeParameterType?> EnterTypeParameters(IEnumerable<string> names)
+    {
+        var shadowed = new Dictionary<string, TypeParameterType?>(StringComparer.Ordinal);
+
+        foreach (var name in names)
+        {
+            shadowed[name] = TypeParameters.GetValueOrDefault(name);
+            TypeParameters[name] = new TypeParameterType(name);
+        }
+
+        return shadowed;
+    }
+
+    public void ExitTypeParameters(Dictionary<string, TypeParameterType?> shadowed)
+    {
+        ArgumentNullException.ThrowIfNull(shadowed);
+
+        foreach (var (name, previous) in shadowed)
+        {
+            if (previous is null)
+            {
+                TypeParameters.Remove(name);
+            }
+            else
+            {
+                TypeParameters[name] = previous;
+            }
+        }
+    }
 
     public LapisType Resolve(TypeSyntax? syntax, Scope scope)
     {

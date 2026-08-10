@@ -188,15 +188,15 @@ public sealed class TypeChecker
     private LapisType CheckLambda(CoreLambda node, Scope scope)
     {
         var inner = scope.Child();
-        var typeParameters = DeclareTypeParameters(node.TypeParameters, inner, declareConstValues: true);
+        var generics = DeclareTypeParameters(node.TypeParameters, inner, declareConstValues: true);
 
         try
         {
-            return CheckLambdaBody(node, inner, typeParameters);
+            return CheckLambdaBody(node, inner, generics.Parameters);
         }
         finally
         {
-            RemoveTypeParameters(typeParameters);
+            _types.ExitTypeParameters(generics.Shadowed);
         }
     }
 
@@ -260,22 +260,20 @@ public sealed class TypeChecker
     /// como valores, porque dentro do corpo <c>N</c> é um valor do tipo declarado
     /// (spec §13) — quem sabe qual valor é o partial evaluator, não o checker.
     /// </summary>
-    private ImmutableArray<GenericParameter> DeclareTypeParameters(
+    private GenericScope DeclareTypeParameters(
         ImmutableArray<CoreTypeParameter> declared,
         Scope scope,
         bool declareConstValues)
     {
         if (declared.IsDefaultOrEmpty)
         {
-            return [];
+            return new GenericScope([], []);
         }
 
         var parameters = ImmutableArray.CreateBuilder<GenericParameter>(declared.Length);
 
-        foreach (var parameter in declared.Where(p => !p.IsConst))
-        {
-            _types.TypeParameters[parameter.Name] = new TypeParameterType(parameter.Name);
-        }
+        var shadowed = _types.EnterTypeParameters(
+            declared.Where(p => !p.IsConst).Select(p => p.Name));
 
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
@@ -305,16 +303,13 @@ public sealed class TypeChecker
             }
         }
 
-        return parameters.ToImmutable();
+        return new GenericScope(parameters.ToImmutable(), shadowed);
     }
 
-    private void RemoveTypeParameters(ImmutableArray<GenericParameter> parameters)
-    {
-        foreach (var parameter in parameters.Where(p => !p.IsConst))
-        {
-            _types.TypeParameters.Remove(parameter.Name);
-        }
-    }
+    /// <summary>Os parâmetros declarados e os nomes que eles sombrearam.</summary>
+    private sealed record GenericScope(
+        ImmutableArray<GenericParameter> Parameters,
+        Dictionary<string, TypeParameterType?> Shadowed);
 
     /// <summary>
     /// <c>alvo&lt;A, B&gt;</c> — instanciação explícita (Q7). O checker apenas
@@ -901,8 +896,10 @@ public sealed class TypeChecker
     {
         // Parâmetros const de um `type` participam da identidade do tipo, mas não
         // do corpo: não há posição de valor entre as declarações de campo.
-        var typeParameters = DeclareTypeParameters(node.TypeParameters, scope, declareConstValues: false);
-        var definition = new TypeDefinition("<anônimo>", TypeDefinitionKind.Struct, typeParameters, node.Span);
+        var generics = DeclareTypeParameters(node.TypeParameters, scope, declareConstValues: false);
+
+        var definition = new TypeDefinition(
+            "<anônimo>", TypeDefinitionKind.Struct, generics.Parameters, node.Span);
 
         try
         {
@@ -926,7 +923,7 @@ public sealed class TypeChecker
         }
         finally
         {
-            RemoveTypeParameters(typeParameters);
+            _types.ExitTypeParameters(generics.Shadowed);
         }
 
         _resolutions[node.NodeId] = new TypeDefinitionResolution(definition);
@@ -1029,8 +1026,10 @@ public sealed class TypeChecker
     {
         // Os parâmetros ficam visíveis enquanto as cargas das variantes são
         // resolvidas, e saem em seguida — eles não vazam para o resto do programa.
-        var typeParameters = DeclareTypeParameters(node.TypeParameters, scope, declareConstValues: false);
-        var definition = new TypeDefinition("<anônimo>", TypeDefinitionKind.Enum, typeParameters, node.Span);
+        var generics = DeclareTypeParameters(node.TypeParameters, scope, declareConstValues: false);
+
+        var definition = new TypeDefinition(
+            "<anônimo>", TypeDefinitionKind.Enum, generics.Parameters, node.Span);
 
         try
         {
@@ -1055,7 +1054,7 @@ public sealed class TypeChecker
         }
         finally
         {
-            RemoveTypeParameters(typeParameters);
+            _types.ExitTypeParameters(generics.Shadowed);
         }
 
         _resolutions[node.NodeId] = new TypeDefinitionResolution(definition);

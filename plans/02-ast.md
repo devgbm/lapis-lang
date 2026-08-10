@@ -61,27 +61,27 @@ abstract record Expression;
   sealed record ReturnExpression(Expression? Value);
   // definições que são expressões
   sealed record FunctionExpression(
-      ImmutableArray<GenericParameterSyntax> GenericParameters,
+      ImmutableArray<TypeParameterSyntax> TypeParameters,
       ImmutableArray<ParameterSyntax> Parameters,
       TypeSyntax? ReturnType,                                  // ausente ⇒ Void
       BlockExpression Body);
   sealed record TypeExpression(
-      ImmutableArray<GenericParameterSyntax> GenericParameters,
+      ImmutableArray<TypeParameterSyntax> TypeParameters,
       ImmutableArray<FieldSyntax> Fields);
   sealed record EnumExpression(
-      ImmutableArray<GenericParameterSyntax> GenericParameters,
+      ImmutableArray<TypeParameterSyntax> TypeParameters,
       ImmutableArray<VariantSyntax> Variants);
   // aplicação e acesso
-  sealed record CallExpression(
-      Expression Callee,
-      ImmutableArray<GenericArgumentSyntax> GenericArguments,  // vazio ⇒ inferir
-      ImmutableArray<Expression> Arguments);
+  sealed record CallExpression(Expression Callee, ImmutableArray<Expression> Arguments);
+  sealed record InstantiateExpression(                         // Q5: alvo<A, B>
+      Expression Target,
+      ImmutableArray<GenericArgumentSyntax> Arguments);
   sealed record IndexExpression(Expression Target, Expression Index);
   sealed record MemberExpression(Expression Target, string Name);
   sealed record ArrayExpression(ImmutableArray<Expression> Elements);
   sealed record ConstructExpression(                            // Q2: .Nome { ... }
       string TypeName,
-      ImmutableArray<GenericArgumentSyntax> GenericArguments,
+      ImmutableArray<GenericArgumentSyntax> TypeArguments,
       ImmutableArray<FieldInitSyntax> Fields);
 
 sealed record ParameterSyntax(string Name, TypeSyntax Type);
@@ -127,12 +127,11 @@ abstract record TypeSyntax;
 
 abstract record GenericArgumentSyntax;
   sealed record TypeArgumentSyntax(TypeSyntax Type);
-  sealed record ConstArgumentSyntax(Expression Value);
-  sealed record AmbiguousArgumentSyntax(string Name);   // `Int` ou `N` — resolvido no checker
+  sealed record ValueArgumentSyntax(Expression Value);   // literal, ou função literal
+  sealed record NameArgumentSyntax(string Name);         // `Int` ou `N` — resolvido no checker
 
-abstract record GenericParameterSyntax;
-  sealed record TypeParameterSyntax(string Name);              // <T>
-  sealed record ConstParameterSyntax(string Name, TypeSyntax Type); // <N: Int>  [Q1]
+// Q1: `ConstType` ausente ⇒ parâmetro de tipo <T>; presente ⇒ const <N: Int>.
+sealed record TypeParameterSyntax(string Name, TypeSyntax? ConstType);
 ```
 
 ### 2.2 Core AST — `Lapis.Ast.Core`
@@ -147,11 +146,12 @@ abstract class CoreExpr { public int NodeId { get; } public SourceSpan Span { ge
 sealed class CoreLiteral   : CoreExpr { ConstantValue Value; }
 sealed class CoreVariable  : CoreExpr { string Name; }
 sealed class CoreLet       : CoreExpr { string Name; TypeSyntaxRef? Annotation; CoreExpr Value; CoreExpr Body; bool IsSynthetic; }
-sealed class CoreLambda    : CoreExpr { ImmutableArray<CoreGenericParam> GenericParameters;
-                                        ImmutableArray<CoreParam> Parameters;
-                                        LapisTypeSyntax ReturnType; CoreExpr Body; }
-sealed class CoreCall      : CoreExpr { CoreExpr Callee; ImmutableArray<CoreGenericArg> GenericArguments;
-                                        ImmutableArray<CoreExpr> Arguments; }
+sealed class CoreLambda    : CoreExpr { ImmutableArray<CoreTypeParameter> TypeParameters;
+                                        ImmutableArray<CoreParameter> Parameters;
+                                        TypeSyntax? ReturnType; CoreExpr Body; }
+sealed class CoreCall      : CoreExpr { CoreExpr Callee; ImmutableArray<CoreExpr> Arguments; }
+sealed class CoreInstantiate : CoreExpr { CoreExpr Target;
+                                        ImmutableArray<CoreGenericArgument> Arguments; }
 sealed class CoreReturn    : CoreExpr { CoreExpr? Value; }
 sealed class CoreIf        : CoreExpr { CoreExpr Condition; CoreExpr Then; CoreExpr Else; }
 sealed class CoreBinary    : CoreExpr { BinaryOperator Op; CoreExpr Left; CoreExpr Right; }
@@ -159,17 +159,19 @@ sealed class CoreUnary     : CoreExpr { UnaryOperator Op; CoreExpr Operand; }
 sealed class CoreArray     : CoreExpr { ImmutableArray<CoreExpr> Elements; }
 sealed class CoreIndex     : CoreExpr { CoreExpr Target; CoreExpr Index; }
 sealed class CoreField     : CoreExpr { CoreExpr Target; string Name; }
-sealed class CoreConstruct : CoreExpr { CoreExpr TypeRef; ImmutableArray<CoreFieldInit> Fields; }
+sealed class CoreConstruct : CoreExpr { string TypeName;
+                                        ImmutableArray<CoreGenericArgument> TypeArguments;
+                                        ImmutableArray<CoreFieldInit> Fields; }
 sealed class CoreMatch     : CoreExpr { CoreExpr Scrutinee; ImmutableArray<CoreArm> Arms; }
-sealed class CoreTypeDef   : CoreExpr { ImmutableArray<CoreGenericParam> GenericParameters;
+sealed class CoreTypeDef   : CoreExpr { ImmutableArray<CoreTypeParameter> TypeParameters;
                                         ImmutableArray<CoreFieldDecl> Fields; }
-sealed class CoreEnumDef   : CoreExpr { ImmutableArray<CoreGenericParam> GenericParameters;
+sealed class CoreEnumDef   : CoreExpr { ImmutableArray<CoreTypeParameter> TypeParameters;
                                         ImmutableArray<CoreVariantDecl> Variants; }
 
 sealed class CoreProgram { CoreExpr Body; int NodeCount; }
 ```
 
-**16 nós.** Em relação à lista sugerida na spec §24:
+**17 nós.** Em relação à lista sugerida na spec §24:
 
 | Mudança | Motivo |
 |---|---|
@@ -177,6 +179,7 @@ sealed class CoreProgram { CoreExpr Body; int NodeCount; }
 | `Field` **adicionado** | necessário para `user.id` e para `IndexError.OutOfBounds` |
 | `TypeDef`/`EnumDef` **adicionados** | `type`/`enum` são expressões (spec §14, §15) e precisam existir na Core |
 | `AndAlso`/`OrElse` **ausentes** | desugaram para `If` (curto-circuito explícito) |
+| `Instantiate` **adicionado** | `alvo<A, B>` (spec §13); sobrevive ao desugar para que o PE veja onde cada especialização foi pedida |
 
 ### 2.3 Por que não há `Block` na Core
 
@@ -222,23 +225,32 @@ abstract record LapisType;
   sealed record PrimitiveType(PrimitiveKind Kind);   // Int, Float, Bool, Str, Void
   sealed record NeverType;                            // bottom: tipo de `return` e de match vazio
   sealed record ArrayType(LapisType Element);
-  sealed record FunctionType(ImmutableArray<LapisType> Parameters, LapisType Return);
-  sealed record NamedType(TypeDefinition Definition, ImmutableArray<SemanticGenericArg> Arguments);
-  sealed record TypeParameterType(string Name, int Ordinal);
-  sealed record MetaType(LapisType Represented);      // o tipo de uma expressão que É um tipo
+  sealed record FunctionType(ImmutableArray<LapisType> Parameters, LapisType Return,
+                             ImmutableArray<GenericParameter> TypeParameters);
+  sealed record NamedType(TypeDefinition Definition, ImmutableArray<GenericArgument> Arguments);
+  sealed record TypeParameterType(string Name);
+  sealed record MetaType(TypeDefinition Definition,   // o tipo de uma expressão que É um tipo
+                         ImmutableArray<GenericArgument> Arguments);
+  sealed record AnyType;                              // top interno, só em nativas [Q7]
   sealed record ErrorType;                            // propagação de erro sem cascata
 
-abstract record SemanticGenericArg;
-  sealed record TypeArg(LapisType Type);
-  sealed record ConstArg(ConstantValue Value);
+// Declaração (Q1): `ConstType` ausente ⇒ <T>; presente ⇒ <N: Int>.
+sealed record GenericParameter(string Name, LapisType? ConstType);
 
-sealed record TypeDefinition(
-    string Name,
-    TypeDefinitionKind Kind,                          // Struct | Enum
-    ImmutableArray<GenericParameterInfo> GenericParameters,
-    ImmutableArray<FieldInfo> Fields,                 // Struct
-    ImmutableArray<VariantInfo> Variants,             // Enum
-    SourceSpan Span);
+// Uso.
+abstract record GenericArgument;
+  sealed record TypeArgument(LapisType Type);
+  sealed record ConstArgument(ConstantValue Value);
+  sealed record ConstFunctionArgument(string Shape, FunctionType Signature);
+
+sealed class TypeDefinition {                         // mutável: campos/variantes
+    string Name;                                      // vem do `def` que a liga
+    TypeDefinitionKind Kind;                          // Struct | Enum
+    ImmutableArray<GenericParameter> TypeParameters;
+    ImmutableArray<FieldInfo> Fields;                 // Struct
+    ImmutableArray<VariantInfo> Variants;             // Enum
+    SourceSpan Span;
+}
 ```
 
 Notas:
@@ -247,7 +259,12 @@ Notas:
   permite `match r { Ok(v) => return v, Err(e) => return f }` sem regra especial:
   `Never` é subtipo de tudo na única relação de subtipagem da linguagem.
 - `MetaType` existe porque tipos são valores de primeira classe: em
-  `def Box = type<T> { ... };`, `Box` tem tipo `MetaType(...)`.
+  `def Box = type<T> { ... };`, `Box` tem tipo `MetaType(Box)`. Seus `Arguments`
+  guardam a instanciação: `Box<Int>` é `MetaType(Box, [TypeArgument(Int)])`, e é
+  dele que um acesso a variante extrai um construtor já instanciado.
+- `ConstFunctionArgument` guarda o código-fonte normalizado da função em `Shape`,
+  o que dá **identidade estrutural** a um argumento genérico de função: duas
+  funções escritas igual produzem o mesmo tipo.
 - `ErrorType` absorve operações: qualquer operação com `ErrorType` produz
   `ErrorType` sem emitir novo diagnóstico. Evita cascatas.
 - `LapisType` é `record` ⇒ igualdade estrutural ⇒ comparação de tipos é `==`.
@@ -266,10 +283,13 @@ sealed record TypedProgram(
 
 abstract record Resolution;
   sealed record VariableResolution(BindingId Binding);
-  sealed record CallResolution(ImmutableArray<SemanticGenericArg> InferredArguments, FunctionType Instantiated);
-  sealed record FieldResolution(int FieldIndex, LapisType Owner);
-  sealed record VariantResolution(TypeDefinition Enum, int VariantIndex);
-  sealed record PatternResolution(ImmutableArray<BindingId> Bindings);
+  sealed record CallResolution(ImmutableArray<GenericArgument> TypeArguments, FunctionType Instantiated);
+  sealed record InstantiateResolution(ImmutableArray<GenericParameter> Parameters,
+                                      ImmutableArray<GenericArgument> Arguments);
+  sealed record FieldResolution(int FieldIndex);
+  sealed record VariantResolution(TypeDefinition Enum, int VariantIndex,
+                                  ImmutableArray<GenericArgument> TypeArguments);
+  sealed record TypeDefinitionResolution(TypeDefinition Definition);
 ```
 
 Motivo: um segundo conjunto de nós duplicaria 16 classes e todo visitor, sem

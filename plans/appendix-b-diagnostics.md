@@ -142,13 +142,22 @@ dispara, asseverando **código + span** — nunca a mensagem.
 | Código | Severidade | Mensagem |
 |---|---|---|
 | `LAP0290` | error | `{0}` espera {1} argumentos genéricos, fornecidos {2} |
-| `LAP0291` | error | esperado um tipo na posição genérica {0}, encontrado um valor |
-| `LAP0292` | error | esperado um valor constante na posição genérica {0}, encontrado um tipo |
-| `LAP0293` | error | argumento const {0}: esperado `{1}`, encontrado `{2}` |
-| `LAP0294` | error | argumento genérico deve ser constante em tempo de compilação |
+| `LAP0291` | error | o parâmetro `{0}` é de tipo; um valor não serve como argumento |
+| `LAP0292` | error | o parâmetro `{0}` é constante; um tipo não serve como argumento |
+| `LAP0293` | error | `{0}` espera `{1}`, encontrado `{2}` |
+| `LAP0294` | error | o argumento de `{0}` não é constante em tempo de compilação |
 | `LAP0295` | error | `{0}` é genérico e requer argumentos de tipo |
 | ~~`LAP0296`~~ | — | **aposentado** (Q7): nenhum argumento genérico é inferido |
 | ~~`LAP0297`~~ | — | **aposentado** (Q7): idem |
+| `LAP0298` | error | não foi possível determinar os argumentos genéricos de `{0}` |
+
+`LAP0290` e `LAP0295` são o mesmo confronto de aridade visto de dois ângulos:
+`LAP0295` quando **nenhum** argumento foi escrito (o caso comum, e o que merece a
+mensagem "requer argumentos"), `LAP0290` quando a quantidade escrita está errada.
+
+`LAP0298` cobre um caso específico e vale o código próprio: acessar a variante de
+um enum genérico sem instanciá-lo (`Result.Ok(1)`). A nota diz a forma correta,
+`Result<...>.Ok`.
 
 ---
 
@@ -198,5 +207,5 @@ Não são diagnósticos de compilação: são relatados na saída de execução 
   `LAP0301` saíram por causa de decisões do apêndice C e seus números ficam
   permanentemente vagos.
 - `LAP0290` passou a cobrir também "função genérica chamada sem argumentos
-  genéricos explícitos" (Q7).
+  genéricos explícitos" (Q7), com nota indicando os parâmetros a escrever.
 - `LAP0202` é reportado pelo **desugar**, não pelo type checker (Q10).
