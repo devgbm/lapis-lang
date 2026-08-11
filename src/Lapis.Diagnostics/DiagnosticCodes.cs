@@ -121,6 +121,10 @@ public static class DiagnosticCodes
     public const string LabelOutOfScope = "LAP0521";
     public const string DuplicateLabel = "LAP0522";
 
+    // LAP06xx — reflection (plano 19)
+    public const string ReflectExpectsType = "LAP0601";
+    public const string TypeNotDeclaredYet = "LAP0602";
+
     // LAP03xx — Execução
     //
     // LAP0301 (divisão por zero) foi aposentado: a divisão inteira por zero passou

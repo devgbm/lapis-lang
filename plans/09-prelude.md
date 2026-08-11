@@ -62,6 +62,18 @@ def ContextError = enum {
 };
 ```
 
+O M10 acrescentou os tipos de reflection, pelo mesmo princípio §58.2 que pôs
+`Result` aqui: não existe sistema de metadados paralelo, e um `TypeInfo` é um
+struct comum — imutável por construção, sem precisar de regra própria.
+
+```c
+def TypeKind = enum { Struct, Enum };
+def FieldInfo = type { name: Str; typeName: Str; };
+def VariantInfo = type { name: Str; arity: Int; payloadTypeNames: Str[]; };
+def TypeInfo = type { name: Str; kind: TypeKind; typeParameterNames: Str[];
+                      fields: FieldInfo[]; variants: VariantInfo[]; };
+```
+
 Funções auxiliares (`unwrapOr`, `map`) **não** entram no prelude na 0.2: cada uma
 precisaria de generics já estáveis e ampliaria a superfície de teste sem servir a
 nenhum objetivo da spec. Ficam para v0.3.

@@ -44,12 +44,13 @@ lapis hello.ls
 | **M7** — PE núcleo (folding, propagação, dead code) | ✅ concluído |
 | **M8** — macro engine (`match`/`expand`, higiene, `lapis expand`) | ✅ concluído |
 | **M9** — `constraint`, `throw` e contexto de compilação | ✅ concluído |
-| M10–M11 — reflection, macros do prelude | ⏳ próximo |
+| **M10** — reflection nas duas fases | ✅ concluído |
+| M11 — macros de controle no prelude | ⏳ próximo |
 | M12–M14 — PE: especialização, análise, equivalência | ⬜ |
 
-**1419 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
+**1453 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
 evaluator, partial evaluator e CLI — entre eles uma **suíte de conformidade** de
-162 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
+167 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
 spec é um arquivo, e o nome do teste que falha já é o arquivo a abrir.
 
 A linguagem já roda programas de verdade: funções de primeira classe com
@@ -229,9 +230,30 @@ compilação dura: é estado do compilador exposto por primitivas, do mesmo jeit
 `print` expõe I/O. `contextGet` devolve `Result` porque chave ausente é falha
 esperada, e falha esperada aparece no tipo (spec §30).
 
-O que falta (M10 em diante): reflection, as macros do prelude, e o resto do
-partial evaluator — especialização de chamadas e eliminação de bounds check. O
-roteiro completo está em [`plans/`](plans/README.md).
+**Reflection** (M10) expõe os metadados do programa — nomes, campos, variantes —
+como valores comuns, nas duas fases:
+
+```c
+def Color = enum { Red, Green, Blue };
+
+print(reflect(Color).name);            // Color
+print(reflect(Color).kind);            // TypeKind.Enum
+print(reflect(Result).typeParameterNames);   // ["T", "E"]
+```
+
+O ponto é o que **não** existe aí: não há sistema de metadados paralelo. `TypeInfo`
+é um `type` declarado no `prelude.ls`, e tudo o que vale para struct vale para ele
+— igualdade estrutural, imutabilidade, indexação devolvendo `Result`. `reflect` é um
+intrínseco e não um binding porque o argumento tem de ser um **tipo**, e "um tipo"
+não é expressável na gramática de tipos; mesmo estatuto da indexação.
+
+E porque é tudo valor comum, o partial evaluator dobra reflection de graça:
+`reflect(User).name` residualiza como `"User"`, e o programa não paga nada por ter
+usado.
+
+O que falta (M11 em diante): as macros de controle no prelude e o resto do partial
+evaluator — especialização de chamadas e eliminação de bounds check. O roteiro
+completo está em [`plans/`](plans/README.md).
 
 ```bash
 $ lapis examples/hello.ls

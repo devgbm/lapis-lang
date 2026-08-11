@@ -55,5 +55,10 @@ public sealed record ConstraintOutcome(ConstraintStatus Status, string? Message 
 /// </summary>
 public interface IConstraintRunner
 {
-    ConstraintOutcome Run(BlockExpression constraint, MatchResult bindings);
+    /// <param name="invocation">
+    /// Onde a macro foi invocada. Não é só para diagnóstico: é o que decide o que
+    /// <c>reflect</c> enxerga lá dentro, porque uma macro só vê os tipos
+    /// declarados <b>acima</b> dela (Q8, plano 19 §19.3).
+    /// </param>
+    ConstraintOutcome Run(BlockExpression constraint, MatchResult bindings, SourceSpan invocation);
 }

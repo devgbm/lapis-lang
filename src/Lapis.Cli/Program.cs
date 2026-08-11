@@ -261,7 +261,7 @@ public static class Program
         }
 
         var specialized = PartialEvaluator.PartialEvaluator.Specialize(
-            result.Core!, environment, options: null, result.Typed);
+            result.Core!, environment, options: null, result.Typed, PreludeLoader.Load());
 
         stdout.Write(CoreSourcePrinter.Print(specialized.Residual));
 

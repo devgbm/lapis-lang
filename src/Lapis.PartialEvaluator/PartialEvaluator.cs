@@ -46,6 +46,7 @@ public sealed class PartialEvaluator
     private readonly Residualizer _residualizer;
     private readonly PEOptions _options;
     private readonly TypedProgram? _types;
+    private readonly PreludeScope? _prelude;
 
     private int _folded;
     private int _branchesEliminated;
@@ -58,10 +59,11 @@ public sealed class PartialEvaluator
     /// </summary>
     private int _lambdaDepth;
 
-    private PartialEvaluator(PEOptions options, TypedProgram? types)
+    private PartialEvaluator(PEOptions options, TypedProgram? types, PreludeScope? prelude)
     {
         _options = options;
         _types = types;
+        _prelude = prelude;
         _residualizer = new Residualizer(_factory);
     }
 
@@ -69,15 +71,21 @@ public sealed class PartialEvaluator
     /// Tabela de tipos, quando existe. É opcional de propósito: rodar o PE sobre um
     /// residual que ele mesmo produziu (idempotência) não deve exigir re-checagem.
     /// </param>
+    /// <param name="prelude">
+    /// Necessário só para dobrar <c>reflect</c>, que constrói um <c>TypeInfo</c> do
+    /// prelude (plano 19 §19.5). Sem ele, <c>reflect</c> atravessa intacto — o PE
+    /// deixa de progredir, nunca de estar correto.
+    /// </param>
     public static PartialEvaluationResult Specialize(
         CoreProgram program,
         StaticEnvironment? staticEnvironment = null,
         PEOptions? options = null,
-        TypedProgram? types = null)
+        TypedProgram? types = null,
+        PreludeScope? prelude = null)
     {
         ArgumentNullException.ThrowIfNull(program);
 
-        var evaluator = new PartialEvaluator(options ?? new PEOptions(), types);
+        var evaluator = new PartialEvaluator(options ?? new PEOptions(), types, prelude);
         var environment = staticEnvironment ?? StaticEnvironment.Root();
 
         var completion = evaluator.Specialize(program.Body, environment);
@@ -447,6 +455,17 @@ public sealed class PartialEvaluator
     /// </summary>
     private PECompletion SpecializeCall(CoreCall node, StaticEnvironment environment)
     {
+        // `reflect(T)` sobre um tipo conhecido é **inteiramente estático**: a
+        // definição não depende de valor de runtime nenhum (plano 19 §19.5). É um
+        // caso limpo em que uma feature aparentemente cara sai de graça depois da
+        // especialização — `reflect(User).name` residualiza como `"User"`.
+        if (_types?.ResolutionOf<ReflectResolution>(node) is { Definition: { } definition } reflect
+            && _prelude is not null)
+        {
+            return PECompletion.Normal(
+                Reduce(_prelude.MakeTypeInfo(definition, reflect.Arguments), node));
+        }
+
         var callee = Specialize(node.Callee, environment);
 
         if (!callee.FlowsThroughStatically)
@@ -551,6 +570,16 @@ public sealed class PartialEvaluator
         if (!target.FlowsThroughStatically)
         {
             return target;
+        }
+
+        // O alvo pode ser conhecido sem ser escrevível — um struct de reflection é
+        // o caso. Projetar um campo dele pode dar um valor que **é** escrevível, e
+        // aí a leitura inteira some do residual.
+        if (_options.ConstantFolding
+            && ValueOf(target.Result) is StructValue instance
+            && instance.Definition.IndexOfField(node.Name) is >= 0 and var index)
+        {
+            return PECompletion.Normal(Reduce(instance.Fields[index], node));
         }
 
         return PECompletion.Normal(new DynamicResult(
@@ -777,10 +806,24 @@ public sealed class PartialEvaluator
     /// expressão. Normalizar aqui é o que permite ao resto do especializador tratar
     /// <c>Static</c> como "posso emitir isto" sem verificar de novo.
     /// </summary>
+    /// <summary>
+    /// Um valor conhecido vira resultado. Quando ele não tem forma sintática, o
+    /// residual continua sendo a expressão original — mas o valor viaja junto em
+    /// <see cref="DynamicResult.Opaque"/>, porque conhecê-lo ainda decide o que
+    /// vem depois.
+    /// </summary>
     private PEResult Reduce(Value value, CoreExpr original) =>
         Residualizer.CanResidualize(value)
             ? new StaticResult(value)
-            : new DynamicResult(original, TypeOf(original));
+            : new DynamicResult(original, TypeOf(original)) { Opaque = value };
+
+    /// <summary>O valor por trás de um resultado, quando o PE o conhece.</summary>
+    private static Value? ValueOf(PEResult result) => result switch
+    {
+        StaticResult s => s.Value,
+        DynamicResult { Opaque: { } value } => value,
+        _ => null,
+    };
 
     /// <summary>Nó que atravessa o PE intacto.</summary>
     private PEResult Keep(CoreExpr node) => new DynamicResult(node, TypeOf(node));

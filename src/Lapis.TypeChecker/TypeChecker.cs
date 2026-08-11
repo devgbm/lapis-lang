@@ -20,6 +20,9 @@ namespace Lapis.TypeChecker;
 /// </summary>
 public sealed class TypeChecker
 {
+    /// <summary>O nome do intrínseco de reflection (plano 19 §19.2).</summary>
+    public const string ReflectName = "reflect";
+
     private readonly DiagnosticBag _diagnostics;
     private readonly TypeResolver _types;
     private readonly Dictionary<int, LapisType> _nodeTypes = [];
@@ -633,6 +636,11 @@ public sealed class TypeChecker
 
     private LapisType CheckCall(CoreCall node, Scope scope)
     {
+        if (IsReflectIntrinsic(node.Callee, scope))
+        {
+            return CheckReflect(node, scope);
+        }
+
         var calleeType = CheckExpression(node.Callee, scope);
 
         var argumentTypes = ImmutableArray.CreateBuilder<LapisType>(node.Arguments.Length);
@@ -714,6 +722,93 @@ public sealed class TypeChecker
 
         return instantiated.Return;
     }
+
+    // ---------------------------------------------------------- reflection
+
+    /// <summary>
+    /// <c>reflect</c> é um <b>intrínseco</b>, não um binding (plano 19 §19.2).
+    ///
+    /// Precisa ser: o argumento tem de ser um tipo, e "um tipo" não é expressável
+    /// na gramática de tipos — não há como escrever a assinatura de <c>reflect</c>
+    /// em LapisLang. É o mesmo estatuto da indexação, que produz
+    /// <c>Result&lt;T, IndexError&gt;</c> sem existir um <c>fn(T[], Int) Result</c>
+    /// escrito em lugar nenhum (spec §21).
+    ///
+    /// Um binding do usuário chamado <c>reflect</c> <b>vence</b>: quem escreve
+    /// <c>def reflect = fn(x: Int) Int { ... }</c> quis a sua função, e sombrear é
+    /// permitido em toda parte (plano 09 §9.4).
+    /// </summary>
+    private static bool IsReflectIntrinsic(CoreExpr callee, Scope scope) =>
+        callee is CoreVariable { Name: ReflectName } && !scope.TryLookup(ReflectName, out _);
+
+    private LapisType CheckReflect(CoreCall node, Scope scope)
+    {
+        if (node.Arguments.Length != 1)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.ArgumentCountMismatch,
+                node.Span,
+                $"esperado 1 argumento, fornecidos {node.Arguments.Length}");
+
+            return ErrorType.Instance;
+        }
+
+        var argument = node.Arguments[0];
+
+        // Em compile time, os tipos do **programa** não estão em escopo — o
+        // checker ainda não rodou sobre ele. O que existe é o nome, e os
+        // metadados saem da tabela de declarações (§19.3). Tipos do prelude
+        // (`Result`, `Option`) continuam pelo caminho normal, porque esses já
+        // estão resolvidos.
+        if (_compileTime is not null
+            && argument is CoreVariable variable
+            && !scope.TryLookup(variable.Name, out _))
+        {
+            if (!_compileTime.Declarations.ContainsKey(variable.Name))
+            {
+                _diagnostics.ReportError(
+                    DiagnosticCodes.TypeNotDeclaredYet,
+                    argument.Span,
+                    $"o tipo '{variable.Name}' não foi declarado neste ponto",
+                    new DiagnosticNote("uma macro só enxerga o que já foi declarado acima dela (Q8)"));
+
+                return ErrorType.Instance;
+            }
+
+            _nodeTypes[argument.NodeId] = _prelude!.TypeInfoType;
+            _resolutions[node.NodeId] = new ReflectResolution(null, variable.Name);
+
+            return _prelude.TypeInfoType;
+        }
+
+        var argumentType = CheckExpression(argument, scope);
+
+        if (argumentType is ErrorType or NeverType)
+        {
+            return argumentType;
+        }
+
+        // Um `MetaType` genérico **não instanciado** é aceito de propósito:
+        // `reflect(Result)` descreve a declaração, com `typeParameterNames`
+        // preenchido. É o que uma constraint precisa — nomes e aridade, não os
+        // argumentos de uma instância.
+        if (argumentType is not MetaType meta)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.ReflectExpectsType,
+                argument.Span,
+                $"'reflect' espera um tipo, encontrado {argumentType.ToDisplayString()}");
+
+            return ErrorType.Instance;
+        }
+
+        _resolutions[node.NodeId] = new ReflectResolution(meta.Definition, Arguments: meta.Arguments);
+
+        return RequirePrelude().TypeInfoType;
+    }
+
+    private PreludeScope RequirePrelude() =>
+        _prelude ?? throw new InternalCompilerException("'reflect' exige o prelude carregado");
 
     // --------------------------------------------------- controle e operadores
 

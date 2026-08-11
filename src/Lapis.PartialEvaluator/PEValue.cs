@@ -52,6 +52,21 @@ public sealed record StaticResult(Value Value) : PEResult
 
 public sealed record DynamicResult(CoreExpr Residual, LapisType ResultType) : PEResult
 {
+    /// <summary>
+    /// Um valor que o PE <b>conhece</b> mas não sabe escrever.
+    ///
+    /// Um struct ou um enum construído não têm forma sintática que não cite um
+    /// nome de tipo — e esse nome pode estar sombreado no ponto de emissão
+    /// (<see cref="Residualizer.CanResidualize"/>). O residual, então, continua
+    /// sendo a expressão original; mas saber o valor ainda serve para **decidir**
+    /// o que vem depois, e é isso que faz <c>reflect(User).name</c> dobrar para
+    /// <c>"User"</c> sem que <c>reflect(User)</c> jamais vire um literal de struct.
+    ///
+    /// Só é preenchido quando a expressão residual é pura e avaliá-la produz
+    /// exatamente este valor. Fora disso, <c>null</c>.
+    /// </summary>
+    public Value? Opaque { get; init; }
+
     public override LapisType Type => ResultType;
 }
 

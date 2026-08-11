@@ -17,19 +17,38 @@ namespace Lapis.Runtime;
 /// </summary>
 public sealed class CompileTimeScope
 {
-    public CompileTimeScope(CompileContext context, PreludeScope prelude)
+    public CompileTimeScope(
+        CompileContext context,
+        PreludeScope prelude,
+        IReadOnlyDictionary<string, StructValue>? declarations = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(prelude);
 
         Context = context;
         Bindings = CompileTimeNatives.For(context, prelude);
+        Declarations = declarations ?? ImmutableDictionary<string, StructValue>.Empty;
     }
 
     public CompileContext Context { get; }
 
     /// <summary>As nativas de contexto, com nome, tipo e valor já resolvidos.</summary>
     public ImmutableArray<PreludeBinding> Bindings { get; }
+
+    /// <summary>
+    /// Os tipos que o programa declarou <b>até este ponto</b>, já como valores
+    /// <c>TypeInfo</c> (plano 19 §19.3).
+    ///
+    /// São o que <c>reflect</c> enxerga dentro de um <c>constraint</c>, e a
+    /// fidelidade aqui é <b>sintática</b>: o checker ainda não rodou sobre o
+    /// programa, então <c>typeName</c> é o tipo <i>como escrito</i>. Para o que uma
+    /// constraint precisa — nomes de campos, de variantes e aridade — isso basta.
+    ///
+    /// Eles <b>não</b> entram no escopo como bindings: uma constraint pode
+    /// refletir sobre um tipo do programa, não usá-lo. `Color` sozinho continua
+    /// sendo nome livre lá dentro.
+    /// </summary>
+    public IReadOnlyDictionary<string, StructValue> Declarations { get; }
 }
 
 /// <summary>

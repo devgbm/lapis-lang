@@ -407,3 +407,15 @@ ou nomes resolvidos pelo checker.
 `contextHas`, `contextGet`, `contextPut` e `contextKeys` também não: são nativas, e
 só existem no escopo de um `constraint` (plano 18). Num programa normal são nomes
 livres, e recebem o `LAP0201` que qualquer outro receberia.
+
+`reflect` **também não é reservada**, e nem é binding: é um **intrínseco**
+reconhecido pelo checker numa posição de chamada (plano 19). Um `def reflect = ...`
+do usuário vence — sombrear é permitido em toda parte, e quem escreve a própria
+função `reflect` quis a sua. Ela não pode ser um binding comum porque o argumento
+tem de ser um **tipo**, e "um tipo" não é expressável na gramática de tipos: não há
+como escrever a assinatura de `reflect` em LapisLang. É o mesmo estatuto da
+indexação, que produz `Result<T, IndexError>` sem existir assinatura escrita para
+ela (spec §21).
+
+`TypeInfo`, `FieldInfo`, `VariantInfo` e `TypeKind` são bindings do prelude, como
+`Result`.

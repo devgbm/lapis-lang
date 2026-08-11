@@ -27,19 +27,28 @@ namespace Lapis.Cli;
 public sealed class ConstraintRunner : IConstraintRunner
 {
     private readonly PreludeScope _prelude;
-    private readonly CompileTimeScope _compileTime;
+    private readonly DeclarationTable _declarations;
     private readonly DiagnosticBag _diagnostics;
     private readonly RuntimeContext _context;
 
-    public ConstraintRunner(PreludeScope prelude, DiagnosticBag diagnostics, IOutput output)
+    /// <param name="declarations">
+    /// Os <c>type</c> e <c>enum</c> do programa, lidos da sintaxe. É o que
+    /// <c>reflect</c> enxerga dentro de um <c>constraint</c> (plano 19 §19.3).
+    /// </param>
+    public ConstraintRunner(
+        PreludeScope prelude,
+        DeclarationTable declarations,
+        DiagnosticBag diagnostics,
+        IOutput output)
     {
         ArgumentNullException.ThrowIfNull(prelude);
+        ArgumentNullException.ThrowIfNull(declarations);
         ArgumentNullException.ThrowIfNull(diagnostics);
 
         _prelude = prelude;
+        _declarations = declarations;
         _diagnostics = diagnostics;
         Context = new CompileContext();
-        _compileTime = new CompileTimeScope(Context, prelude);
         _context = new RuntimeContext(output);
     }
 
@@ -49,10 +58,16 @@ public sealed class ConstraintRunner : IConstraintRunner
     /// </summary>
     public CompileContext Context { get; }
 
-    public ConstraintOutcome Run(BlockExpression constraint, MatchResult bindings)
+    public ConstraintOutcome Run(BlockExpression constraint, MatchResult bindings, SourceSpan invocation)
     {
         ArgumentNullException.ThrowIfNull(constraint);
         ArgumentNullException.ThrowIfNull(bindings);
+
+        // O ambiente é montado por invocação, e não uma vez só, porque o que
+        // `reflect` enxerga depende de **onde** a macro foi invocada: uma macro só
+        // vê os tipos declarados acima dela (Q8).
+        var declarations = WithCapturedNames(_declarations.VisibleAt(invocation.Start), bindings);
+        var compileTime = new CompileTimeScope(Context, _prelude, declarations);
 
         // Diagnósticos da constraint entram no mesmo saco do programa: uma
         // constraint que não compila é um erro do arquivo, com o span dela.
@@ -66,14 +81,14 @@ public sealed class ConstraintRunner : IConstraintRunner
             return ConstraintOutcome.Failed;
         }
 
-        var typed = TypeChecker.TypeChecker.Check(core, _prelude, _diagnostics, _compileTime);
+        var typed = TypeChecker.TypeChecker.Check(core, _prelude, _diagnostics, compileTime);
 
         if (_diagnostics.Count != before)
         {
             return ConstraintOutcome.Failed;
         }
 
-        var evaluation = Evaluator.Evaluator.Run(typed, _prelude, _context, _compileTime);
+        var evaluation = Evaluator.Evaluator.Run(typed, _prelude, _context, compileTime);
 
         if (evaluation.Status == Evaluator.ExecutionStatus.Completed)
         {
@@ -94,6 +109,36 @@ public sealed class ConstraintRunner : IConstraintRunner
         }
 
         return ConstraintOutcome.Rejected(evaluation.Message!, evaluation.Span ?? constraint.Span);
+    }
+
+    /// <summary>
+    /// Uma captura de <c>Identifier</c> que nomeia um tipo declarado passa a
+    /// valer como esse tipo dentro do <c>reflect</c>.
+    ///
+    /// Sem isto, <c>match Identifier:nome ... constraint { reflect(nome) }</c>
+    /// procuraria um tipo literalmente chamado <c>nome</c> — e a macro que
+    /// valida <b>o tipo que recebeu</b>, que é o uso inteiro de reflection em
+    /// compile time, não teria como ser escrita.
+    ///
+    /// Não é reflection sobre AST (que fica para depois): a captura é um nome, e
+    /// <c>reflect</c> já opera sobre nomes. O que se faz aqui é resolvê-lo.
+    /// </summary>
+    private static IReadOnlyDictionary<string, StructValue> WithCapturedNames(
+        IReadOnlyDictionary<string, StructValue> declarations,
+        MatchResult bindings)
+    {
+        var aliases = declarations.ToDictionary(StringComparer.Ordinal);
+
+        foreach (var (name, binding) in bindings.Bindings)
+        {
+            if (binding is SingleBinding { Node: IdentifierExpression captured }
+                && declarations.TryGetValue(captured.Name, out var info))
+            {
+                aliases[name] = info;
+            }
+        }
+
+        return aliases;
     }
 
     /// <summary>

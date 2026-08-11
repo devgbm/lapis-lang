@@ -274,7 +274,19 @@ definir alocará os seus.
 | Código | Severidade | Mensagem |
 |---|---|---|
 | `LAP0601` | error | `reflect` espera um tipo, encontrado `{0}` |
-| `LAP0602` | error | tipo `{0}` não foi declarado neste ponto |
+| `LAP0602` | error | o tipo `{0}` não foi declarado neste ponto |
+
+Os dois são do **checker**: `reflect` é um intrínseco checado especialmente, e a
+pergunta "isto é um tipo?" é de tipo.
+
+`LAP0602` é exclusivo de compile time. Dentro de um `constraint`, os tipos do
+programa vêm da tabela de declarações sintáticas — o checker ainda não rodou sobre
+o programa —, e a tabela respeita a ordem do arquivo (Q8): um tipo declarado
+**abaixo** da invocação não está lá, e é isso que o código diz. Fora de um
+`constraint`, um nome que não existe recebe o `LAP0201` de sempre.
+
+Um número de argumentos errado em `reflect` usa `LAP0221`, o mesmo de qualquer
+chamada: não é um erro diferente por ser intrínseco.
 
 ---
 

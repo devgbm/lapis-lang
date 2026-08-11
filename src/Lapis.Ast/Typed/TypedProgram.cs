@@ -45,6 +45,25 @@ public sealed record FieldResolution(int FieldIndex) : Resolution;
 public sealed record TypeDefinitionResolution(TypeDefinition Definition) : Resolution;
 
 /// <summary>
+/// O alvo de um <c>reflect(...)</c> (plano 19 §19.2).
+///
+/// <see cref="Definition"/> é a fonte <b>resolvida</b>: o tipo já checado.
+/// <see cref="SyntacticName"/> é a fonte <b>sintática</b>, usada em compile time,
+/// quando o checker ainda não rodou sobre o programa — aí o que existe é o nome, e
+/// os metadados vêm da tabela de declarações. Exatamente um dos dois é
+/// preenchido.
+/// </summary>
+/// <param name="Arguments">
+/// Os argumentos genéricos escritos, quando há. <c>reflect(Box)</c> descreve a
+/// declaração — campo de tipo <c>T</c>; <c>reflect(Box&lt;Int&gt;)</c> descreve a
+/// instância, campo de tipo <c>Int</c>.
+/// </param>
+public sealed record ReflectResolution(
+    TypeDefinition? Definition,
+    string? SyntacticName = null,
+    ImmutableArray<GenericArgument> Arguments = default) : Resolution;
+
+/// <summary>
 /// Saída do type checker: a mesma Core AST, mais tabelas indexadas por
 /// <see cref="CoreExpr.NodeId"/>.
 ///

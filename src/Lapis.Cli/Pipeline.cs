@@ -95,7 +95,12 @@ public static class Pipeline
         //
         // O prelude é carregado **antes**: um `constraint` é código LapisLang e
         // roda no mesmo escopo raiz do resto (plano 18 §18.1).
-        var constraints = new ConstraintRunner(scope, diagnostics, compileTimeOutput ?? new StringOutput());
+        var constraints = new ConstraintRunner(
+            scope,
+            DeclarationTable.Of(surface, scope),
+            diagnostics,
+            compileTimeOutput ?? new StringOutput());
+
         surface = Macros.MacroExpander.Expand(surface, diagnostics, constraints);
 
         if (stopAfter == PipelineStage.Expand || diagnostics.HasErrors)

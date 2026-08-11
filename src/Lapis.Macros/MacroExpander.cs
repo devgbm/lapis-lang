@@ -219,7 +219,7 @@ public sealed class MacroExpander
                 $"'@{invocation.Name}' tem constraint, mas a expansão não recebeu executor");
         }
 
-        var outcome = _constraints.Run(rule.Constraint, bindings);
+        var outcome = _constraints.Run(rule.Constraint, bindings, invocation.Span);
 
         switch (outcome.Status)
         {
