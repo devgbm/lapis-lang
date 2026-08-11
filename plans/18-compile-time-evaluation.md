@@ -245,8 +245,86 @@ O último é o teste que garante a separação de §21 da proposta.
 
 ## Critérios de conclusão
 
-- [ ] `@post` com deduplicação de rota funcionando ponta a ponta.
-- [ ] `throw` rejeitado fora de `constraint`; contexto ausente do runtime.
-- [ ] `ArchitectureTests` verde: sem ciclo `Macros → TypeChecker → Macros`.
-- [ ] Diagnóstico de constraint com span da invocação e nota de origem.
-- [ ] O evaluator do plano 08 usado **sem fork** — nenhuma segunda semântica.
+- [x] `@post` com deduplicação de rota funcionando ponta a ponta.
+- [x] `throw` rejeitado fora de `constraint`; contexto ausente do runtime.
+- [x] `ArchitectureTests` verde: sem ciclo `Macros → TypeChecker → Macros`.
+- [x] Diagnóstico de constraint com span da invocação e nota de origem.
+- [x] O evaluator do plano 08 usado **sem fork** — nenhuma segunda semântica.
+
+---
+
+## O que a implementação mudou no plano
+
+### 1. `IConstraintRunner` não recebe o `CompileContext`
+
+O plano previa `Run(constraint, bindings, CompileContext)`. O contexto saiu da
+assinatura: quem tem uma compilação inteira em mãos é a **implementação**, e
+passá-lo a cada chamada obrigaria `Lapis.Macros` a referenciar `Lapis.Runtime` só
+para repassar um objeto que nunca lê. A implementação cria um contexto por
+instância, e uma instância por compilação — o isolamento entre compilações sai de
+graça disso.
+
+### 2. `ConstraintOutcome` tem três resultados, não dois
+
+`Ok` e `Rejected` não cobrem o caso em que a **própria constraint** não compila.
+Sem um terceiro estado, um erro de tipo dentro da macro viraria "esta construção é
+inválida" — a leitura errada, e com a mensagem errada. `Failed` diz "os
+diagnósticos já foram reportados, fique calado", e é o que faz
+`LAP0503` significar sempre uma rejeição deliberada.
+
+### 3. O ambiente de compile time virou um tipo
+
+A tabela do §18.1 ("uma linguagem, um evaluator, dois ambientes") virou
+`CompileTimeScope`, passado ao checker e ao evaluator. Não-nulo é compile time:
+as nativas de contexto entram no escopo e `throw` é permitido. Nulo é runtime, e
+nenhuma das duas coisas existe. A alternativa — dois parâmetros soltos, um de
+bindings e um booleano — deixaria construir o estado impossível de um ambiente que
+permite `throw` mas não tem contexto.
+
+### 4. `throw` é reservada de verdade, e o `LAP0507` é do checker
+
+Reservar `throw` sempre, e não só dentro de `constraint`, é o que permite
+responder "'throw' só é válido dentro de 'constraint'" em vez de deixar a linha
+virar uma expressão malformada. Onde ela vale é pergunta de tipo, não de léxico.
+
+### 5. O que uma `constraint` imprime **não** é saída do programa
+
+Não estava no plano, e apareceu na primeira execução da suíte: um `print` dentro
+de `constraint` ia parar na mesma saída do programa, e com isso a propriedade de
+equivalência do partial evaluator quebrava — o programa residual não tem macros,
+logo não reimprime nada.
+
+A correção é a leitura certa do que aquilo é: **saída do compilador**. O CLI a
+manda para `stderr`, junto dos diagnósticos, e a suíte de conformidade continua
+afirmando só o que o programa imprime. `Pipeline.Compile` ganhou um
+`compileTimeOutput` separado.
+
+### 6. `ArchitectureTests` **não** foi quebrado
+
+O plano 17 dizia que "o plano 18 quebra isso de propósito". Não quebrou: com a
+interface declarada em `Lapis.Macros` e implementada no orquestrador,
+`Lapis.Macros` continua sem enxergar checker, evaluator nem runtime. O teste ficou
+como estava, e ganhou um irmão que trava o contrato de cada lado da fronteira.
+
+---
+
+## O que ficou de fora
+
+**Capturas não-literais na `constraint`.** Um `Expression:e` capturou uma
+**árvore**, e lê-la como valor é reflection — plano 19. Até lá o nome
+simplesmente não está no escopo da constraint, e quem o usar recebe o `LAP0201`
+normal. `@post`, que é o caso canônico, só precisa de `Str:path`.
+
+**Nota de "registro anterior" automática.** O §18.6 mostra o diagnóstico com uma
+nota apontando o registro anterior. A nota existe, mas aponta o ponto da
+**constraint** onde a rejeição nasceu; apontar o *span do registro anterior*
+depende de guardá-lo no contexto, e o contexto guarda `Str`. Uma macro que queira
+isso pode compor a informação na mensagem do `throw` — que é exatamente o que o
+§18.6 diz ao justificar `contextPut` aceitar valor arbitrário.
+
+**Especializar a `constraint` com o partial evaluator.** O §"Por que não uma
+linguagem de macro separada" observa que o PE roda em `constraint` porque é o mesmo
+Core. Roda — `CoreThrow` está no especializador, e é tratado como fluxo de
+controle, nunca dobrado. Mas o `ConstraintRunner` não chama o PE: uma constraint é
+executada uma vez por invocação, e especializá-la antes custaria mais do que
+executá-la.

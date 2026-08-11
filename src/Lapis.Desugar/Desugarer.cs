@@ -338,6 +338,9 @@ public sealed class Desugarer
             case ReturnExpression n:
                 return _factory.Return(n.Span, n.Value is null ? null : DesugarExpression(n.Value));
 
+            case ThrowExpression n:
+                return _factory.Throw(n.Span, DesugarExpression(n.Value));
+
             case FunctionExpression n:
                 return DesugarFunction(n);
 

@@ -169,6 +169,17 @@ public sealed class CoreReturn(int nodeId, SourceSpan span, CoreExpr? value) : C
     public CoreExpr? Value { get; } = value;
 }
 
+/// <summary>
+/// <c>throw e</c> (spec de macros §8.2). Sobrevive ao desugar como nó próprio
+/// porque o evaluator precisa distinguir "a constraint rejeitou" de qualquer
+/// outro aborto: a mensagem é <b>do programa</b>, e é ela que vira
+/// <c>LAP0503</c>.
+/// </summary>
+public sealed class CoreThrow(int nodeId, SourceSpan span, CoreExpr value) : CoreExpr(nodeId, span)
+{
+    public CoreExpr Value { get; } = value;
+}
+
 /// <summary>O ramo <c>Else</c> está sempre presente; o desugar insere <c>()</c>.</summary>
 public sealed class CoreIf(
     int nodeId,

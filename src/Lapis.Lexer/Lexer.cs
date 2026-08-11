@@ -28,6 +28,10 @@ public sealed class Lexer
         ["else"] = TokenKind.ElseKeyword,
         ["match"] = TokenKind.MatchKeyword,
         ["goto"] = TokenKind.GotoKeyword,
+        ["macro"] = TokenKind.MacroKeyword,
+        ["expand"] = TokenKind.ExpandKeyword,
+        ["constraint"] = TokenKind.ConstraintKeyword,
+        ["throw"] = TokenKind.ThrowKeyword,
     };
 
     private readonly SourceText _source;
@@ -160,6 +164,18 @@ public sealed class Lexer
         }
     }
 
+    /// <summary>
+    /// <c>[A-Za-z_][A-Za-z0-9_]*</c>, mais o sufixo de higiene <c>@dígitos</c>.
+    ///
+    /// O sufixo existe porque a expansão de macro renomeia o que introduz
+    /// (<c>temp</c> → <c>temp@1</c>, spec de macros §9) e o resultado precisa
+    /// continuar sendo <b>reparseável</b>: o printer da Core imprime programas que
+    /// voltam a ser lidos, e é disso que o <c>lapis pe</c> depende.
+    ///
+    /// <c>@</c> só continua um identificador quando já se leu ao menos um
+    /// caractere e o próximo é dígito — <c>@log</c> em posição inicial continua
+    /// sendo a invocação de macro, sem ambiguidade.
+    /// </summary>
     private Token ReadIdentifierOrKeyword()
     {
         var start = _position;
@@ -167,6 +183,16 @@ public sealed class Lexer
         while (!AtEnd && (char.IsAsciiLetterOrDigit(Current) || Current == '_'))
         {
             _position++;
+        }
+
+        if (!AtEnd && Current == '@' && char.IsAsciiDigit(Lookahead) && _position > start)
+        {
+            _position++;
+
+            while (!AtEnd && char.IsAsciiDigit(Current))
+            {
+                _position++;
+            }
         }
 
         var span = SourceSpan.FromBounds(start, _position);
@@ -320,6 +346,7 @@ public sealed class Lexer
             ',' => (TokenKind.Comma, 1),
             ';' => (TokenKind.Semicolon, 1),
             '.' => (TokenKind.Dot, 1),
+            '@' => (TokenKind.At, 1),
             '+' => (TokenKind.Plus, 1),
             '-' => (TokenKind.Minus, 1),
             '*' => (TokenKind.Star, 1),

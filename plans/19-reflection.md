@@ -235,8 +235,87 @@ array de metadados devolve `Result` como qualquer outro (§21).
 
 ## Critérios de conclusão
 
-- [ ] `TypeInfo` e companhia declarados em `prelude.ls`, não em C#.
-- [ ] `reflect` funcionando nas duas fases, com a diferença de fidelidade testada.
-- [ ] `reflect` de não-tipo rejeitado com código e span.
-- [ ] `Reflect_IsFoldedByPE` verde quando o M6 existir.
-- [ ] Nenhuma API de mutação exposta.
+- [x] `TypeInfo` e companhia declarados em `prelude.ls`, não em C#.
+- [x] `reflect` funcionando nas duas fases, com a diferença de fidelidade testada.
+- [x] `reflect` de não-tipo rejeitado com código e span.
+- [x] `Reflect_IsFoldedByPE` verde quando o M6 existir.
+- [x] Nenhuma API de mutação exposta.
+
+---
+
+## O que a implementação mudou no plano
+
+### 1. `reflect(Box<Int>)` descreve a instância
+
+O §19.3 promete que em runtime, "depois de `Box<Int>`", o campo `value` tem
+`typeName: "Int"`. Isso não sai de graça: a `TypeDefinition` guarda a
+**declaração**, onde o campo tem tipo `T`. Foi preciso aplicar os argumentos
+genéricos escritos aos tipos dos campos e das variantes.
+
+A substituição já existia — `TypeSubstitution`, do M4 —, mas morava em
+`Lapis.TypeChecker`. Ela é uma operação **pura sobre o modelo de tipos**, e o
+checker foi só quem precisou dela primeiro; mudou para `Lapis.Ast.Types`, onde o
+runtime também a alcança. Nenhum comportamento mudou com a mudança de casa.
+
+O resultado é que as duas leituras convivem, e as duas são legítimas:
+`reflect(Box)` descreve a declaração, `reflect(Box<Int>)` a instância.
+
+### 2. Uma captura de `Identifier` resolve para o tipo que ela nomeia
+
+Não estava no plano, e sem isso reflection em compile time seria curiosidade:
+
+```c
+macro exige_variantes
+    match Identifier:nome
+    constraint { ... reflect(nome) ... }
+```
+
+Sem a resolução, `reflect(nome)` procuraria um tipo literalmente chamado `nome`.
+A macro que valida **o tipo que recebeu** — o uso inteiro de reflection numa
+constraint — não teria como ser escrita.
+
+Não é reflection sobre AST, que continua fora de escopo: a captura é um nome, e
+`reflect` já opera sobre nomes. O que se faz é resolvê-lo.
+
+### 3. O `IConstraintRunner` recebe o span da invocação
+
+Q8 exige que uma macro só enxergue os tipos declarados **acima** dela, e decidir
+isso pede saber onde ela foi invocada. O span entrou na assinatura do runner (M9),
+e o ambiente de compile time passou a ser montado por invocação em vez de uma vez
+por compilação.
+
+### 4. O PE ganhou "conhecido, mas sem forma sintática"
+
+O §19.5 diz que o partial evaluator "dobra a chamada inteira em um `StructValue`
+literal". Isso contradiz uma decisão já tomada no M7: struct e enum **não** são
+residualizáveis, porque a expressão que os reconstrói cita um nome de tipo que
+pode estar sombreado no ponto de emissão.
+
+As duas coisas se conciliam sem abrir mão de nenhuma: `DynamicResult` ganhou um
+`Opaque`, o valor que o PE conhece mas não sabe escrever. O residual continua
+sendo `reflect(User)`; a projeção `reflect(User).name` dobra para `"User"`, que é
+um `Str` e portanto escrevível. O critério `Reflect_IsFoldedByPE` fica verde sem
+que um literal de struct seja emitido em lugar nenhum.
+
+O mecanismo é geral, não específico de reflection: qualquer valor conhecido e
+opaco passa a poder ser projetado. `[10,20,30][1]` continua não dobrando — falta
+o outro lado, que é o plano 14.
+
+---
+
+## O que ficou de fora
+
+**`reflect` sobre expressões e sobre a AST.** Uma captura `Expression:e` continua
+invisível na constraint. Ler uma árvore como valor exige um modelo de metadados de
+AST, que é uma superfície inteira, e não há consumidor.
+
+**`FunctionInfo`.** Como o plano já dizia: sem consumidor, e com perguntas por
+responder — reflectir uma closure expõe o ambiente capturado? Uma função genérica
+reflete a assinatura genérica ou a instanciada?
+
+**Contar elementos de um array.** `reflect(T).variants` é um array, e a linguagem
+ainda não tem como perguntar o tamanho de um: `array_length` está previsto no
+plano 09 mas nunca foi implementado, e não é deste plano implementá-lo. Uma
+constraint que queira "tem pelo menos uma variante" escreve
+`match info.variants[0] { Result.Ok(_) => ..., Result.Err(_) => ... }`, que é o
+que o caso de conformidade faz.

@@ -14,6 +14,7 @@ statement      = def_statement
                | assign_statement
                | goto_statement
                | label_statement
+               | macro_declaration
                | expr_statement ;
 
 def_statement  = ( "def" | "var" ) IDENT ( ":" type )? "=" expression ";" ;
@@ -65,7 +66,8 @@ um bloco, se o próximo token é `}` ela é a cauda; se é `;`, é um statement.
 ```ebnf
 expression     = return_expr ;
 
-return_expr    = "return" expression? 
+return_expr    = "return" expression?
+               | "throw" expression          (* compile time — A.10b, plano 18 *)
                | or_expr ;
 
 or_expr        = and_expr ( "||" and_expr )* ;
@@ -296,12 +298,14 @@ block_comment  = "/*" ... "*/" ;              (* não aninha *)
 
 ## A.10b Macros e controle de fluxo — proposta
 
-Da [spec de macros](../spec/lapislang-macros-0.1.md), planos 16–20. **Ainda não
-implementada**; entra aqui para que a gramática tenha um lugar só.
+Da [spec de macros](../spec/lapislang-macros-0.1.md), planos 16–20.
+
+**`macro_declaration`, o padrão, a invocação (M8), `constraint` e `throw` (M9)
+estão implementados**; o resto desta seção segue proposta.
 
 ```ebnf
 (* declaração nomeada — Q19: macro não é valor, não passa por `def` *)
-macro_decl     = "macro" IDENT macro_rule+ ";" ;
+macro_declaration = "macro" IDENT macro_rule+ ";" ;
 macro_rule     = "match" macro_pattern
                  ( "constraint" block )?
                  "expand" block ;
@@ -316,7 +320,11 @@ repetition     = ( IDENT ":" IDENT | "(" macro_pattern ")" ) "*" "separado" "por
 (* invocação *)
 macro_call     = "@" IDENT macro_tokens ;
 
-(* compile time — plano 18 *)
+(* compile time — plano 18. Vive na cadeia de expressões (A.3), no mesmo nível
+   de `return`: os dois têm tipo `Never` e cabem em qualquer posição.
+
+   Ao contrário de `return`, o valor é **obrigatório**: a mensagem é o
+   diagnóstico, e um `throw;` não teria o que dizer. *)
 throw_expr     = "throw" expression ;
 
 ```
@@ -343,7 +351,7 @@ dos demais statements.
 
 | Nível | Construção | Assoc. |
 |---|---|---|
-| 0 | `return` | prefixo |
+| 0 | `return`, `throw` | prefixo |
 | 1 | `\|\|` | esquerda |
 | 2 | `&&` | esquerda |
 | 3 | `==` `!=` | esquerda |
@@ -359,7 +367,12 @@ dos demais statements.
 
 ```text
 def  var  fn  type  enum  return  true  false  if  else  match  goto
+macro  expand  constraint  throw
 ```
+
+`macro`, `expand` e `constraint` entraram no M8; `throw`, no M9. `@` passou a ser token: inicia
+uma invocação de macro, e — só depois do primeiro caractere de um identificador,
+seguido de dígitos — é o sufixo de higiene que a expansão produz (`temp@1`).
 
 `var` declara um binding reatribuível (Q25); `def` continua definitivo. A
 atribuição é **statement**: `=` nunca aparece em posição de expressão, então
@@ -373,7 +386,12 @@ identificadores seguidos nunca formam expressão. `goto` é reservada de verdade
 ninguém a usa como nome, e reservá-la é o que permite dizer "esperado um rótulo"
 em vez de deixar a linha virar uma expressão malformada.
 
-A proposta de macros acrescenta `macro`, `constraint`, `expand` e `throw`.
+`throw` é reservada de verdade, apesar de só ser **válida** dentro de um
+`constraint`: onde ela vale é pergunta do checker (`LAP0507`), não do lexer, e
+tratá-la como contextual só trocaria um diagnóstico exato por uma expressão
+malformada. Quem escreve `throw` fora de lugar recebe a explicação, não o
+silêncio.
+
 **Nada sai:** `if` e `match` continuam construções do compilador (Q22), e
 `match` é reaproveitada dentro de `macro`, onde inicia uma regra — sem ambiguidade,
 porque ali só pode ser isso.
@@ -382,6 +400,22 @@ porque ali só pode ser isso.
 `@unless` e `@while` são construídos.
 
 
-`Int`, `Float`, `Bool`, `Str`, `Void`, `Result`, `IndexError`, `Option`, `print`,
-`array_length` **não** são reservadas — são bindings do prelude ou nomes
-resolvidos pelo checker.
+`Int`, `Float`, `Bool`, `Str`, `Void`, `Result`, `IndexError`, `ContextError`,
+`Option`, `print`, `array_length` **não** são reservadas — são bindings do prelude
+ou nomes resolvidos pelo checker.
+
+`contextHas`, `contextGet`, `contextPut` e `contextKeys` também não: são nativas, e
+só existem no escopo de um `constraint` (plano 18). Num programa normal são nomes
+livres, e recebem o `LAP0201` que qualquer outro receberia.
+
+`reflect` **também não é reservada**, e nem é binding: é um **intrínseco**
+reconhecido pelo checker numa posição de chamada (plano 19). Um `def reflect = ...`
+do usuário vence — sombrear é permitido em toda parte, e quem escreve a própria
+função `reflect` quis a sua. Ela não pode ser um binding comum porque o argumento
+tem de ser um **tipo**, e "um tipo" não é expressável na gramática de tipos: não há
+como escrever a assinatura de `reflect` em LapisLang. É o mesmo estatuto da
+indexação, que produz `Result<T, IndexError>` sem existir assinatura escrita para
+ela (spec §21).
+
+`TypeInfo`, `FieldInfo`, `VariantInfo` e `TypeKind` são bindings do prelude, como
+`Result`.

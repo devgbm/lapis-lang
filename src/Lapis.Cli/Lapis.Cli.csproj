@@ -17,6 +17,7 @@
     <ProjectReference Include="../Lapis.Ast/Lapis.Ast.csproj" />
     <ProjectReference Include="../Lapis.Lexer/Lapis.Lexer.csproj" />
     <ProjectReference Include="../Lapis.Parser/Lapis.Parser.csproj" />
+    <ProjectReference Include="../Lapis.Macros/Lapis.Macros.csproj" />
     <ProjectReference Include="../Lapis.Desugar/Lapis.Desugar.csproj" />
     <ProjectReference Include="../Lapis.TypeChecker/Lapis.TypeChecker.csproj" />
     <ProjectReference Include="../Lapis.Runtime/Lapis.Runtime.csproj" />

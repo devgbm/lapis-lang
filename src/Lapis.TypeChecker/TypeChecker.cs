@@ -20,6 +20,9 @@ namespace Lapis.TypeChecker;
 /// </summary>
 public sealed class TypeChecker
 {
+    /// <summary>O nome do intrínseco de reflection (plano 19 §19.2).</summary>
+    public const string ReflectName = "reflect";
+
     private readonly DiagnosticBag _diagnostics;
     private readonly TypeResolver _types;
     private readonly Dictionary<int, LapisType> _nodeTypes = [];
@@ -41,6 +44,14 @@ public sealed class TypeChecker
     private readonly HashSet<string> _enclosingFunctionLabels = new(StringComparer.Ordinal);
 
     private PreludeScope? _prelude;
+
+    /// <summary>
+    /// Não-nulo quando o que está sendo checado é um <c>constraint</c>. É o que
+    /// libera <c>throw</c> (<c>LAP0507</c> no resto) e o que põe as nativas de
+    /// contexto em escopo.
+    /// </summary>
+    private CompileTimeScope? _compileTime;
+
     private int _nextBindingId;
 
     private TypeChecker(DiagnosticBag diagnostics)
@@ -53,12 +64,21 @@ public sealed class TypeChecker
     /// Definições do prelude. <c>null</c> apenas ao checar o próprio
     /// <c>prelude.ls</c>, que não usa indexação.
     /// </param>
-    public static TypedProgram Check(CoreProgram program, PreludeScope? prelude, DiagnosticBag diagnostics)
+    /// <param name="compileTime">
+    /// Ambiente de compile time, quando o que se checa é um <c>constraint</c>
+    /// (plano 18 §18.1). <c>null</c> é o caso normal — o programa do usuário —, e
+    /// aí nem as nativas de contexto existem nem <c>throw</c> é permitido.
+    /// </param>
+    public static TypedProgram Check(
+        CoreProgram program,
+        PreludeScope? prelude,
+        DiagnosticBag diagnostics,
+        CompileTimeScope? compileTime = null)
     {
         ArgumentNullException.ThrowIfNull(program);
         ArgumentNullException.ThrowIfNull(diagnostics);
 
-        var checker = new TypeChecker(diagnostics) { _prelude = prelude };
+        var checker = new TypeChecker(diagnostics) { _prelude = prelude, _compileTime = compileTime };
         var scope = checker.CreateRootScope(prelude);
 
         checker.CheckExpression(program.Body, scope);
@@ -90,6 +110,15 @@ public sealed class TypeChecker
                 NextBindingId(), binding.Name, binding.Type, SourceSpan.Synthetic, BindingKind.Native));
         }
 
+        // As nativas de contexto só existem quando o que se checa é um
+        // `constraint`. Num programa normal `contextPut` é um nome livre como
+        // outro qualquer, e recebe o LAP0201 que merece.
+        foreach (var binding in _compileTime?.Bindings ?? [])
+        {
+            scope.Declare(new BindingInfo(
+                NextBindingId(), binding.Name, binding.Type, SourceSpan.Synthetic, BindingKind.Native));
+        }
+
         // O programa do usuário roda num escopo filho: sombrear `Result` é
         // permitido e não muda a semântica de `[]` (plano 09 §9.4).
         return scope.Child();
@@ -113,6 +142,7 @@ public sealed class TypeChecker
             CoreCall n => CheckCall(n, scope),
             CoreInstantiate n => CheckInstantiate(n, scope),
             CoreReturn n => CheckReturn(n, scope),
+            CoreThrow n => CheckThrow(n, scope),
             CoreIf n => CheckIf(n, scope),
             CoreBinary n => CheckBinary(n, scope),
             CoreUnary n => CheckUnary(n, scope),
@@ -571,8 +601,46 @@ public sealed class TypeChecker
         return NeverType.Instance;
     }
 
+    /// <summary>
+    /// <c>throw e</c> (spec de macros §8.2).
+    ///
+    /// Duas exigências, e as duas na mesma travessia: existir só em compile time
+    /// (<c>LAP0507</c>) e carregar um <c>Str</c> (<c>LAP0508</c>). O valor é
+    /// checado nos dois casos — mesmo fora de um <c>constraint</c>, um erro dentro
+    /// dele continua sendo um erro que vale reportar.
+    /// </summary>
+    private LapisType CheckThrow(CoreThrow node, Scope scope)
+    {
+        var actual = CheckExpression(node.Value, scope);
+
+        if (_compileTime is null)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.ThrowOutsideConstraint,
+                node.Span,
+                "'throw' só é válido dentro de 'constraint'",
+                new DiagnosticNote(
+                    "a linguagem não tem exceções de runtime; um erro esperado se representa com 'Result'"));
+        }
+        else if (actual is not PrimitiveType { Kind: PrimitiveKind.Str } and not ErrorType and not NeverType)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.ThrowExpectsStr,
+                node.Value.Span,
+                $"'throw' espera Str, encontrado {actual.ToDisplayString()}");
+        }
+
+        // Como `return`, `throw` tem tipo bottom: ele nunca produz valor (Q13).
+        return NeverType.Instance;
+    }
+
     private LapisType CheckCall(CoreCall node, Scope scope)
     {
+        if (IsReflectIntrinsic(node.Callee, scope))
+        {
+            return CheckReflect(node, scope);
+        }
+
         var calleeType = CheckExpression(node.Callee, scope);
 
         var argumentTypes = ImmutableArray.CreateBuilder<LapisType>(node.Arguments.Length);
@@ -654,6 +722,93 @@ public sealed class TypeChecker
 
         return instantiated.Return;
     }
+
+    // ---------------------------------------------------------- reflection
+
+    /// <summary>
+    /// <c>reflect</c> é um <b>intrínseco</b>, não um binding (plano 19 §19.2).
+    ///
+    /// Precisa ser: o argumento tem de ser um tipo, e "um tipo" não é expressável
+    /// na gramática de tipos — não há como escrever a assinatura de <c>reflect</c>
+    /// em LapisLang. É o mesmo estatuto da indexação, que produz
+    /// <c>Result&lt;T, IndexError&gt;</c> sem existir um <c>fn(T[], Int) Result</c>
+    /// escrito em lugar nenhum (spec §21).
+    ///
+    /// Um binding do usuário chamado <c>reflect</c> <b>vence</b>: quem escreve
+    /// <c>def reflect = fn(x: Int) Int { ... }</c> quis a sua função, e sombrear é
+    /// permitido em toda parte (plano 09 §9.4).
+    /// </summary>
+    private static bool IsReflectIntrinsic(CoreExpr callee, Scope scope) =>
+        callee is CoreVariable { Name: ReflectName } && !scope.TryLookup(ReflectName, out _);
+
+    private LapisType CheckReflect(CoreCall node, Scope scope)
+    {
+        if (node.Arguments.Length != 1)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.ArgumentCountMismatch,
+                node.Span,
+                $"esperado 1 argumento, fornecidos {node.Arguments.Length}");
+
+            return ErrorType.Instance;
+        }
+
+        var argument = node.Arguments[0];
+
+        // Em compile time, os tipos do **programa** não estão em escopo — o
+        // checker ainda não rodou sobre ele. O que existe é o nome, e os
+        // metadados saem da tabela de declarações (§19.3). Tipos do prelude
+        // (`Result`, `Option`) continuam pelo caminho normal, porque esses já
+        // estão resolvidos.
+        if (_compileTime is not null
+            && argument is CoreVariable variable
+            && !scope.TryLookup(variable.Name, out _))
+        {
+            if (!_compileTime.Declarations.ContainsKey(variable.Name))
+            {
+                _diagnostics.ReportError(
+                    DiagnosticCodes.TypeNotDeclaredYet,
+                    argument.Span,
+                    $"o tipo '{variable.Name}' não foi declarado neste ponto",
+                    new DiagnosticNote("uma macro só enxerga o que já foi declarado acima dela (Q8)"));
+
+                return ErrorType.Instance;
+            }
+
+            _nodeTypes[argument.NodeId] = _prelude!.TypeInfoType;
+            _resolutions[node.NodeId] = new ReflectResolution(null, variable.Name);
+
+            return _prelude.TypeInfoType;
+        }
+
+        var argumentType = CheckExpression(argument, scope);
+
+        if (argumentType is ErrorType or NeverType)
+        {
+            return argumentType;
+        }
+
+        // Um `MetaType` genérico **não instanciado** é aceito de propósito:
+        // `reflect(Result)` descreve a declaração, com `typeParameterNames`
+        // preenchido. É o que uma constraint precisa — nomes e aridade, não os
+        // argumentos de uma instância.
+        if (argumentType is not MetaType meta)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.ReflectExpectsType,
+                argument.Span,
+                $"'reflect' espera um tipo, encontrado {argumentType.ToDisplayString()}");
+
+            return ErrorType.Instance;
+        }
+
+        _resolutions[node.NodeId] = new ReflectResolution(meta.Definition, Arguments: meta.Arguments);
+
+        return RequirePrelude().TypeInfoType;
+    }
+
+    private PreludeScope RequirePrelude() =>
+        _prelude ?? throw new InternalCompilerException("'reflect' exige o prelude carregado");
 
     // --------------------------------------------------- controle e operadores
 

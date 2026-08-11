@@ -97,10 +97,33 @@ public static class DiagnosticCodes
     // nenhum argumento genérico é inferido (Q7), todos são escritos.
     public const string CannotDetermineGenericArguments = "LAP0298";
 
+    // LAP050x — macros (plano 17)
+    public const string NoMacroRuleMatches = "LAP0501";
+    public const string AmbiguousMacroRules = "LAP0502";
+
+    /// <summary>
+    /// O único código cuja mensagem vem do programa: é o texto que a
+    /// <c>constraint</c> passou a <c>throw</c> (plano 18 §18.6).
+    /// </summary>
+    public const string ConstraintRejected = "LAP0503";
+
+    public const string UnknownSyntaxCategory = "LAP0504";
+    public const string MacroExpansionTooDeep = "LAP0505";
+    public const string MacroExpansionWrongContext = "LAP0506";
+    public const string ThrowOutsideConstraint = "LAP0507";
+    public const string ThrowExpectsStr = "LAP0508";
+    public const string UnknownMacro = "LAP0509";
+    public const string MacroIsNotAValue = "LAP0510";
+    public const string DuplicateMacro = "LAP0511";
+
     // LAP052x — goto e label (plano 16)
     public const string UnknownLabel = "LAP0520";
     public const string LabelOutOfScope = "LAP0521";
     public const string DuplicateLabel = "LAP0522";
+
+    // LAP06xx — reflection (plano 19)
+    public const string ReflectExpectsType = "LAP0601";
+    public const string TypeNotDeclaredYet = "LAP0602";
 
     // LAP03xx — Execução
     //

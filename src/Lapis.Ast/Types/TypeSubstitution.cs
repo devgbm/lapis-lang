@@ -1,14 +1,19 @@
 using System.Collections.Immutable;
-using Lapis.Ast.Types;
 
-namespace Lapis.TypeChecker;
+namespace Lapis.Ast.Types;
 
 /// <summary>
 /// Substituição de parâmetros genéricos pelos argumentos correspondentes.
 ///
 /// Não há inferência: argumentos genéricos são sempre explícitos (Q7). Esta é a
-/// única máquina de generics do checker, usada ao instanciar uma declaração
-/// genérica com os argumentos que o programa escreveu.
+/// única máquina de generics, usada ao instanciar uma declaração genérica com os
+/// argumentos que o programa escreveu.
+///
+/// Vive junto do modelo de tipos, e não no checker, porque é uma operação
+/// <b>pura sobre o modelo</b> — o checker foi só quem precisou dela primeiro.
+/// Reflection é o segundo: <c>reflect(Box&lt;Int&gt;)</c> descreve o campo como
+/// <c>Int</c>, e isso é esta substituição aplicada aos tipos dos campos
+/// (plano 19 §19.3).
 ///
 /// As ligações são indexadas pelo <b>nome do parâmetro</b> e cobrem os dois
 /// tipos: um parâmetro de tipo (<c>T</c>) é substituído onde aparece como tipo,

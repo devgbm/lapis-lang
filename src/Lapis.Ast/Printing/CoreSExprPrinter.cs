@@ -72,6 +72,12 @@ public static class CoreSExprPrinter
                 Close(builder, indent);
                 break;
 
+            case CoreThrow n:
+                Open(builder, indent, $"{tag}throw");
+                PrintExpression(builder, n.Value, indent + 1, ids);
+                Close(builder, indent);
+                break;
+
             case CoreReturn n:
                 if (n.Value is null)
                 {

@@ -242,6 +242,21 @@ Introduzidos pela [spec de macros](../spec/lapislang-macros-0.1.md). Planos 16�
 `constraint` passou a `throw`. O span é sempre o da **invocação**, com nota
 apontando o ponto dentro da macro.
 
+`LAP0501`, `LAP0502`, `LAP0504`–`LAP0506`, `LAP0509`, `LAP0510` e `LAP0511`
+estão **implementados** (M8); `LAP0503`, `LAP0507` e `LAP0508`, no M9.
+
+`LAP0507` e `LAP0508` são do **checker**, não do expander: onde `throw` vale e o
+que ele carrega são perguntas de tipo. `LAP0508` só aparece dentro de um
+`constraint` — fora dele o problema é `LAP0507`, e somar os dois descreveria a
+mesma linha duas vezes.
+
+Uma `constraint` que não compila reporta **os erros dela**, e não `LAP0503`:
+"esta construção é inválida" seria uma leitura errada de um erro de tipo dentro da
+própria macro.
+
+`LAP0511` (macro já declarada) não estava na proposta: apareceu ao implementar o
+registro. Um nome de macro é único no arquivo, como um `def` no mesmo bloco.
+
 ### Controle de fluxo
 
 `LAP0520`–`LAP0522` saíram da proposta: estão implementados (M6) e documentados
@@ -259,7 +274,19 @@ definir alocará os seus.
 | Código | Severidade | Mensagem |
 |---|---|---|
 | `LAP0601` | error | `reflect` espera um tipo, encontrado `{0}` |
-| `LAP0602` | error | tipo `{0}` não foi declarado neste ponto |
+| `LAP0602` | error | o tipo `{0}` não foi declarado neste ponto |
+
+Os dois são do **checker**: `reflect` é um intrínseco checado especialmente, e a
+pergunta "isto é um tipo?" é de tipo.
+
+`LAP0602` é exclusivo de compile time. Dentro de um `constraint`, os tipos do
+programa vêm da tabela de declarações sintáticas — o checker ainda não rodou sobre
+o programa —, e a tabela respeita a ordem do arquivo (Q8): um tipo declarado
+**abaixo** da invocação não está lá, e é isso que o código diz. Fora de um
+`constraint`, um nome que não existe recebe o `LAP0201` de sempre.
+
+Um número de argumentos errado em `reflect` usa `LAP0221`, o mesmo de qualquer
+chamada: não é um erro diferente por ser intrínseco.
 
 ---
 

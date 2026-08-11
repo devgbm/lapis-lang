@@ -49,24 +49,39 @@ public sealed class Evaluator
     private readonly TypedProgram _program;
     private readonly RuntimeContext _context;
     private readonly PreludeScope? _prelude;
+    private readonly CompileTimeScope? _compileTime;
     private int _callDepth;
     private int _jumps;
 
-    private Evaluator(TypedProgram program, PreludeScope? prelude, RuntimeContext context)
+    private Evaluator(
+        TypedProgram program,
+        PreludeScope? prelude,
+        RuntimeContext context,
+        CompileTimeScope? compileTime)
     {
         _program = program;
         _prelude = prelude;
+        _compileTime = compileTime;
         _context = context;
         _context.Invoke = (callee, arguments) => InvokeFromNative(callee, arguments);
     }
 
-    public static EvaluationResult Run(TypedProgram program, PreludeScope? prelude, RuntimeContext context)
+    /// <param name="compileTime">
+    /// Ambiente de compile time, quando o que se avalia é um <c>constraint</c>
+    /// (plano 18 §18.1). O evaluator é <b>o mesmo</b> nas duas fases — o que muda
+    /// é só o que está no escopo raiz.
+    /// </param>
+    public static EvaluationResult Run(
+        TypedProgram program,
+        PreludeScope? prelude,
+        RuntimeContext context,
+        CompileTimeScope? compileTime = null)
     {
         ArgumentNullException.ThrowIfNull(program);
         ArgumentNullException.ThrowIfNull(context);
 
-        var evaluator = new Evaluator(program, prelude, context);
-        var environment = CreateRootEnvironment(prelude);
+        var evaluator = new Evaluator(program, prelude, context, compileTime);
+        var environment = CreateRootEnvironment(prelude, compileTime);
         var completion = evaluator.Evaluate(program.Program.Body, environment);
 
         return completion.Kind switch
@@ -91,11 +106,31 @@ public sealed class Evaluator
         };
     }
 
-    private static Environment CreateRootEnvironment(PreludeScope? prelude) =>
+    /// <summary>
+    /// O <c>TypeInfo</c> que o checker resolveu. Duas fontes, uma construção
+    /// (plano 19 §19.3): a resolvida monta o valor a partir da
+    /// <c>TypeDefinition</c>; a sintática já o recebeu pronto da tabela de
+    /// declarações, porque em compile time não há definição checada de onde tirá-lo.
+    /// </summary>
+    private Value EvaluateReflect(ReflectResolution reflect, CoreCall node)
+    {
+        if (reflect.Definition is { } definition)
+        {
+            return (_prelude ?? throw new InternalCompilerException("'reflect' exige o prelude", node.Span))
+                .MakeTypeInfo(definition, reflect.Arguments);
+        }
+
+        return _compileTime?.Declarations.GetValueOrDefault(reflect.SyntacticName!)
+            ?? throw new InternalCompilerException(
+                $"'reflect({reflect.SyntacticName})' resolveu para uma declaração ausente", node.Span);
+    }
+
+    private static Environment CreateRootEnvironment(PreludeScope? prelude, CompileTimeScope? compileTime) =>
         Environment.Empty.ExtendAll(
         [
             .. Natives.All.Select(n => (n.Name, (Value)n)),
             .. (prelude?.Bindings ?? []).Select(b => (b.Name, b.Value)),
+            .. (compileTime?.Bindings ?? []).Select(b => (b.Name, b.Value)),
         ]);
 
     // ------------------------------------------------------------ despacho
@@ -109,6 +144,7 @@ public sealed class Evaluator
         CoreCall n => EvaluateCall(n, environment),
         CoreInstantiate n => EvaluateInstantiate(n, environment),
         CoreReturn n => EvaluateReturn(n, environment),
+        CoreThrow n => EvaluateThrow(n, environment),
         CoreIf n => EvaluateIf(n, environment),
         CoreBinary n => EvaluateBinary(n, environment),
         CoreUnary n => EvaluateUnary(n, environment),
@@ -270,6 +306,25 @@ public sealed class Evaluator
         var value = Evaluate(node.Value, environment);
 
         return value.IsNormal ? Completion.Return(value.Value) : value;
+    }
+
+    /// <summary>
+    /// <c>throw</c> reaproveita <see cref="Completion.Abort"/> inteiro — o mesmo
+    /// caminho de propagação que <c>LAP0302</c> usa desde o M1. Nenhuma exceção
+    /// C#, nenhum caminho novo: é o que mantém a promessa de que a única forma de
+    /// um programa parar cedo é um registro de completion.
+    /// </summary>
+    private Completion EvaluateThrow(CoreThrow node, Environment environment)
+    {
+        var value = Evaluate(node.Value, environment);
+
+        if (!value.IsNormal)
+        {
+            return value;
+        }
+
+        return Completion.Abort(
+            DiagnosticCodes.ConstraintRejected, node.Span, ((StrValue)value.Value).Value);
     }
 
     private Completion EvaluateGotoIf(CoreGotoIf node, Environment environment)
@@ -616,6 +671,14 @@ public sealed class Evaluator
 
     private Completion EvaluateCall(CoreCall node, Environment environment)
     {
+        // `reflect` é intrínseco: o checker já decidiu sobre qual definição ele
+        // fala, e aqui só resta montar o valor (plano 19 §19.4). Nem o callee nem
+        // o argumento são avaliados — `reflect(User)` não *usa* `User`.
+        if (_program.ResolutionOf<ReflectResolution>(node) is { } reflect)
+        {
+            return Completion.Normal(EvaluateReflect(reflect, node));
+        }
+
         // O callee é avaliado antes dos argumentos; argumentos da esquerda para a direita.
         var callee = Evaluate(node.Callee, environment);
 

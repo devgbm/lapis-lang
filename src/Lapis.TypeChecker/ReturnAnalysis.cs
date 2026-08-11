@@ -27,6 +27,11 @@ public static class ReturnAnalysis
         {
             CoreReturn => true,
 
+            // `throw` não retorna: ele **diverge**. Mas a pergunta que esta análise
+            // responde é "esta função pode cair pelo fim sem produzir valor?", e
+            // por um caminho que aborta a compilação ela não pode.
+            CoreThrow => true,
+
             // Um salto condicional é um desvio de duas saídas, e a segunda é a
             // continuação — que, na Core, é o corpo deste `Let`. Só conta como
             // retorno se **as duas** retornam, exatamente como num `If`.

@@ -71,9 +71,9 @@ variante com segurança — foi **adiada**, e com ela `@if`/`@match` saíram do 
 | # | Plano | Projeto | Milestone |
 |---|---|---|---|
 | 16 | [`goto` e `label`](16-goto-and-labels.md) | `Lapis.Ast` … `Lapis.Evaluator` | M6 ✅ |
-| 17 | [Macro engine](17-macro-engine.md) | `Lapis.Macros` | M8 |
-| 18 | [`constraint`, `throw` e contexto](18-compile-time-evaluation.md) | `Lapis.Macros` + `Lapis.Cli` | M9 |
-| 19 | [Reflection](19-reflection.md) | `Lapis.Runtime` + `Lapis.TypeChecker` | M10 |
+| 17 | [Macro engine](17-macro-engine.md) | `Lapis.Macros` | M8 ✅ |
+| 18 | [`constraint`, `throw` e contexto](18-compile-time-evaluation.md) | `Lapis.Macros` + `Lapis.Cli` | M9 ✅ |
+| 19 | [Reflection](19-reflection.md) | `Lapis.Runtime` + `Lapis.TypeChecker` | M10 ✅ |
 | 20 | [Macros de controle no prelude](20-macro-prelude.md) | `prelude.ls` | M11 |
 
 ### Apêndices normativos
@@ -99,9 +99,9 @@ variante com segurança — foi **adiada**, e com ela `@if`/`@match` saíram do 
 | **M5** ✅ | Conformidade | suíte golden `tests/conformance/**/*.ls`, `examples/` executando, subcomandos e flags do CLI | 10, 11 |
 | **M6** ✅ | `goto`/`label` | controle de fluxo explícito; `GotoForm_EquivalentToIf` verde | 16 |
 | **M7** ✅ | PE núcleo | constant folding, propagação, dead code, `lapis pe` | 12 |
-| **M8** | Macro engine | `@unless`, `@square` expandindo; `lapis expand` | 17 |
-| **M9** | Compile time | `@post` com deduplicação de rota; `throw` e contexto | 18 |
-| **M10** | Reflection | `reflect(Color).variants` nas duas fases | 19 |
+| **M8** ✅ | Macro engine | `@unless`, `@square` expandindo; `lapis expand` | 17 |
+| **M9** ✅ | Compile time | `@post` com deduplicação de rota; `throw` e contexto | 18 |
+| **M10** ✅ | Reflection | `reflect(Color).variants` nas duas fases | 19 |
 | **M11** | Macros de controle | `@unless` e `@while` no prelude; **nada é retirado** da Core | 20 |
 | **M12** | PE especialização | beta reduction, inlining, especialização de funções | 13 |
 | **M13** | PE análise | range analysis, bounds-check elimination, `lapis pe --trace` | 14, 15 |

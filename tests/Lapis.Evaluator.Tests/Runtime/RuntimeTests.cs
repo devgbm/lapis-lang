@@ -268,7 +268,14 @@ public sealed class OutputTests
         Natives.Print.Implementation([new IntValue(1)], context).ShouldBe(VoidValue.Instance);
     }
 
-    /// <summary>Regressão: o conjunto de nativos deve permanecer mínimo (plano 09 §9.2).</summary>
+    /// <summary>
+    /// Regressão: o conjunto de nativos deve permanecer mínimo (plano 09 §9.2).
+    ///
+    /// As primitivas de contexto do M9 <b>não</b> entram aqui de propósito: esta
+    /// lista é o escopo raiz de todo programa, e uma nativa de compile time nela
+    /// tornaria o estado do compilador alcançável em runtime. Elas vivem em
+    /// <c>CompileTimeNatives</c>, e só um <c>constraint</c> as enxerga.
+    /// </summary>
     [Fact]
     public void Natives_ListIsMinimal() => Natives.All.Select(n => n.Name).ShouldBe(["print"]);
 }

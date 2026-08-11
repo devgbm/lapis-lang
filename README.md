@@ -42,12 +42,15 @@ lapis hello.ls
 | **M5** — suíte de conformidade e subcomandos do CLI | ✅ concluído |
 | **M6** — `goto`/`label` e mutação com `var` | ✅ concluído |
 | **M7** — PE núcleo (folding, propagação, dead code) | ✅ concluído |
-| M8–M11 — macros, `constraint`, reflection, `@unless`/`@while` | ⏳ próximo |
+| **M8** — macro engine (`match`/`expand`, higiene, `lapis expand`) | ✅ concluído |
+| **M9** — `constraint`, `throw` e contexto de compilação | ✅ concluído |
+| **M10** — reflection nas duas fases | ✅ concluído |
+| M11 — macros de controle no prelude | ⏳ próximo |
 | M12–M14 — PE: especialização, análise, equivalência | ⬜ |
 
-**1302 testes** cobrindo lexer, parser, desugar, type checker, runtime,
+**1453 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
 evaluator, partial evaluator e CLI — entre eles uma **suíte de conformidade** de
-145 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
+167 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
 spec é um arquivo, e o nome do teste que falha já é o arquivo a abrir.
 
 A linguagem já roda programas de verdade: funções de primeira classe com
@@ -163,9 +166,94 @@ reordenado. Sem `--dynamic` um programa fechado tende ao resultado já avaliado,
 porque a 0.2 não tem entrada externa; `--dynamic=nome` declara um nome como
 desconhecido e é o que torna o exercício interessante.
 
-O que falta (M8 em diante): macros, reflection e o resto do partial evaluator —
-especialização de chamadas e eliminação de bounds check. O roteiro completo está
-em [`plans/`](plans/README.md).
+**Macros** (M8) são sintaxe → sintaxe, definidas pela própria linguagem e
+expandidas entre o parser e o desugar:
+
+```c
+macro unless
+    match Expression:condition Block:body
+    expand {
+        goto done if condition;
+        body;
+        label done;
+    };
+
+@unless pular {
+    print("executou");
+}
+```
+
+Uma macro é declarada por `macro`, não por `def`: ela não é first-class citizen
+(Q19) — não existe em runtime, não é argumento, não é retorno, e some do programa
+antes do desugar. A invocação começa com `@` e **não** exige parênteses: o que ela
+consome é determinado pelo `match` da própria macro, e um literal sintático como o
+`in` de `@bind x in 7 { }` pertence àquela macro sem virar palavra reservada.
+
+A expansão é higiênica — o `temp` que a macro introduz não é o `temp` do programa
+— e `lapis expand` imprime a Surface AST depois da expansão, que é a ferramenta
+sem a qual macro vira adivinhação.
+
+**Compile time** (M9): entre o `match` e o `expand` cabe um `constraint`, um bloco
+que roda **durante a compilação** para validar a construção e acumular estado.
+
+```c
+macro post
+    match Str:path Block:handler
+
+    constraint {
+        def key = "route.POST." + path;
+
+        if contextHas(key) {
+            throw "rota POST já registrada: " + path;
+        }
+
+        contextPut(key, path);
+    }
+
+    expand {
+        print("POST " + path);
+        handler;
+    };
+
+@post "/produtos" { print("criando produto"); }
+@post "/produtos" { print("de novo"); }    // LAP0503, no span da invocação
+```
+
+Não é uma segunda linguagem: `constraint` é LapisLang, avaliada pelo **mesmo
+evaluator** que roda o programa. O que muda entre as fases é o ambiente — em
+compile time existem `throw` e as primitivas de contexto, em runtime não existe
+nenhum dos dois (`throw` fora de um `constraint` é `LAP0507`, e `contextPut` num
+programa é um nome livre como outro qualquer).
+
+O contexto de compilação é a única coisa mutável do sistema, e só enquanto a
+compilação dura: é estado do compilador exposto por primitivas, do mesmo jeito que
+`print` expõe I/O. `contextGet` devolve `Result` porque chave ausente é falha
+esperada, e falha esperada aparece no tipo (spec §30).
+
+**Reflection** (M10) expõe os metadados do programa — nomes, campos, variantes —
+como valores comuns, nas duas fases:
+
+```c
+def Color = enum { Red, Green, Blue };
+
+print(reflect(Color).name);            // Color
+print(reflect(Color).kind);            // TypeKind.Enum
+print(reflect(Result).typeParameterNames);   // ["T", "E"]
+```
+
+O ponto é o que **não** existe aí: não há sistema de metadados paralelo. `TypeInfo`
+é um `type` declarado no `prelude.ls`, e tudo o que vale para struct vale para ele
+— igualdade estrutural, imutabilidade, indexação devolvendo `Result`. `reflect` é um
+intrínseco e não um binding porque o argumento tem de ser um **tipo**, e "um tipo"
+não é expressável na gramática de tipos; mesmo estatuto da indexação.
+
+E porque é tudo valor comum, o partial evaluator dobra reflection de graça:
+`reflect(User).name` residualiza como `"User"`, e o programa não paga nada por ter
+usado.
+
+O que falta (M11 em diante): as macros de controle no prelude e o resto do partial
+evaluator — especialização de chamadas e eliminação de bounds check. O roteiro
+completo está em [`plans/`](plans/README.md).
 
 ```bash
 $ lapis examples/hello.ls
@@ -176,6 +264,7 @@ $ lapis ast examples/hello.ls         # Surface AST
 $ lapis check examples/hello.ls       # só diagnósticos
 $ lapis tokens examples/hello.ls      # tokens com posição
 
+$ lapis expand examples/macros.ls            # Surface AST depois das macros
 $ lapis pe examples/hello.ls                 # programa residual
 $ lapis desugar --source examples/hello.ls   # Core AST de volta como `.ls`
 $ lapis check --json programa.ls             # diagnósticos para ferramentas
@@ -192,10 +281,15 @@ inteiro a cada execução da suíte.
 ## Arquitetura
 
 ```
-.ls → Lexer → Parser → Surface AST → Desugar → Core AST → TypeChecker → Typed Core AST → Evaluator → Value
-                                                    ↓
-                                          PartialEvaluator → Core AST residual
+.ls → Lexer → Parser → Surface AST → Macros → Surface AST → Desugar → Core AST → TypeChecker → Typed Core AST → Evaluator → Value
+                                        │                                             ↓
+                                   constraint ────────────────────────────→ PartialEvaluator → Core AST residual
 ```
+
+A seta que sai de `constraint` é o único ponto em que uma fase inicial usa uma
+posterior: rodar um `constraint` exige desugar, checker e evaluator. O ciclo não
+existe porque `Lapis.Macros` só declara a interface — quem a implementa é o
+orquestrador, a mesma divisão que já valia para o prelude.
 
 | Projeto | Responsabilidade |
 |---|---|
@@ -203,6 +297,7 @@ inteiro a cada execução da suíte.
 | `Lapis.Ast` | nós Surface e Core, modelo de tipos, printers |
 | `Lapis.Lexer` | fonte → tokens |
 | `Lapis.Parser` | tokens → Surface AST |
+| `Lapis.Macros` | Surface AST → Surface AST: matching, higiene, expansão |
 | `Lapis.Desugar` | Surface AST → Core AST |
 | `Lapis.TypeChecker` | Core AST → Typed Core AST |
 | `Lapis.Runtime` | valores, ambiente, primitivas, `prelude.ls` |

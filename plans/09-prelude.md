@@ -51,6 +51,29 @@ def Option = enum<T> {
 `Option` entra porque a spec §29 o cita ("a semântica de `Result`, `Option`, etc.
 deve permanecer na linguagem") e porque não custa nada — é só um enum.
 
+O M9 acrescentou `ContextError`, pelo mesmo motivo que `IndexError` já estava
+aqui: `contextGet` devolve `Result<Str, ContextError>`, e o tipo do erro precisa
+existir na linguagem antes de a primitiva poder tê-lo na assinatura (plano 18
+§18.3).
+
+```c
+def ContextError = enum {
+    Missing
+};
+```
+
+O M10 acrescentou os tipos de reflection, pelo mesmo princípio §58.2 que pôs
+`Result` aqui: não existe sistema de metadados paralelo, e um `TypeInfo` é um
+struct comum — imutável por construção, sem precisar de regra própria.
+
+```c
+def TypeKind = enum { Struct, Enum };
+def FieldInfo = type { name: Str; typeName: Str; };
+def VariantInfo = type { name: Str; arity: Int; payloadTypeNames: Str[]; };
+def TypeInfo = type { name: Str; kind: TypeKind; typeParameterNames: Str[];
+                      fields: FieldInfo[]; variants: VariantInfo[]; };
+```
+
 Funções auxiliares (`unwrapOr`, `map`) **não** entram no prelude na 0.2: cada uma
 precisaria de generics já estáveis e ampliaria a superfície de teste sem servir a
 nenhum objetivo da spec. Ficam para v0.3.
@@ -68,6 +91,13 @@ diretamente no escopo raiz:
 Regra de admissão de novos nativos, para manter §58.2: um nome só pode ser nativo
 se for **impossível** defini-lo em `prelude.ls`. Cada nativo novo precisa dessa
 justificativa escrita neste plano.
+
+**As primitivas de contexto do M9 não estão nesta tabela** e não devem estar.
+`contextHas`, `contextGet`, `contextPut` e `contextKeys` vivem em
+`CompileTimeNatives`, e entram no escopo só quando o que se avalia é um
+`constraint` (plano 18 §18.3). Esta tabela é o escopo raiz de **todo** programa;
+uma nativa de compile time aqui tornaria o estado do compilador alcançável em
+runtime, que é justamente a separação que o plano 18 existe para manter.
 
 ### 9.3 Carga do prelude
 
