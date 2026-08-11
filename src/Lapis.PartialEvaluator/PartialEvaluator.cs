@@ -104,6 +104,7 @@ public sealed class PartialEvaluator
         CoreUnary n => SpecializeUnary(n, environment),
         CoreIf n => SpecializeIf(n, environment),
         CoreReturn n => SpecializeReturn(n, environment),
+        CoreThrow n => SpecializeThrow(n, environment),
         CoreLambda n => SpecializeLambda(n, environment),
         CoreCall n => SpecializeCall(n, environment),
         CoreArray n => SpecializeArray(n, environment),
@@ -359,6 +360,28 @@ public sealed class PartialEvaluator
         }
 
         var residual = _factory.Return(node.Span, _residualizer.Residualize(value.Result, node.Value.Span));
+
+        return PECompletion.Returned(new DynamicResult(residual, NeverType.Instance));
+    }
+
+    /// <summary>
+    /// <c>throw</c> nunca é dobrado: rejeitar é o efeito, e antecipá-lo mudaria
+    /// <b>quando</b> a compilação falha. O que o PE faz é o que faz com um
+    /// <c>return</c> — especializar o valor e reconhecer que o fluxo não continua.
+    ///
+    /// Só aparece dentro de um <c>constraint</c>: no programa do usuário
+    /// <c>LAP0507</c> chega antes do PE.
+    /// </summary>
+    private PECompletion SpecializeThrow(CoreThrow node, StaticEnvironment environment)
+    {
+        var value = Specialize(node.Value, environment);
+
+        if (!value.FlowsThroughStatically)
+        {
+            return value;
+        }
+
+        var residual = _factory.Throw(node.Span, _residualizer.Residualize(value.Result, node.Value.Span));
 
         return PECompletion.Returned(new DynamicResult(residual, NeverType.Instance));
     }

@@ -66,7 +66,8 @@ um bloco, se o próximo token é `}` ela é a cauda; se é `;`, é um statement.
 ```ebnf
 expression     = return_expr ;
 
-return_expr    = "return" expression? 
+return_expr    = "return" expression?
+               | "throw" expression          (* compile time — A.10b, plano 18 *)
                | or_expr ;
 
 or_expr        = and_expr ( "||" and_expr )* ;
@@ -297,11 +298,10 @@ block_comment  = "/*" ... "*/" ;              (* não aninha *)
 
 ## A.10b Macros e controle de fluxo — proposta
 
-Da [spec de macros](../spec/lapislang-macros-0.1.md), planos 16–20. **Ainda não
-implementada**; entra aqui para que a gramática tenha um lugar só.
+Da [spec de macros](../spec/lapislang-macros-0.1.md), planos 16–20.
 
-**`macro_declaration`, o padrão e a invocação estão implementados (M8)**; o resto
-desta seção segue proposta.
+**`macro_declaration`, o padrão, a invocação (M8), `constraint` e `throw` (M9)
+estão implementados**; o resto desta seção segue proposta.
 
 ```ebnf
 (* declaração nomeada — Q19: macro não é valor, não passa por `def` *)
@@ -320,7 +320,11 @@ repetition     = ( IDENT ":" IDENT | "(" macro_pattern ")" ) "*" "separado" "por
 (* invocação *)
 macro_call     = "@" IDENT macro_tokens ;
 
-(* compile time — plano 18 *)
+(* compile time — plano 18. Vive na cadeia de expressões (A.3), no mesmo nível
+   de `return`: os dois têm tipo `Never` e cabem em qualquer posição.
+
+   Ao contrário de `return`, o valor é **obrigatório**: a mensagem é o
+   diagnóstico, e um `throw;` não teria o que dizer. *)
 throw_expr     = "throw" expression ;
 
 ```
@@ -347,7 +351,7 @@ dos demais statements.
 
 | Nível | Construção | Assoc. |
 |---|---|---|
-| 0 | `return` | prefixo |
+| 0 | `return`, `throw` | prefixo |
 | 1 | `\|\|` | esquerda |
 | 2 | `&&` | esquerda |
 | 3 | `==` `!=` | esquerda |
@@ -363,10 +367,10 @@ dos demais statements.
 
 ```text
 def  var  fn  type  enum  return  true  false  if  else  match  goto
-macro  expand  constraint
+macro  expand  constraint  throw
 ```
 
-`macro`, `expand` e `constraint` entraram no M8. `@` passou a ser token: inicia
+`macro`, `expand` e `constraint` entraram no M8; `throw`, no M9. `@` passou a ser token: inicia
 uma invocação de macro, e — só depois do primeiro caractere de um identificador,
 seguido de dígitos — é o sufixo de higiene que a expansão produz (`temp@1`).
 
@@ -382,7 +386,13 @@ identificadores seguidos nunca formam expressão. `goto` é reservada de verdade
 ninguém a usa como nome, e reservá-la é o que permite dizer "esperado um rótulo"
 em vez de deixar a linha virar uma expressão malformada.
 
-A proposta de macros ainda acrescentaria `throw` (plano 18). **Nada sai:** `if` e `match` continuam construções do compilador (Q22), e
+`throw` é reservada de verdade, apesar de só ser **válida** dentro de um
+`constraint`: onde ela vale é pergunta do checker (`LAP0507`), não do lexer, e
+tratá-la como contextual só trocaria um diagnóstico exato por uma expressão
+malformada. Quem escreve `throw` fora de lugar recebe a explicação, não o
+silêncio.
+
+**Nada sai:** `if` e `match` continuam construções do compilador (Q22), e
 `match` é reaproveitada dentro de `macro`, onde inicia uma regra — sem ambiguidade,
 porque ali só pode ser isso.
 
@@ -390,6 +400,10 @@ porque ali só pode ser isso.
 `@unless` e `@while` são construídos.
 
 
-`Int`, `Float`, `Bool`, `Str`, `Void`, `Result`, `IndexError`, `Option`, `print`,
-`array_length` **não** são reservadas — são bindings do prelude ou nomes
-resolvidos pelo checker.
+`Int`, `Float`, `Bool`, `Str`, `Void`, `Result`, `IndexError`, `ContextError`,
+`Option`, `print`, `array_length` **não** são reservadas — são bindings do prelude
+ou nomes resolvidos pelo checker.
+
+`contextHas`, `contextGet`, `contextPut` e `contextKeys` também não: são nativas, e
+só existem no escopo de um `constraint` (plano 18). Num programa normal são nomes
+livres, e recebem o `LAP0201` que qualquer outro receberia.

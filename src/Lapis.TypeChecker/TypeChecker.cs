@@ -41,6 +41,14 @@ public sealed class TypeChecker
     private readonly HashSet<string> _enclosingFunctionLabels = new(StringComparer.Ordinal);
 
     private PreludeScope? _prelude;
+
+    /// <summary>
+    /// Não-nulo quando o que está sendo checado é um <c>constraint</c>. É o que
+    /// libera <c>throw</c> (<c>LAP0507</c> no resto) e o que põe as nativas de
+    /// contexto em escopo.
+    /// </summary>
+    private CompileTimeScope? _compileTime;
+
     private int _nextBindingId;
 
     private TypeChecker(DiagnosticBag diagnostics)
@@ -53,12 +61,21 @@ public sealed class TypeChecker
     /// Definições do prelude. <c>null</c> apenas ao checar o próprio
     /// <c>prelude.ls</c>, que não usa indexação.
     /// </param>
-    public static TypedProgram Check(CoreProgram program, PreludeScope? prelude, DiagnosticBag diagnostics)
+    /// <param name="compileTime">
+    /// Ambiente de compile time, quando o que se checa é um <c>constraint</c>
+    /// (plano 18 §18.1). <c>null</c> é o caso normal — o programa do usuário —, e
+    /// aí nem as nativas de contexto existem nem <c>throw</c> é permitido.
+    /// </param>
+    public static TypedProgram Check(
+        CoreProgram program,
+        PreludeScope? prelude,
+        DiagnosticBag diagnostics,
+        CompileTimeScope? compileTime = null)
     {
         ArgumentNullException.ThrowIfNull(program);
         ArgumentNullException.ThrowIfNull(diagnostics);
 
-        var checker = new TypeChecker(diagnostics) { _prelude = prelude };
+        var checker = new TypeChecker(diagnostics) { _prelude = prelude, _compileTime = compileTime };
         var scope = checker.CreateRootScope(prelude);
 
         checker.CheckExpression(program.Body, scope);
@@ -90,6 +107,15 @@ public sealed class TypeChecker
                 NextBindingId(), binding.Name, binding.Type, SourceSpan.Synthetic, BindingKind.Native));
         }
 
+        // As nativas de contexto só existem quando o que se checa é um
+        // `constraint`. Num programa normal `contextPut` é um nome livre como
+        // outro qualquer, e recebe o LAP0201 que merece.
+        foreach (var binding in _compileTime?.Bindings ?? [])
+        {
+            scope.Declare(new BindingInfo(
+                NextBindingId(), binding.Name, binding.Type, SourceSpan.Synthetic, BindingKind.Native));
+        }
+
         // O programa do usuário roda num escopo filho: sombrear `Result` é
         // permitido e não muda a semântica de `[]` (plano 09 §9.4).
         return scope.Child();
@@ -113,6 +139,7 @@ public sealed class TypeChecker
             CoreCall n => CheckCall(n, scope),
             CoreInstantiate n => CheckInstantiate(n, scope),
             CoreReturn n => CheckReturn(n, scope),
+            CoreThrow n => CheckThrow(n, scope),
             CoreIf n => CheckIf(n, scope),
             CoreBinary n => CheckBinary(n, scope),
             CoreUnary n => CheckUnary(n, scope),
@@ -568,6 +595,39 @@ public sealed class TypeChecker
         }
 
         // `return` é uma expressão de tipo bottom: cabe em qualquer posição (Q13).
+        return NeverType.Instance;
+    }
+
+    /// <summary>
+    /// <c>throw e</c> (spec de macros §8.2).
+    ///
+    /// Duas exigências, e as duas na mesma travessia: existir só em compile time
+    /// (<c>LAP0507</c>) e carregar um <c>Str</c> (<c>LAP0508</c>). O valor é
+    /// checado nos dois casos — mesmo fora de um <c>constraint</c>, um erro dentro
+    /// dele continua sendo um erro que vale reportar.
+    /// </summary>
+    private LapisType CheckThrow(CoreThrow node, Scope scope)
+    {
+        var actual = CheckExpression(node.Value, scope);
+
+        if (_compileTime is null)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.ThrowOutsideConstraint,
+                node.Span,
+                "'throw' só é válido dentro de 'constraint'",
+                new DiagnosticNote(
+                    "a linguagem não tem exceções de runtime; um erro esperado se representa com 'Result'"));
+        }
+        else if (actual is not PrimitiveType { Kind: PrimitiveKind.Str } and not ErrorType and not NeverType)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.ThrowExpectsStr,
+                node.Value.Span,
+                $"'throw' espera Str, encontrado {actual.ToDisplayString()}");
+        }
+
+        // Como `return`, `throw` tem tipo bottom: ele nunca produz valor (Q13).
         return NeverType.Instance;
     }
 

@@ -59,6 +59,8 @@ public sealed class CoreFactory
 
     public CoreReturn Return(SourceSpan span, CoreExpr? value) => new(Next(), span, value);
 
+    public CoreThrow Throw(SourceSpan span, CoreExpr value) => new(Next(), span, value);
+
     public CoreIf If(SourceSpan span, CoreExpr condition, CoreExpr then, CoreExpr @else) =>
         new(Next(), span, condition, then, @else);
 

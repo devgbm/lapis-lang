@@ -205,6 +205,41 @@ public sealed class ReturnTests : ParserTestBase
             .Body;
 }
 
+/// <summary>
+/// <c>throw e</c> (spec de macros §8.2). O parser não sabe se está dentro de um
+/// <c>constraint</c> — quem sabe é o checker, e é dele o <c>LAP0507</c>.
+/// </summary>
+public sealed class ThrowParseTests : ParserTestBase
+{
+    [Fact]
+    public void Throw_TakesTheWholeExpression() =>
+        Parse("""throw "erro em " + nome;""")
+            .Statements.ShouldHaveSingleItem()
+            .ShouldBeOfType<ExpressionStatement>()
+            .Expression.ShouldBeOfType<ThrowExpression>()
+            .Value.ShouldBeOfType<BinaryExpression>();
+
+    /// <summary>
+    /// Ao contrário de <c>return</c>, o valor é obrigatório: a mensagem <b>é</b> o
+    /// diagnóstico, e um <c>throw;</c> não teria o que dizer.
+    /// </summary>
+    [Fact]
+    public void Throw_WithoutValue_ReportsError() => Codes("throw;").ShouldNotBeEmpty();
+
+    [Fact]
+    public void Throw_InValuePosition_IsAllowed() =>
+        Parse("""def x = throw "não";""")
+            .Statements.ShouldHaveSingleItem()
+            .ShouldBeOfType<DefStatement>()
+            .Value.ShouldBeOfType<ThrowExpression>();
+
+    [Fact]
+    public void Throws_IsAnIdentifier() =>
+        Parse("def throws = 1;").Statements.ShouldHaveSingleItem()
+            .ShouldBeOfType<DefStatement>()
+            .Name.ShouldBe("throws");
+}
+
 public sealed class IfTests : ParserTestBase
 {
     [Fact]

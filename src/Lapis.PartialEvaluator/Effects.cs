@@ -56,6 +56,10 @@ public static class Effects
             // deles muda para onde o programa vai, que é observável.
             CoreReturn or CoreGoto or CoreGotoIf or CoreLabeled => false,
 
+            // `throw` aborta a compilação: eliminá-lo por ser "sem efeito" seria
+            // apagar exatamente o efeito que ele tem.
+            CoreThrow => false,
+
             // Atribuição é o efeito por excelência.
             CoreAssign => false,
 

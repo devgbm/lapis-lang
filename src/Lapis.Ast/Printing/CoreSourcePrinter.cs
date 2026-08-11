@@ -199,6 +199,11 @@ public static class CoreSourcePrinter
                 builder.Append(CoreSExprPrinter.PrintGenericArguments(n.Arguments));
                 break;
 
+            case CoreThrow n:
+                builder.Append("throw ");
+                Print(builder, n.Value, indent, Precedence.Lowest);
+                break;
+
             case CoreReturn n:
                 builder.Append("return");
 

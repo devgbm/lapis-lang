@@ -269,4 +269,24 @@ public sealed class ExpansionTests : MacroTestBase
     [Fact]
     public void Hygiene_FreeReferencesAreNotRenamed() =>
         Expand(Log + "@log 1;").ShouldNotContain("print@");
+
+    // -------------------------------------------------------- compile time
+
+    /// <summary>
+    /// Rodar um <c>constraint</c> exige o pipeline inteiro, que <c>Lapis.Macros</c>
+    /// não tem: quem o executa é o orquestrador, através de
+    /// <c>IConstraintRunner</c> (plano 18 §18.2).
+    ///
+    /// Expandir sem executor é legítimo — é o que estes testes fazem — mas
+    /// encontrar uma macro <b>com</b> constraint aí é erro interno, não silêncio:
+    /// ignorá-la faria a validação sumir sem que ninguém percebesse.
+    /// </summary>
+    [Fact]
+    public void Constraint_WithoutARunner_IsAnInternalError() =>
+        Should.Throw<InternalCompilerException>(() => ExpandWithDiagnostics(
+            "macro m match Expression:e constraint { true } expand { e };\ndef r = @m 1;"));
+
+    /// <summary>E uma macro sem constraint não precisa de executor nenhum.</summary>
+    [Fact]
+    public void NoConstraint_NeedsNoRunner() => ShouldExpandTo(Log + "@log 1;", "print(1);");
 }

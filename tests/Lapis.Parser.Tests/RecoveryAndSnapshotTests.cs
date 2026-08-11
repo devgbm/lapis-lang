@@ -101,6 +101,9 @@ public sealed class RecoveryTests : ParserTestBase
     [InlineData("goto")]
     [InlineData("label")]
     [InlineData("goto if;")]
+    [InlineData("throw")]
+    [InlineData("throw;")]
+    [InlineData("throw throw")]
     public void Parser_NeverThrows(string source) =>
         Should.NotThrow(() => ParseWithDiagnostics(source));
 

@@ -187,6 +187,17 @@ public sealed record IfExpression(Expression Condition, BlockExpression Then, Ex
 
 public sealed record ReturnExpression(Expression? Value) : Expression;
 
+/// <summary>
+/// <c>throw e</c> — interrompe a <b>compilação</b> com a mensagem <c>e</c>
+/// (spec de macros §8.2).
+///
+/// Tem tipo <c>Never</c>, como <c>return</c> (Q13), e vale só dentro de um
+/// <c>constraint</c>: fora dele é <c>LAP0507</c>. Não é uma exceção de runtime — a
+/// 0.2 não as tem, e Q9 tornou a divisão total justamente para eliminar caminhos
+/// de aborto.
+/// </summary>
+public sealed record ThrowExpression(Expression Value) : Expression;
+
 public sealed record FunctionExpression(
     ImmutableArray<TypeParameterSyntax> TypeParameters,
     ImmutableArray<ParameterSyntax> Parameters,

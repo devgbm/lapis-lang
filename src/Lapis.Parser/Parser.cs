@@ -669,7 +669,12 @@ public sealed class Parser
 
         try
         {
-            return Current.Kind == TokenKind.ReturnKeyword ? ParseReturn() : ParseBinary(0);
+            return Current.Kind switch
+            {
+                TokenKind.ReturnKeyword => ParseReturn(),
+                TokenKind.ThrowKeyword => ParseThrow(),
+                _ => ParseBinary(0),
+            };
         }
         finally
         {
@@ -689,6 +694,21 @@ public sealed class Parser
         var value = hasValue ? ParseExpression() : null;
 
         return new ReturnExpression(value) { Span = SpanFrom(start) };
+    }
+
+    /// <summary>
+    /// <c>throw e</c>. Ao contrário de <c>return</c>, o valor é obrigatório: a
+    /// mensagem <b>é</b> o diagnóstico (spec de macros §8.2), e um <c>throw</c> sem
+    /// ela não teria o que dizer.
+    /// </summary>
+    private Expression ParseThrow()
+    {
+        var start = Current.Span.Start;
+        _tokens.Advance(); // 'throw'
+
+        var value = ParseExpression();
+
+        return new ThrowExpression(value) { Span = SpanFrom(start) };
     }
 
     private Expression ParseBinary(int minPrecedence)

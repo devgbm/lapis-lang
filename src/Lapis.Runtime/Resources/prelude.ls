@@ -14,6 +14,12 @@ def IndexError = enum {
     OutOfBounds
 };
 
+// Falha de `contextGet` (spec de macros §8.3). Chave ausente é falha esperada, e
+// a spec §30 é categórica: falha esperada aparece no tipo, não em aborto.
+def ContextError = enum {
+    Missing
+};
+
 def Option = enum<T> {
     Some(T),
     None

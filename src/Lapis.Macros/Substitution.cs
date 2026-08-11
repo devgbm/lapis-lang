@@ -137,6 +137,9 @@ internal sealed class Substitution
                     Span = _invocation,
                 };
 
+            case ThrowExpression n:
+                return n with { Value = ApplyExpression(n.Value), Span = _invocation };
+
             case FunctionExpression n:
                 return n with { Body = (BlockExpression)ApplyExpression(n.Body), Span = _invocation };
 

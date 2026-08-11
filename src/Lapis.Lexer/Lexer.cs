@@ -31,6 +31,7 @@ public sealed class Lexer
         ["macro"] = TokenKind.MacroKeyword,
         ["expand"] = TokenKind.ExpandKeyword,
         ["constraint"] = TokenKind.ConstraintKeyword,
+        ["throw"] = TokenKind.ThrowKeyword,
     };
 
     private readonly SourceText _source;

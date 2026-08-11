@@ -40,8 +40,12 @@ public sealed class ArchitectureTests
 
     /// <summary>
     /// A expansão é anterior ao checker e ao evaluator, e não pode enxergar
-    /// nenhum dos dois. O plano 18 quebra isto de propósito, para rodar
-    /// <c>constraint</c>, e explica como.
+    /// nenhum dos dois.
+    ///
+    /// O plano 17 previa que o plano 18 quebrasse isto para rodar
+    /// <c>constraint</c>. Não quebrou: <c>Lapis.Macros</c> declara
+    /// <c>IConstraintRunner</c> e quem o implementa é o orquestrador — a mesma
+    /// divisão que o plano 09 já tinha usado para o prelude.
     /// </summary>
     [Fact]
     public void Macros_DoesNotReachTheCheckerOrTheEvaluator()
@@ -51,6 +55,20 @@ public sealed class ArchitectureTests
         references.ShouldNotContain("Lapis.TypeChecker");
         references.ShouldNotContain("Lapis.Evaluator");
         references.ShouldNotContain("Lapis.Runtime");
+    }
+
+    /// <summary>
+    /// E o contrato está do lado certo da fronteira: a interface em
+    /// <c>Lapis.Macros</c>, a implementação no orquestrador (plano 18 §18.2).
+    /// Sem esta asserção, mover a implementação para dentro do <c>Lapis.Macros</c>
+    /// só apareceria como um ciclo meses depois.
+    /// </summary>
+    [Fact]
+    public void ConstraintRunner_IsDeclaredInMacrosAndImplementedInTheOrchestrator()
+    {
+        typeof(Macros.IConstraintRunner).Assembly.GetName().Name.ShouldBe("Lapis.Macros");
+        typeof(ConstraintRunner).Assembly.ShouldNotBe(typeof(Macros.IConstraintRunner).Assembly);
+        typeof(Macros.IConstraintRunner).IsAssignableFrom(typeof(ConstraintRunner)).ShouldBeTrue();
     }
 
     [Theory]

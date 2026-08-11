@@ -186,7 +186,14 @@ public static class Program
     private static int RunProgram(SourceText source, CliOptions options, TextWriter stdout, TextWriter stderr)
     {
         var context = new RuntimeContext(new ConsoleOutput(stdout));
-        var result = Pipeline.Compile(source, PipelineStage.Evaluate, context);
+
+        // O que uma constraint imprime é saída do compilador, e vai para onde os
+        // diagnósticos vão: stdout é do programa (plano 18 §18.1).
+        var result = Pipeline.Compile(
+            source,
+            PipelineStage.Evaluate,
+            context,
+            compileTimeOutput: new ConsoleOutput(stderr));
 
         ReportDiagnostics(result.Diagnostics, source, options, stderr);
 

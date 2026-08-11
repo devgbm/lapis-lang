@@ -13,6 +13,7 @@ public sealed class TokenKindTests : LexerTestBase
     [InlineData("if", TokenKind.IfKeyword)]
     [InlineData("else", TokenKind.ElseKeyword)]
     [InlineData("match", TokenKind.MatchKeyword)]
+    [InlineData("throw", TokenKind.ThrowKeyword)]
     public void Keywords_AreRecognized(string source, TokenKind expected) =>
         Single(source).Kind.ShouldBe(expected);
 
@@ -25,6 +26,7 @@ public sealed class TokenKindTests : LexerTestBase
     [InlineData("ifx")]
     [InlineData("Int")]
     [InlineData("Result")]
+    [InlineData("throws")]
     public void NearKeywords_AreIdentifiers(string source) =>
         Single(source).Kind.ShouldBe(TokenKind.Identifier);
 

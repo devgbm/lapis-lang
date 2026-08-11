@@ -100,9 +100,18 @@ public static class DiagnosticCodes
     // LAP050x — macros (plano 17)
     public const string NoMacroRuleMatches = "LAP0501";
     public const string AmbiguousMacroRules = "LAP0502";
+
+    /// <summary>
+    /// O único código cuja mensagem vem do programa: é o texto que a
+    /// <c>constraint</c> passou a <c>throw</c> (plano 18 §18.6).
+    /// </summary>
+    public const string ConstraintRejected = "LAP0503";
+
     public const string UnknownSyntaxCategory = "LAP0504";
     public const string MacroExpansionTooDeep = "LAP0505";
     public const string MacroExpansionWrongContext = "LAP0506";
+    public const string ThrowOutsideConstraint = "LAP0507";
+    public const string ThrowExpectsStr = "LAP0508";
     public const string UnknownMacro = "LAP0509";
     public const string MacroIsNotAValue = "LAP0510";
     public const string DuplicateMacro = "LAP0511";

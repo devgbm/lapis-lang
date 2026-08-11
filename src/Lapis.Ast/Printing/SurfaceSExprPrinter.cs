@@ -186,6 +186,12 @@ public static class SurfaceSExprPrinter
                 Close(builder, indent);
                 break;
 
+            case ThrowExpression n:
+                Open(builder, indent, "throw");
+                PrintExpression(builder, n.Value, indent + 1);
+                Close(builder, indent);
+                break;
+
             case ReturnExpression n:
                 if (n.Value is null)
                 {

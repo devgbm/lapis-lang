@@ -243,8 +243,16 @@ Introduzidos pela [spec de macros](../spec/lapislang-macros-0.1.md). Planos 16�
 apontando o ponto dentro da macro.
 
 `LAP0501`, `LAP0502`, `LAP0504`–`LAP0506`, `LAP0509`, `LAP0510` e `LAP0511`
-estão **implementados** (M8). `LAP0503`, `LAP0507` e `LAP0508` chegam com
-`constraint` e `throw` (plano 18).
+estão **implementados** (M8); `LAP0503`, `LAP0507` e `LAP0508`, no M9.
+
+`LAP0507` e `LAP0508` são do **checker**, não do expander: onde `throw` vale e o
+que ele carrega são perguntas de tipo. `LAP0508` só aparece dentro de um
+`constraint` — fora dele o problema é `LAP0507`, e somar os dois descreveria a
+mesma linha duas vezes.
+
+Uma `constraint` que não compila reporta **os erros dela**, e não `LAP0503`:
+"esta construção é inválida" seria uma leitura errada de um erro de tipo dentro da
+própria macro.
 
 `LAP0511` (macro já declarada) não estava na proposta: apareceu ao implementar o
 registro. Um nome de macro é único no arquivo, como um `def` no mesmo bloco.

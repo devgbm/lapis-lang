@@ -241,6 +241,10 @@ public static class FreeVariables
                 yield return value;
                 break;
 
+            case CoreThrow n:
+                yield return n.Value;
+                break;
+
             case CoreIf n:
                 yield return n.Condition;
                 yield return n.Then;

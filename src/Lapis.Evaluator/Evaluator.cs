@@ -60,13 +60,22 @@ public sealed class Evaluator
         _context.Invoke = (callee, arguments) => InvokeFromNative(callee, arguments);
     }
 
-    public static EvaluationResult Run(TypedProgram program, PreludeScope? prelude, RuntimeContext context)
+    /// <param name="compileTime">
+    /// Ambiente de compile time, quando o que se avalia é um <c>constraint</c>
+    /// (plano 18 §18.1). O evaluator é <b>o mesmo</b> nas duas fases — o que muda
+    /// é só o que está no escopo raiz.
+    /// </param>
+    public static EvaluationResult Run(
+        TypedProgram program,
+        PreludeScope? prelude,
+        RuntimeContext context,
+        CompileTimeScope? compileTime = null)
     {
         ArgumentNullException.ThrowIfNull(program);
         ArgumentNullException.ThrowIfNull(context);
 
         var evaluator = new Evaluator(program, prelude, context);
-        var environment = CreateRootEnvironment(prelude);
+        var environment = CreateRootEnvironment(prelude, compileTime);
         var completion = evaluator.Evaluate(program.Program.Body, environment);
 
         return completion.Kind switch
@@ -91,11 +100,12 @@ public sealed class Evaluator
         };
     }
 
-    private static Environment CreateRootEnvironment(PreludeScope? prelude) =>
+    private static Environment CreateRootEnvironment(PreludeScope? prelude, CompileTimeScope? compileTime) =>
         Environment.Empty.ExtendAll(
         [
             .. Natives.All.Select(n => (n.Name, (Value)n)),
             .. (prelude?.Bindings ?? []).Select(b => (b.Name, b.Value)),
+            .. (compileTime?.Bindings ?? []).Select(b => (b.Name, b.Value)),
         ]);
 
     // ------------------------------------------------------------ despacho
@@ -109,6 +119,7 @@ public sealed class Evaluator
         CoreCall n => EvaluateCall(n, environment),
         CoreInstantiate n => EvaluateInstantiate(n, environment),
         CoreReturn n => EvaluateReturn(n, environment),
+        CoreThrow n => EvaluateThrow(n, environment),
         CoreIf n => EvaluateIf(n, environment),
         CoreBinary n => EvaluateBinary(n, environment),
         CoreUnary n => EvaluateUnary(n, environment),
@@ -270,6 +281,25 @@ public sealed class Evaluator
         var value = Evaluate(node.Value, environment);
 
         return value.IsNormal ? Completion.Return(value.Value) : value;
+    }
+
+    /// <summary>
+    /// <c>throw</c> reaproveita <see cref="Completion.Abort"/> inteiro — o mesmo
+    /// caminho de propagação que <c>LAP0302</c> usa desde o M1. Nenhuma exceção
+    /// C#, nenhum caminho novo: é o que mantém a promessa de que a única forma de
+    /// um programa parar cedo é um registro de completion.
+    /// </summary>
+    private Completion EvaluateThrow(CoreThrow node, Environment environment)
+    {
+        var value = Evaluate(node.Value, environment);
+
+        if (!value.IsNormal)
+        {
+            return value;
+        }
+
+        return Completion.Abort(
+            DiagnosticCodes.ConstraintRejected, node.Span, ((StrValue)value.Value).Value);
     }
 
     private Completion EvaluateGotoIf(CoreGotoIf node, Environment environment)

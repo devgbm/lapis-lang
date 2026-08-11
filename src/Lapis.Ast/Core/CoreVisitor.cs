@@ -14,6 +14,7 @@ public abstract class CoreVisitor<TResult>
         CoreCall n => VisitCall(n),
         CoreInstantiate n => VisitInstantiate(n),
         CoreReturn n => VisitReturn(n),
+        CoreThrow n => VisitThrow(n),
         CoreIf n => VisitIf(n),
         CoreBinary n => VisitBinary(n),
         CoreUnary n => VisitUnary(n),
@@ -44,6 +45,8 @@ public abstract class CoreVisitor<TResult>
     protected abstract TResult VisitInstantiate(CoreInstantiate node);
 
     protected abstract TResult VisitReturn(CoreReturn node);
+
+    protected abstract TResult VisitThrow(CoreThrow node);
 
     protected abstract TResult VisitIf(CoreIf node);
 
@@ -127,6 +130,10 @@ public abstract class CoreWalker
                     Visit(n.Value);
                 }
 
+                break;
+
+            case CoreThrow n:
+                Visit(n.Value);
                 break;
 
             case CoreIf n:

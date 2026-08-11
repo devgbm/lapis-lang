@@ -22,15 +22,18 @@ public sealed class PreludeScope
 {
     public const string ResultName = "Result";
     public const string IndexErrorName = "IndexError";
+    public const string ContextErrorName = "ContextError";
     public const string OkVariant = "Ok";
     public const string ErrVariant = "Err";
     public const string OutOfBoundsVariant = "OutOfBounds";
+    public const string MissingVariant = "Missing";
 
     public PreludeScope(ImmutableArray<PreludeBinding> bindings)
     {
         Bindings = bindings;
         Result = RequireEnum(bindings, ResultName, OkVariant, ErrVariant);
         IndexError = RequireEnum(bindings, IndexErrorName, OutOfBoundsVariant);
+        ContextError = RequireEnum(bindings, ContextErrorName, MissingVariant);
 
         OkVariantIndex = Result.IndexOfVariant(OkVariant);
         ErrVariantIndex = Result.IndexOfVariant(ErrVariant);
@@ -38,6 +41,9 @@ public sealed class PreludeScope
 
         OutOfBounds = new EnumValue(IndexError, OutOfBoundsIndex, [], []);
         IndexErrorType = new NamedType(IndexError, []);
+
+        Missing = new EnumValue(ContextError, ContextError.IndexOfVariant(MissingVariant), [], []);
+        ContextErrorType = new NamedType(ContextError, []);
     }
 
     public ImmutableArray<PreludeBinding> Bindings { get; }
@@ -45,6 +51,8 @@ public sealed class PreludeScope
     public TypeDefinition Result { get; }
 
     public TypeDefinition IndexError { get; }
+
+    public TypeDefinition ContextError { get; }
 
     public int OkVariantIndex { get; }
 
@@ -57,6 +65,11 @@ public sealed class PreludeScope
 
     public LapisType IndexErrorType { get; }
 
+    /// <summary>O valor <c>ContextError.Missing</c>, único e imutável.</summary>
+    public EnumValue Missing { get; }
+
+    public LapisType ContextErrorType { get; }
+
     public EnumValue MakeOk(Value payload, LapisType okType) =>
         new(Result, OkVariantIndex, [payload], IndexResultArguments(okType));
 
@@ -66,6 +79,19 @@ public sealed class PreludeScope
     /// <summary>Os argumentos genéricos de <c>Result&lt;T, IndexError&gt;</c> (spec §21).</summary>
     public ImmutableArray<GenericArgument> IndexResultArguments(LapisType okType) =>
         GenericArgument.OfTypes([okType, IndexErrorType]);
+
+    /// <summary><c>Result&lt;Str, ContextError&gt;</c> — o retorno de <c>contextGet</c>.</summary>
+    public LapisType ContextResultType =>
+        new NamedType(Result, GenericArgument.OfTypes([PrimitiveType.Str, ContextErrorType]));
+
+    public EnumValue MakeContextOk(string value) =>
+        new(Result, OkVariantIndex, [new StrValue(value)], ContextResultArguments);
+
+    public EnumValue MakeContextMissing() =>
+        new(Result, ErrVariantIndex, [Missing], ContextResultArguments);
+
+    private ImmutableArray<GenericArgument> ContextResultArguments =>
+        GenericArgument.OfTypes([PrimitiveType.Str, ContextErrorType]);
 
     private static TypeDefinition RequireEnum(
         ImmutableArray<PreludeBinding> bindings,

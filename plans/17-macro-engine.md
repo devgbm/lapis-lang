@@ -37,7 +37,12 @@ Lapis.Cli → ... + Lapis.Macros
 ```
 
 `Lapis.Macros` **não** referencia `Lapis.TypeChecker` nem `Lapis.Evaluator`: a
-expansão é anterior às duas. O plano 18 quebra isso de propósito e explica como.
+expansão é anterior às duas.
+
+> **Correção posterior.** Este parágrafo dizia que "o plano 18 quebra isso de
+> propósito". Não quebrou: `Lapis.Macros` declara `IConstraintRunner` e quem o
+> implementa é o orquestrador, a mesma divisão que o plano 09 já usava para o
+> prelude. A regra segue valendo como está escrita.
 
 ### 17.2 Surface AST
 

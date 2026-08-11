@@ -31,6 +31,7 @@ public enum TokenKind
     MacroKeyword,
     ExpandKeyword,
     ConstraintKeyword,
+    ThrowKeyword,
 
     // delimitadores
     OpenParen,
@@ -93,6 +94,7 @@ public static class TokenKindExtensions
         or TokenKind.MatchKeyword
         or TokenKind.IfKeyword
         or TokenKind.ReturnKeyword
+        or TokenKind.ThrowKeyword
         or TokenKind.OpenParen
         or TokenKind.OpenBrace
         or TokenKind.OpenBracket
@@ -123,6 +125,7 @@ public static class TokenKindExtensions
         TokenKind.MacroKeyword => "'macro'",
         TokenKind.ExpandKeyword => "'expand'",
         TokenKind.ConstraintKeyword => "'constraint'",
+        TokenKind.ThrowKeyword => "'throw'",
         TokenKind.At => "'@'",
         TokenKind.OpenParen => "'('",
         TokenKind.CloseParen => "')'",

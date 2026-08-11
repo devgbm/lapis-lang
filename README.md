@@ -43,12 +43,13 @@ lapis hello.ls
 | **M6** — `goto`/`label` e mutação com `var` | ✅ concluído |
 | **M7** — PE núcleo (folding, propagação, dead code) | ✅ concluído |
 | **M8** — macro engine (`match`/`expand`, higiene, `lapis expand`) | ✅ concluído |
-| M9–M11 — `constraint`, reflection, macros do prelude | ⏳ próximo |
+| **M9** — `constraint`, `throw` e contexto de compilação | ✅ concluído |
+| M10–M11 — reflection, macros do prelude | ⏳ próximo |
 | M12–M14 — PE: especialização, análise, equivalência | ⬜ |
 
-**1373 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
+**1419 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
 evaluator, partial evaluator e CLI — entre eles uma **suíte de conformidade** de
-157 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
+162 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
 spec é um arquivo, e o nome do teste que falha já é o arquivo a abrir.
 
 A linguagem já roda programas de verdade: funções de primeira classe com
@@ -191,10 +192,46 @@ A expansão é higiênica — o `temp` que a macro introduz não é o `temp` do 
 — e `lapis expand` imprime a Surface AST depois da expansão, que é a ferramenta
 sem a qual macro vira adivinhação.
 
-O que falta (M9 em diante): `constraint` em tempo de compilação, reflection, as
-macros do prelude, e o resto do partial evaluator — especialização de chamadas e
-eliminação de bounds check. O roteiro completo está em
-[`plans/`](plans/README.md).
+**Compile time** (M9): entre o `match` e o `expand` cabe um `constraint`, um bloco
+que roda **durante a compilação** para validar a construção e acumular estado.
+
+```c
+macro post
+    match Str:path Block:handler
+
+    constraint {
+        def key = "route.POST." + path;
+
+        if contextHas(key) {
+            throw "rota POST já registrada: " + path;
+        }
+
+        contextPut(key, path);
+    }
+
+    expand {
+        print("POST " + path);
+        handler;
+    };
+
+@post "/produtos" { print("criando produto"); }
+@post "/produtos" { print("de novo"); }    // LAP0503, no span da invocação
+```
+
+Não é uma segunda linguagem: `constraint` é LapisLang, avaliada pelo **mesmo
+evaluator** que roda o programa. O que muda entre as fases é o ambiente — em
+compile time existem `throw` e as primitivas de contexto, em runtime não existe
+nenhum dos dois (`throw` fora de um `constraint` é `LAP0507`, e `contextPut` num
+programa é um nome livre como outro qualquer).
+
+O contexto de compilação é a única coisa mutável do sistema, e só enquanto a
+compilação dura: é estado do compilador exposto por primitivas, do mesmo jeito que
+`print` expõe I/O. `contextGet` devolve `Result` porque chave ausente é falha
+esperada, e falha esperada aparece no tipo (spec §30).
+
+O que falta (M10 em diante): reflection, as macros do prelude, e o resto do
+partial evaluator — especialização de chamadas e eliminação de bounds check. O
+roteiro completo está em [`plans/`](plans/README.md).
 
 ```bash
 $ lapis examples/hello.ls
@@ -222,10 +259,15 @@ inteiro a cada execução da suíte.
 ## Arquitetura
 
 ```
-.ls → Lexer → Parser → Surface AST → Desugar → Core AST → TypeChecker → Typed Core AST → Evaluator → Value
-                                                    ↓
-                                          PartialEvaluator → Core AST residual
+.ls → Lexer → Parser → Surface AST → Macros → Surface AST → Desugar → Core AST → TypeChecker → Typed Core AST → Evaluator → Value
+                                        │                                             ↓
+                                   constraint ────────────────────────────→ PartialEvaluator → Core AST residual
 ```
+
+A seta que sai de `constraint` é o único ponto em que uma fase inicial usa uma
+posterior: rodar um `constraint` exige desugar, checker e evaluator. O ciclo não
+existe porque `Lapis.Macros` só declara a interface — quem a implementa é o
+orquestrador, a mesma divisão que já valia para o prelude.
 
 | Projeto | Responsabilidade |
 |---|---|
@@ -233,6 +275,7 @@ inteiro a cada execução da suíte.
 | `Lapis.Ast` | nós Surface e Core, modelo de tipos, printers |
 | `Lapis.Lexer` | fonte → tokens |
 | `Lapis.Parser` | tokens → Surface AST |
+| `Lapis.Macros` | Surface AST → Surface AST: matching, higiene, expansão |
 | `Lapis.Desugar` | Surface AST → Core AST |
 | `Lapis.TypeChecker` | Core AST → Typed Core AST |
 | `Lapis.Runtime` | valores, ambiente, primitivas, `prelude.ls` |

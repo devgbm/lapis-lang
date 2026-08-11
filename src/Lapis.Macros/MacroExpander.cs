@@ -26,20 +26,34 @@ public sealed class MacroExpander
 
     private readonly MacroRegistry _registry = new();
     private readonly DiagnosticBag _diagnostics;
+    private readonly IConstraintRunner? _constraints;
     private int _mark;
 
-    private MacroExpander(DiagnosticBag diagnostics) => _diagnostics = diagnostics;
+    private MacroExpander(DiagnosticBag diagnostics, IConstraintRunner? constraints)
+    {
+        _diagnostics = diagnostics;
+        _constraints = constraints;
+    }
 
     /// <summary>
     /// Expande o arquivo inteiro. Um arquivo sem <c>@</c> sai idêntico — é o que
     /// garante que esta fase não pode quebrar nada do que já existia.
     /// </summary>
-    public static SourceFile Expand(SourceFile file, DiagnosticBag diagnostics)
+    /// <param name="constraints">
+    /// Quem executa os <c>constraint</c> (plano 18). <c>null</c> significa "esta
+    /// expansão não tem compile time": macros sem <c>constraint</c> funcionam
+    /// normalmente, e encontrar uma <b>com</b> constraint é erro interno, não
+    /// silêncio.
+    /// </param>
+    public static SourceFile Expand(
+        SourceFile file,
+        DiagnosticBag diagnostics,
+        IConstraintRunner? constraints = null)
     {
         ArgumentNullException.ThrowIfNull(file);
         ArgumentNullException.ThrowIfNull(diagnostics);
 
-        var expander = new MacroExpander(diagnostics);
+        var expander = new MacroExpander(diagnostics, constraints);
         var statements = expander.ExpandStatements(file.Statements, depth: 0);
 
         return file with { Statements = statements };
@@ -155,6 +169,12 @@ public sealed class MacroExpander
         }
 
         var (selected, bindings) = matches[0];
+
+        if (!RunConstraint(selected, bindings, invocation))
+        {
+            return null;
+        }
+
         var substitution = new Substitution(bindings.Bindings, ++_mark, invocation.Span, selected.Expansion);
         var body = (BlockExpression)substitution.Apply(selected.Expansion);
 
@@ -175,6 +195,56 @@ public sealed class MacroExpander
             Statements = ExpandStatements(body.Statements, depth + 1),
             Tail = body.Tail is null ? null : RewriteExpression(body.Tail, depth + 1),
         };
+    }
+
+    /// <summary>
+    /// Roda o <c>constraint</c> da regra escolhida, entre o <c>match</c> e o
+    /// <c>expand</c> (spec de macros §8). Devolve se a expansão pode prosseguir.
+    ///
+    /// Rejeitar aqui é <b>definitivo</b>: nenhuma outra regra é tentada. Uma
+    /// regra que não casa diz "não é esta a forma"; uma constraint que rejeita diz
+    /// "esta forma está errada", e tentar outra leitura depois disso só produziria
+    /// um segundo erro pior (§7.1).
+    /// </summary>
+    private bool RunConstraint(MacroRule rule, MatchResult bindings, MacroInvocation invocation)
+    {
+        if (rule.Constraint is null)
+        {
+            return true;
+        }
+
+        if (_constraints is null)
+        {
+            throw new InternalCompilerException(
+                $"'@{invocation.Name}' tem constraint, mas a expansão não recebeu executor");
+        }
+
+        var outcome = _constraints.Run(rule.Constraint, bindings);
+
+        switch (outcome.Status)
+        {
+            case ConstraintStatus.Accepted:
+                return true;
+
+            // A mensagem é do programa e o span é o da **invocação**: quem
+            // escreveu `@post "/products"` precisa ver a sua linha, não a da
+            // macro. Onde a rejeição nasceu vira nota.
+            case ConstraintStatus.Rejected:
+                _diagnostics.ReportError(
+                    DiagnosticCodes.ConstraintRejected,
+                    invocation.Span,
+                    outcome.Message!,
+                    outcome.Span is { } origin
+                        ? [new DiagnosticNote($"rejeitado pela constraint de '@{invocation.Name}'", origin)]
+                        : []);
+
+                return false;
+
+            // A constraint em si não compilou; os diagnósticos dela já foram
+            // reportados por quem a rodou.
+            default:
+                return false;
+        }
     }
 
     // ----------------------------------------------- reescrita da árvore
@@ -236,6 +306,9 @@ public sealed class MacroExpander
                 };
 
             case ReturnExpression { Value: not null } n:
+                return n with { Value = RewriteExpression(n.Value, depth) };
+
+            case ThrowExpression n:
                 return n with { Value = RewriteExpression(n.Value, depth) };
 
             case FunctionExpression n:
