@@ -76,6 +76,20 @@ variante com segurança — foi **adiada**, e com ela `@if`/`@match` saíram do 
 | 19 | [Reflection](19-reflection.md) | `Lapis.Runtime` + `Lapis.TypeChecker` | M10 ✅ |
 | 20 | [Macros de controle no prelude](20-macro-prelude.md) | `prelude.ls` | M11 ✅ |
 
+### Type members (proposta)
+
+Especificação: [`../spec/lapislang-type-members-0.1.md`](../spec/lapislang-type-members-0.1.md).
+**Q26** decidida — member resolution é type checking, não uma fase própria, e é
+isso que torna a feature barata: a Core não ganha nó nenhum. **Q27** — se uma
+extension genérica pode casar o receptor contra o padrão do dono — está **aberta e
+bloqueia o plano 23**.
+
+| # | Plano | Projeto | Milestone |
+|---|---|---|---|
+| 21 | [Type members](21-type-members.md) | `Lapis.Parser` … `Lapis.Evaluator` | M15 |
+| 22 | [Métodos de instância e `self`](22-instance-members.md) | `Lapis.TypeChecker` + `Lapis.Evaluator` | M16 |
+| 23 | [Extensions genéricas](23-generic-extensions.md) | `Lapis.TypeChecker` | M17 ⏳ Q27 |
+
 ### Apêndices normativos
 
 | Apêndice | Conteúdo |
@@ -106,6 +120,16 @@ variante com segurança — foi **adiada**, e com ela `@if`/`@match` saíram do 
 | **M12** | PE especialização | beta reduction, inlining, especialização de funções | 13 |
 | **M13** | PE análise | range analysis, bounds-check elimination, `lapis pe --trace` | 14, 15 |
 | **M14** | Equivalência | property-based: `eval(P,S) ≡ eval(PE(P,S),S)` | 11, 14 |
+| **M15** | Type members | `def User.create`, `User.defaultAge` resolvidos pelo checker | 21 |
+| **M16** | Métodos de instância | `user.hello()` ≡ chamar a função com `user` no argumento 0 | 22 |
+| **M17** | Extensions genéricas | `def<T> Result<T>.isOk` — **bloqueado por Q27** | 23 |
+
+**Por que type members vêm depois do partial evaluator.** A ordem não é arbitrária:
+um método é uma chamada, e especializar `user.hello()` é exatamente a beta
+reduction e o inlining do **M12**. Fazer a feature antes obrigaria o M12 a mirar um
+alvo em movimento; fazê-la depois é escrever açúcar sobre uma máquina que já sabe
+eliminar a chamada. E o propósito declarado do projeto é a avaliação parcial —
+adiar M12–M14 por uma feature de sintaxe inverteria a prioridade.
 
 **Por que as macros vêm antes do partial evaluator** (decisão do autor), e por que
 o **M7 é a exceção**:
@@ -146,6 +170,8 @@ O M6 vir primeiro também paga uma dívida: o plano 14 (bounds-check elimination
         17 → 18 → 19 → 20                           (M8–M11)
               ↓
         13 → 14 → 15                                (M12–M14)
+              ↓
+        21 → 22 → 23                                (M15–M17)
 ```
 
 Observação sobre a ordem da spec: a spec §43–§52 sugere construir o evaluator

@@ -7,7 +7,8 @@ evaluation**.
 - **Extensão:** `.ls` · **CLI:** `lapis` · **Implementação:** C# / .NET 10
 - **Especificação:** [`spec/lapislang-0.2.md`](spec/lapislang-0.2.md)
 - **Planos de implementação:** [`plans/`](plans/README.md)
-- **Extensão planejada:** [macros, reflection e `goto`/`label`](spec/lapislang-macros-0.1.md)
+- **Extensão implementada:** [macros, reflection e `goto`/`label`](spec/lapislang-macros-0.1.md)
+- **Extensão planejada:** [type members e extension methods](spec/lapislang-type-members-0.1.md)
 
 ```c
 def add = fn(a: Int, b: Int) Int {

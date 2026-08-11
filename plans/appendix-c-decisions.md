@@ -780,6 +780,54 @@ porque daria ao partial evaluator um grafo de fluxo em forma canônica.
 
 ---
 
+## Q26 — Onde a resolução de membro acontece ✅
+
+**Decidida ao avaliar a proposta.** A [spec de type
+members](../spec/lapislang-type-members-0.1.md) §24 da versão original pedia uma
+fase própria:
+
+```text
+... → Name Resolution → Type Resolution → Member Resolution → Member Desugaring → ...
+```
+
+Isso exigiria uma **segunda** análise de tipos antes do checker, e a 0.2 é, por
+escolha explícita, uma travessia única dirigida por sintaxe (spec §47, plano 06).
+
+**Decisão: member resolution é type checking.** `user.hello` já é
+`CoreField(user, "hello")` e `user.hello()` já é `CoreCall(CoreField(...), [])`.
+O checker resolve o membro no mesmo `CheckField` onde já resolve campo de struct e
+variante de enum, e registra uma `Resolution` — como `VariantResolution` e
+`ReflectResolution` já fazem.
+
+Consequência que decide o custo da feature: **a Core não ganha nó nenhum e não há
+fase de lowering.**
+
+## Q27 — Extensions genéricas casam receptor contra padrão? ⏳
+
+**Sem decisão. Bloqueia o plano 23.**
+
+`def<T> Result<T>.isOk` aplicado a um `Result<Int, IndexError>` exige casar o tipo
+do receptor contra o padrão do dono e ligar `T`. Isso **é** unificação, e Q7
+estabelece que argumento genérico nunca é inferido.
+
+| Saída | Custo |
+|---|---|
+| A. só extensions especializadas | some a metade útil da feature |
+| **B. unificação restrita ao dono** *(recomendada)* | é inferência, mas fechada: sem bounds, sem recursão, sem falha parcial |
+| C. exigir o argumento na invocação (`result.isOk<Int>()`) | coerente ao pé da letra, e ninguém escreve |
+
+O argumento a favor de **B**: o que Q7 recusa é deduzir o argumento de uma chamada
+a partir dos valores passados. Aqui ele já está **escrito no tipo do receptor** —
+`Result<Int, IndexError>` é o que o checker já sabe —, e o casamento só o
+transporta para o corpo. Não há busca nem escolha.
+
+Junto vem a sobreposição: se `Result<T>.descrever` e `Result<Int>.descrever`
+coexistem, `Result<Int>` tem dois. A recomendação é **erro** (`LAP0720`) em vez de
+uma regra de especificidade — falhar ruidosamente, como a 0.2 já faz com
+`a < b < c`.
+
+---
+
 ## Questões deixadas em aberto para a 0.3
 
 Sem decisão; listadas para não serem esquecidas.

@@ -290,6 +290,43 @@ chamada: não é um erro diferente por ser intrínseco.
 
 ---
 
+## LAP07xx — Type members (proposta)
+
+Introduzidos pela [spec de type members](../spec/lapislang-type-members-0.1.md).
+Planos 21–23. **Nenhum implementado.**
+
+### Declaração e resolução (plano 21)
+
+| Código | Severidade | Mensagem |
+|---|---|---|
+| `LAP0701` | error | o tipo `{0}` não possui o membro `'{1}'` |
+| `LAP0702` | error | o membro `'{0}'` de `{1}` já foi declarado |
+| `LAP0703` | error | `'{0}'` já é variante de `{1}` |
+| `LAP0704` | error | o dono de um membro deve ser um tipo declarado |
+| `LAP0705` | error | um membro não pode ser `var` |
+
+`LAP0703` existe porque `Color.Red` e `Color.membro` ocupam a **mesma** sintaxe:
+sem ele, declarar um membro com nome de variante seria resolvido por precedência
+silenciosa, e quem escreveu o segundo nunca saberia.
+
+### Instância (plano 22)
+
+| Código | Severidade | Mensagem |
+|---|---|---|
+| `LAP0710` | error | o membro `'{0}'` de `{1}` exige uma instância |
+| `LAP0711` | error | o membro `'{0}'` de `{1}` é estático |
+| `LAP0712` | error | `self` sem anotação só é válido no primeiro parâmetro de um membro |
+
+### Extensions genéricas (plano 23)
+
+| Código | Severidade | Mensagem |
+|---|---|---|
+| `LAP0720` | error | `'{0}'` é declarado para `{1}` e para `{2}`, que se sobrepõem |
+| `LAP0721` | error | o parâmetro genérico `'{0}'` não aparece no dono do membro |
+| `LAP0722` | error | o dono do membro tem {0} argumentos genéricos, e `{1}` espera {2} |
+
+---
+
 ## LAP09xx — CLI
 
 | Código | Severidade | Mensagem |
