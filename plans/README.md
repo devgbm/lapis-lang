@@ -47,7 +47,7 @@ critérios de conclusão satisfeitos.
 | 06 | [Type Checker](06-typechecker.md) | `Lapis.TypeChecker` | M1–M4 ✅ |
 | 07 | [Runtime (valores, ambiente, primitivas)](07-runtime.md) | `Lapis.Runtime` | M1–M2 ✅ |
 | 08 | [Evaluator](08-evaluator.md) | `Lapis.Evaluator` | M1–M4 ✅ |
-| 09 | [Prelude (`Result`, `IndexError`, `print`)](09-prelude.md) | `Lapis.Runtime` + `prelude.ls` | M2 ✅ |
+| 09 | [Prelude (`Result`, `Option`, `print`)](09-prelude.md) | `Lapis.Runtime` + `prelude.ls` | M2 ✅ |
 | 10 | [CLI `lapis`](10-cli.md) | `Lapis.Cli` | M1–M5 ✅ |
 | 11 | [Testes de integração e conformidade](11-integration-and-conformance-tests.md) | `tests/` | M1–M5 ✅ |
 
@@ -56,9 +56,9 @@ critérios de conclusão satisfeitos.
 | # | Plano | Projeto | Milestone |
 |---|---|---|---|
 | 12 | [Partial Evaluator — núcleo](12-partial-evaluator-core.md) | `Lapis.PartialEvaluator` | M7 ✅ |
-| 13 | [Partial Evaluator — especialização](13-partial-evaluator-specialization.md) | `Lapis.PartialEvaluator` | M12 |
-| 14 | [Partial Evaluator — análise e BCE](14-partial-evaluator-analysis-and-bce.md) | `Lapis.PartialEvaluator` | M13 |
-| 15 | [Ferramentas de pesquisa e tracing](15-research-tooling-and-tracing.md) | `Lapis.Cli` | M13 |
+| 13 | [Partial Evaluator — especialização](13-partial-evaluator-specialization.md) | `Lapis.PartialEvaluator` | M16 |
+| 14 | [Partial Evaluator — análise e BCE](14-partial-evaluator-analysis-and-bce.md) | `Lapis.PartialEvaluator` | M17 |
+| 15 | [Ferramentas de pesquisa e tracing](15-research-tooling-and-tracing.md) | `Lapis.Cli` | M17 |
 
 ### Metaprogramação (proposta)
 
@@ -88,13 +88,15 @@ Mutabilidade segue o **binding**: `mutavel.campo = e` vale quando o binding é
 `var`, e é açúcar para reconstruir o valor e reatribuir o slot. Todo `Value`
 continua imutável e não há aliasing — Q25 intacta.
 
-Arrays passam a carregar o tamanho no tipo (`[Int;3]`), com construção
-`.[1, 2, 3]` — o mesmo ponto de `.User { }`. **Q29** (`[T;N]` atribuível a
-`[T;?]`) bloqueia o plano 24; **Q30** (aritmética de tamanho) fica adiada.
+A sequência primitiva vira **span**, com o tamanho no tipo (`[Int;3]`) e
+construção `.[1, 2, 3]` — o mesmo ponto de `.User { }`. `Array` e `List` virão como
+biblioteca sobre ela. **Q29 decidida** (`[T;N] <: [T;?]`, numa direção só);
+**Q30** (aritmética de tamanho) adiada, porque é nas coleções de biblioteca que
+concatenação faz sentido.
 
 | # | Plano | Projeto | Milestone |
 |---|---|---|---|
-| 24 | [Arrays com tamanho no tipo](24-sized-arrays.md) | `Lapis.Ast` + `Lapis.TypeChecker` + `prelude.ls` | M12 ⏳ Q29 |
+| 24 | [Span: sequência com tamanho no tipo](24-spans.md) | `Lapis.Ast` + `Lapis.TypeChecker` + `prelude.ls` | M12 |
 | 21 | [Type members](21-type-members.md) | `Lapis.Parser` … `Lapis.Evaluator` | M13 |
 | 22 | [Métodos de instância e `self`](22-instance-members.md) | `Lapis.TypeChecker` + `Lapis.Evaluator` | M14 |
 | 23 | [Extensions genéricas](23-generic-extensions.md) | `Lapis.TypeChecker` | M15 ⏳ Q27 |
@@ -126,7 +128,7 @@ Arrays passam a carregar o tamanho no tipo (`[Int;3]`), com construção
 | **M9** ✅ | Compile time | `@post` com deduplicação de rota; `throw` e contexto | 18 |
 | **M10** ✅ | Reflection | `reflect(Color).variants` nas duas fases | 19 |
 | **M11** ✅ | Macros de controle | `@unless` e `@while` no prelude; **nada é retirado** da Core | 20 |
-| **M12** | Arrays com tamanho | `[Int;3]`, `.[1,2,3]`, índice literal checado, `length` constante — **bloqueado por Q29** | 24 |
+| **M12** | Span | `[Int;3]`, `.[1,2,3]`, índice literal checado, `length` constante, indexação → `Option` | 24 |
 | **M13** | Type members | `def User.create`, `User.defaultAge`, `mutavel.campo = e` | 21 |
 | **M14** | Métodos de instância | `user.hello()` ≡ chamar a função com `user` no argumento 0 | 22 |
 | **M15** | Extensions genéricas | `def<T> Result<T>.isOk` — **bloqueado por Q27** | 23 |
@@ -134,10 +136,11 @@ Arrays passam a carregar o tamanho no tipo (`[Int;3]`), com construção
 | **M17** | PE análise | range analysis, bounds-check elimination, `lapis pe --trace` | 14, 15 |
 | **M18** | Equivalência | property-based: `eval(P,S) ≡ eval(PE(P,S),S)` | 11, 14 |
 
-**Por que arrays vêm primeiro.** O plano 24 muda a sintaxe de tipo de array e o
-`prelude.ls` junto — `TypeInfo` tem quatro campos de array. Migrar prelude,
-exemplos e corpus é a maior parte daquele plano, e fazê-la **antes** dos type
-members evita migrar duas vezes.
+**Por que span vem primeiro.** O plano 24 muda a sintaxe de tipo de sequência e o
+`prelude.ls` junto — `TypeInfo` tem quatro campos de span — e troca o retorno da
+indexação de `Result<T, IndexError>` por `Option<T>`. Migrar prelude, exemplos e
+corpus é a maior parte daquele plano, e fazê-la **antes** dos type members evita
+migrar duas vezes.
 
 **Por que fechar a linguagem antes do partial evaluator** (decisão do autor):
 
@@ -156,7 +159,7 @@ O custo é assumido: os type members chegam sem que o M15 já saiba eliminar a
 chamada, então `user.hello()` custa uma chamada até lá. É preço de sintaxe, não de
 semântica.
 
-**O que ainda falta para "fechar"**, além de M12–M14: **Q23** — a construção para
+**O que ainda falta para "fechar"**, além de M12–M15: **Q23** — a construção para
 ler a carga de uma variante com segurança, que Q22 adiou e sem a qual `@match`
 não pode existir. É o último buraco conhecido da superfície.
 

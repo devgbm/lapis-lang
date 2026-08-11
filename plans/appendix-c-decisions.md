@@ -826,31 +826,55 @@ coexistem, `Result<Int>` tem dois. A recomendação é **erro** (`LAP0720`) em v
 uma regra de especificidade — falhar ruidosamente, como a 0.2 já faz com
 `a < b < c`.
 
-## Q29 — `[T;N]` é atribuível a `[T;?]`? ⏳
+## Q29 — `[T;N]` é atribuível a `[T;?]`? ✅
 
-**Sem decisão. Bloqueia o plano 24.**
+**Decidida pelo autor: sim, numa direção só.**
 
 ```c
-def imprime = fn(a: [Int;?]) Void { ... };
+def imprime = fn(s: [Int;?]) Void { ... };
 imprime(.[1, 2, 3]);        // `[Int;3]` num parâmetro `[Int;?]`
 ```
 
-Sem isso nenhuma função aceita arrays de tamanhos diferentes, e o tamanho no tipo
-vira camisa de força. Com isso, a linguagem ganha a **segunda** regra de
-subtipagem — hoje só existe `Never <: T` (Q13).
+`?` **não** é um tamanho diferente — é a ausência da informação. Um `[Int;3]` já é
+um span cujo tamanho por acaso se conhece, então a conversão é esquecer o que se
+sabia, e esquecer é sempre seguro. O contrário (`[T;?]` para `[T;N]`) não vale: o
+tamanho poderia ser qualquer um em runtime.
 
-**Recomendação:** aceitar, numa direção só (`[T;N] <: [T;?]`, nunca o contrário).
-É esquecer informação, que é sempre seguro, e não abre a porta para variância —
-o elemento continua invariante.
+É a **segunda** regra de subtipagem da linguagem (a primeira é `Never <: T`, Q13),
+e ela não abre variância: o elemento continua invariante, `[Int;3]` não é
+`[Any;?]`.
 
-## Q30 — aritmética de tamanho no tipo ⏳
+Consequência de runtime, também decidida: um span carrega **tamanho do elemento e
+quantidade** junto do dado, porque é o que permite a `[T;?]` responder `length` sem
+o tipo dizer. No evaluator atual isso já é verdade de graça — `ArrayValue` guarda
+`Elements` e `ElementType` —, e a exigência vale para um backend futuro.
 
-`arr.concat(.[4,5])` sobre `[Int;3]` daria `[Int;5]`, o que exige somar tamanhos
-**no tipo**. É o primeiro degrau de tipos dependentes.
+## Q30 — aritmética de tamanho no tipo ⏳ *(adiada com razão)*
 
-**Recomendação:** não agora. `concat` devolve `[T;?]`; quem precisa do tamanho
-exato reconstrói com `.[...]`. Const generics (Q18) já cobrem o caso de passar um
-tamanho adiante sem calculá-lo.
+`s.concat(.[4,5])` sobre `[Int;3]` daria `[Int;5]`, o que exige somar tamanhos **no
+tipo** — primeiro degrau de tipos dependentes.
+
+**Adiada pelo autor**, com uma razão melhor do que "é caro": span é a **base** de
+`Array` e `List`, que virão como biblioteca, e é nelas que concatenação faz sentido
+— com capacidade separada de comprimento e política de crescimento. Resolver
+aritmética de tamanho na primitiva seria pagar por um caso que a biblioteca vai
+reformular.
+
+Por enquanto `concat` devolve `[T;?]`.
+
+## Q31 — indexação devolve `Option`, não `Result` ✅
+
+**Decidida pelo autor.** `s[i]` era `Result<T, IndexError>` (spec §21) e passa a
+ser `Option<T>`.
+
+`IndexError.OutOfBounds` nunca carregou informação: um enum de uma variante só,
+cujo significado é "falhou". `Result` existe para o erro que **diz alguma coisa**;
+onde não há o que dizer, `Option` é o tipo honesto.
+
+E fecha uma assimetria que estava no repositório: `Option` foi para o prelude no M2
+porque a spec §29 o cita, e ficou **sem um único consumidor** desde então. Agora
+tem o seu — e `IndexError` fica sem nenhum, o que abre a pergunta de aposentá-lo
+(recomendação do plano 24: sim, agora, que é quando a quebra custa menos).
 
 ## Q28 — `arr[i] = v` ⏳
 

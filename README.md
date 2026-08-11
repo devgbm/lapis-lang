@@ -47,7 +47,7 @@ lapis hello.ls
 | **M9** — `constraint`, `throw` e contexto de compilação | ✅ concluído |
 | **M10** — reflection nas duas fases | ✅ concluído |
 | **M11** — `@unless` e `@while` no prelude | ✅ concluído |
-| M12–M15 — arrays com tamanho, type members, extension methods | ⏳ próximo |
+| M12–M15 — span com tamanho no tipo, type members, extension methods | ⏳ próximo |
 | M16–M18 — PE: especialização, análise, equivalência | ⬜ |
 
 **1486 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
@@ -279,8 +279,9 @@ Só o que um `goto` **explícito** pode ter pulado continua invisível no destin
 que é a única forma de o contrário ser mentira. `examples/control.ls` mostra os
 três casos.
 
-O que falta: **fechar a linguagem** primeiro (M12–M15) — arrays com o tamanho no
-tipo (`[Int;3]`), type members e extension methods —, porque o partial evaluator
+O que falta: **fechar a linguagem** primeiro (M12–M15) — **span**, a sequência com
+o tamanho no tipo (`[Int;3]`, construída com `.[1,2,3]`, indexando para `Option`),
+mais type members e extension methods —, porque o partial evaluator
 precisa de um caso para cada construção, e escrevê-lo contra uma superfície que
 ainda cresce significa reabri-lo a cada milestone. Depois o resto do PE (M16–M18):
 especialização de chamadas e eliminação de bounds check. O roteiro completo está em
