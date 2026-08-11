@@ -3,6 +3,7 @@ using System.Text;
 using Lapis.Ast.Printing;
 using Lapis.Diagnostics;
 using Lapis.Evaluator;
+using Lapis.PartialEvaluator;
 using Lapis.Runtime;
 
 namespace Lapis.Cli;
@@ -65,7 +66,7 @@ public static class Program
 
         var (command, path) = options.Positional switch
         {
-            ["run" or "check" or "tokens" or "ast" or "desugar", var file] => (options.Positional[0], file),
+            ["run" or "check" or "tokens" or "ast" or "desugar" or "pe", var file] => (options.Positional[0], file),
             [var file] => ("run", file),
             _ => (null, null),
         };
@@ -86,6 +87,12 @@ public static class Program
             return ExitCodes.Usage;
         }
 
+        if (options.Dynamic.Count > 0 && command != "pe")
+        {
+            stderr.WriteLine("lapis: '--dynamic' só se aplica a 'pe'.");
+            return ExitCodes.Usage;
+        }
+
         if (!TryReadSource(path, stderr, out var source))
         {
             return ExitCodes.Usage;
@@ -98,6 +105,7 @@ public static class Program
             "tokens" => PrintStage(source, PipelineStage.Tokens, options, stdout, stderr),
             "ast" => PrintStage(source, PipelineStage.Parse, options, stdout, stderr),
             "desugar" => PrintStage(source, PipelineStage.Desugar, options, stdout, stderr),
+            "pe" => PartiallyEvaluate(source, options, stdout, stderr),
             _ => ExitCodes.Usage,
         };
     }
@@ -113,6 +121,8 @@ public static class Program
         var json = false;
         var noColor = false;
         var sourceForm = false;
+        var stats = false;
+        var dynamic = new List<string>();
 
         foreach (var arg in args)
         {
@@ -121,8 +131,16 @@ public static class Program
                 case "--json": json = true; break;
                 case "--no-color": noColor = true; break;
                 case "--source": sourceForm = true; break;
+                case "--stats": stats = true; break;
 
                 default:
+                    if (arg.StartsWith("--dynamic=", StringComparison.Ordinal))
+                    {
+                        dynamic.AddRange(arg["--dynamic=".Length..]
+                            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+                        break;
+                    }
+
                     if (arg.StartsWith("--", StringComparison.Ordinal))
                     {
                         stderr.WriteLine($"lapis: opção desconhecida '{arg}'.");
@@ -140,7 +158,7 @@ public static class Program
             Console.IsErrorRedirected,
             System.Environment.GetEnvironmentVariable("NO_COLOR"));
 
-        options = new CliOptions(positional.ToArray(), json, color && !json, sourceForm);
+        options = new CliOptions(positional.ToArray(), json, color && !json, sourceForm, stats, dynamic);
         return true;
     }
 
@@ -154,7 +172,13 @@ public static class Program
     public static bool ShouldUseColor(bool noColor, bool errorRedirected, string? noColorVariable) =>
         !noColor && !errorRedirected && string.IsNullOrEmpty(noColorVariable);
 
-    private readonly record struct CliOptions(string[] Positional, bool Json, bool Color, bool Source);
+    private readonly record struct CliOptions(
+        string[] Positional,
+        bool Json,
+        bool Color,
+        bool Source,
+        bool Stats,
+        IReadOnlyList<string> Dynamic);
 
     // ------------------------------------------------------------- comandos
 
@@ -191,6 +215,59 @@ public static class Program
         ReportDiagnostics(result.Diagnostics, source, options, stderr);
 
         return ExitCodes.For(result);
+    }
+
+    /// <summary>
+    /// <c>lapis pe</c> — o programa residual, impresso como código <c>.ls</c>.
+    ///
+    /// Ambiente estático inicial vazio: em v0.2 não há entrada externa, então todo
+    /// top-level é estático por construção e um programa fechado tende ao resultado
+    /// já avaliado. É <c>--dynamic</c> que torna o comando interessante — ele
+    /// declara nomes como desconhecidos e obriga o PE a residualizar de verdade.
+    /// </summary>
+    private static int PartiallyEvaluate(
+        SourceText source,
+        CliOptions options,
+        TextWriter stdout,
+        TextWriter stderr)
+    {
+        var result = Pipeline.Compile(source, PipelineStage.TypeCheck);
+
+        ReportDiagnostics(result.Diagnostics, source, options, stderr);
+
+        if (result.HasErrors)
+        {
+            return ExitCodes.CompilationError;
+        }
+
+        var environment = StaticEnvironment.Root();
+
+        foreach (var name in options.Dynamic)
+        {
+            // `nome` ou `nome:Tipo`. O tipo é informativo nesta fatia — o residual
+            // é re-checado do zero —, então uma anotação ausente não impede nada.
+            var separator = name.IndexOf(':', StringComparison.Ordinal);
+            var identifier = separator < 0 ? name : name[..separator];
+
+            environment.DeclareDynamic(identifier, Ast.Types.AnyType.Instance);
+        }
+
+        var specialized = PartialEvaluator.PartialEvaluator.Specialize(
+            result.Core!, environment, options: null, result.Typed);
+
+        stdout.Write(CoreSourcePrinter.Print(specialized.Residual));
+
+        if (options.Stats)
+        {
+            var statistics = specialized.Statistics;
+            stderr.WriteLine(
+                $"nós: {statistics.NodesBefore} → {statistics.NodesAfter}; "
+                + $"dobras: {statistics.ConstantsFolded}; "
+                + $"ramos eliminados: {statistics.BranchesEliminated}; "
+                + $"bindings eliminados: {statistics.BindingsEliminated}");
+        }
+
+        return ExitCodes.Success;
     }
 
     private static int PrintStage(
@@ -291,11 +368,14 @@ public static class Program
         writer.WriteLine("  tokens <arquivo>.ls    imprime os tokens");
         writer.WriteLine("  ast <arquivo>.ls       imprime a Surface AST");
         writer.WriteLine("  desugar <arquivo>.ls   imprime a Core AST");
+        writer.WriteLine("  pe <arquivo>.ls        imprime o programa residual (partial evaluation)");
         writer.WriteLine();
         writer.WriteLine("Opções:");
         writer.WriteLine("  --json           diagnósticos em JSON, um por linha");
         writer.WriteLine("  --no-color       desliga ANSI (idem NO_COLOR no ambiente)");
         writer.WriteLine("  --source         em 'desugar', imprime '.ls' em vez de S-expression");
+        writer.WriteLine("  --dynamic=x,y    em 'pe', trata estes nomes top-level como desconhecidos");
+        writer.WriteLine("  --stats          em 'pe', imprime as estatísticas em stderr");
         writer.WriteLine("  -h, --help       mostra esta ajuda");
         writer.WriteLine("  -v, --version    mostra a versão");
     }

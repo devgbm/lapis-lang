@@ -183,6 +183,38 @@ public static class CoreSExprPrinter
                 Close(builder, indent);
                 break;
 
+            case CoreGoto n:
+                Line(builder, indent, $"({tag}goto {n.Label})");
+                break;
+
+            case CoreAssign n:
+                Open(builder, indent, $"{tag}assign {n.Name}");
+                PrintExpression(builder, n.Value, indent + 1, ids);
+                Close(builder, indent);
+                break;
+
+            case CoreGotoIf n:
+                Open(builder, indent, $"{tag}goto-if {n.Label}");
+                PrintExpression(builder, n.Condition, indent + 1, ids);
+                Close(builder, indent);
+                break;
+
+            case CoreLabeled n:
+                Open(builder, indent, $"{tag}labeled");
+                Open(builder, indent + 1, "entry");
+                PrintExpression(builder, n.Entry, indent + 2, ids);
+                Close(builder, indent + 1);
+
+                foreach (var join in n.Joins)
+                {
+                    Open(builder, indent + 1, $"join {join.Name}");
+                    PrintExpression(builder, join.Body, indent + 2, ids);
+                    Close(builder, indent + 1);
+                }
+
+                Close(builder, indent);
+                break;
+
             default:
                 throw InternalCompilerException.Unreachable(node, node.Span);
         }
@@ -241,7 +273,11 @@ public static class CoreSExprPrinter
                 var annotation = let.Annotation is null
                     ? string.Empty
                     : $" : {SurfaceSExprPrinter.PrintType(let.Annotation)}";
-                Open(builder, indent + 1, $"{(ids ? $"#{let.NodeId} " : string.Empty)}let {let.Name}{annotation}");
+                var keyword = let.IsMutable ? "var" : "let";
+                Open(
+                    builder,
+                    indent + 1,
+                    $"{(ids ? $"#{let.NodeId} " : string.Empty)}{keyword} {let.Name}{annotation}");
                 PrintExpression(builder, let.Value, indent + 2, ids);
                 Close(builder, indent + 1);
             }

@@ -36,10 +36,21 @@ public sealed class Evaluator
 {
     private const int MaxCallDepth = 10_000;
 
+    /// <summary>
+    /// Orçamento de saltos do <b>programa inteiro</b>, não de cada laço.
+    ///
+    /// Até o M4 todo programa terminava por construção — sem recursão (Q8) e sem
+    /// laços. O salto para trás acaba com isso, e um orçamento global é o que
+    /// torna "todo programa termina ou reporta <c>LAP0303</c>" uma propriedade
+    /// verificável, em vez de uma esperança.
+    /// </summary>
+    private const int MaxJumps = 1_000_000;
+
     private readonly TypedProgram _program;
     private readonly RuntimeContext _context;
     private readonly PreludeScope? _prelude;
     private int _callDepth;
+    private int _jumps;
 
     private Evaluator(TypedProgram program, PreludeScope? prelude, RuntimeContext context)
     {
@@ -71,6 +82,10 @@ public sealed class Evaluator
             // que o checker rejeita (LAP0274).
             CompletionKind.Return => throw new InternalCompilerException(
                 "'return' escapou para o topo do programa"),
+
+            // Idem para um salto sem rótulo correspondente: LAP0520 o rejeita.
+            CompletionKind.Goto => throw new InternalCompilerException(
+                $"'goto {completion.Label}' escapou para o topo do programa"),
 
             _ => new EvaluationResult(completion.Value, ExecutionStatus.Completed),
         };
@@ -104,6 +119,10 @@ public sealed class Evaluator
         CoreMatch n => EvaluateMatch(n, environment),
         CoreTypeDef n => EvaluateTypeDef(n),
         CoreConstruct n => EvaluateConstruct(n, environment),
+        CoreGoto n => Completion.Goto(n.Label),
+        CoreGotoIf n => EvaluateGotoIf(n, environment),
+        CoreLabeled n => EvaluateLabeled(n, environment),
+        CoreAssign n => EvaluateAssign(n, environment),
         _ => throw InternalCompilerException.Unreachable(node, node.Span),
     };
 
@@ -138,7 +157,31 @@ public sealed class Evaluator
             return value;
         }
 
-        return Evaluate(node.Body, environment.Extend(node.Name, value.Value));
+        return Evaluate(node.Body, environment.Extend(node.Name, value.Value, node.IsMutable));
+    }
+
+    /// <summary>
+    /// <c>x = e</c>. O slot já existe — quem o criou foi o <c>Let</c> mutável —,
+    /// então a atribuição só troca o conteúdo. É por isso que o corpo de um join,
+    /// que roda sempre no mesmo ambiente, enxerga o valor da volta anterior: é o
+    /// que faz um laço avançar (Q25).
+    /// </summary>
+    private Completion EvaluateAssign(CoreAssign node, Environment environment)
+    {
+        var value = Evaluate(node.Value, environment);
+
+        if (!value.IsNormal)
+        {
+            return value;
+        }
+
+        if (!environment.TryAssign(node.Name, value.Value))
+        {
+            throw new InternalCompilerException(
+                $"atribuição a '{node.Name}', que não existe no ambiente");
+        }
+
+        return Completion.Normal(VoidValue.Instance);
     }
 
     private Completion EvaluateLambda(CoreLambda node, Environment environment)
@@ -227,6 +270,71 @@ public sealed class Evaluator
         var value = Evaluate(node.Value, environment);
 
         return value.IsNormal ? Completion.Return(value.Value) : value;
+    }
+
+    private Completion EvaluateGotoIf(CoreGotoIf node, Environment environment)
+    {
+        var condition = Evaluate(node.Condition, environment);
+
+        if (!condition.IsNormal)
+        {
+            return condition;
+        }
+
+        return ((BoolValue)condition.Value).Value
+            ? Completion.Goto(node.Label)
+            : Completion.Normal(VoidValue.Instance);
+    }
+
+    /// <summary>
+    /// Avalia a entrada; se ela terminar em salto para um dos joins deste grupo,
+    /// avalia aquele corpo — que pode saltar de novo. Qualquer outra completion
+    /// sobe, exatamente como <c>Return</c> sobe até a fronteira de chamada.
+    ///
+    /// O laço é <b>iteração, não recursão</b>: um salto para trás é mais uma volta
+    /// deste <c>while</c>, e a pilha de C# não cresce. É o que torna
+    /// <c>@while</c> viável sem risco de estouro no interpretador.
+    /// </summary>
+    private Completion EvaluateLabeled(CoreLabeled node, Environment environment)
+    {
+        var completion = Evaluate(node.Entry, environment);
+
+        while (completion.Kind == CompletionKind.Goto && TryFindJoin(node, completion.Label, out var join))
+        {
+            if (++_jumps > MaxJumps)
+            {
+                return Completion.Abort(
+                    DiagnosticCodes.JumpLimitExceeded,
+                    node.Span,
+                    $"limite de saltos excedido (limite {MaxJumps})");
+            }
+
+            // O ambiente é o do grupo, não o da entrada: nomes declarados entre o
+            // salto e o rótulo não estão em escopo no destino — o salto pode
+            // tê-los pulado (plano 16 §16.4).
+            completion = Evaluate(join.Body, environment);
+        }
+
+        return completion;
+    }
+
+    /// <summary>
+    /// O primeiro join com o nome procurado. Rótulo repetido no mesmo grupo é
+    /// <c>LAP0522</c>; aqui a escolha só precisa ser determinística.
+    /// </summary>
+    private static bool TryFindJoin(CoreLabeled node, string? label, out CoreJoin join)
+    {
+        foreach (var candidate in node.Joins)
+        {
+            if (candidate.Name == label)
+            {
+                join = candidate;
+                return true;
+            }
+        }
+
+        join = null!;
+        return false;
     }
 
     private Completion EvaluateIf(CoreIf node, Environment environment)
@@ -588,6 +696,11 @@ public sealed class Evaluator
                 // Cair no fim do corpo só é alcançável em função Void: o checker
                 // garante (LAP0272) que as demais retornam em todos os caminhos.
                 CompletionKind.Normal => Completion.Normal(VoidValue.Instance),
+
+                // Um salto não atravessa fronteira de função (LAP0520/LAP0521):
+                // chegar aqui significa que o checker deixou passar.
+                CompletionKind.Goto => throw new InternalCompilerException(
+                    $"'goto {completion.Label}' escapou do corpo da função"),
 
                 _ => completion,
             };

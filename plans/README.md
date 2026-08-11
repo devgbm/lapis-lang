@@ -55,10 +55,10 @@ critérios de conclusão satisfeitos.
 
 | # | Plano | Projeto | Milestone |
 |---|---|---|---|
-| 12 | [Partial Evaluator — núcleo](12-partial-evaluator-core.md) | `Lapis.PartialEvaluator` | M6 |
-| 13 | [Partial Evaluator — especialização](13-partial-evaluator-specialization.md) | `Lapis.PartialEvaluator` | M7 |
-| 14 | [Partial Evaluator — análise e BCE](14-partial-evaluator-analysis-and-bce.md) | `Lapis.PartialEvaluator` | M8 |
-| 15 | [Ferramentas de pesquisa e tracing](15-research-tooling-and-tracing.md) | `Lapis.Cli` | M8 |
+| 12 | [Partial Evaluator — núcleo](12-partial-evaluator-core.md) | `Lapis.PartialEvaluator` | M7 ✅ |
+| 13 | [Partial Evaluator — especialização](13-partial-evaluator-specialization.md) | `Lapis.PartialEvaluator` | M12 |
+| 14 | [Partial Evaluator — análise e BCE](14-partial-evaluator-analysis-and-bce.md) | `Lapis.PartialEvaluator` | M13 |
+| 15 | [Ferramentas de pesquisa e tracing](15-research-tooling-and-tracing.md) | `Lapis.Cli` | M13 |
 
 ### Metaprogramação (proposta)
 
@@ -70,7 +70,7 @@ variante com segurança — foi **adiada**, e com ela `@if`/`@match` saíram do 
 
 | # | Plano | Projeto | Milestone |
 |---|---|---|---|
-| 16 | [`goto` e `label`](16-goto-and-labels.md) | `Lapis.Ast` … `Lapis.Evaluator` | M6 |
+| 16 | [`goto` e `label`](16-goto-and-labels.md) | `Lapis.Ast` … `Lapis.Evaluator` | M6 ✅ |
 | 17 | [Macro engine](17-macro-engine.md) | `Lapis.Macros` | M8 |
 | 18 | [`constraint`, `throw` e contexto](18-compile-time-evaluation.md) | `Lapis.Macros` + `Lapis.Cli` | M9 |
 | 19 | [Reflection](19-reflection.md) | `Lapis.Runtime` + `Lapis.TypeChecker` | M10 |
@@ -97,8 +97,8 @@ variante com segurança — foi **adiada**, e com ela `@if`/`@match` saíram do 
 | **M3** ✅ | Enums, match, tipos | `enum`, `match` exaustivo, `type` + construção + acesso a campo | 02, 04, 05, 06, 08 |
 | **M4** ✅ | Generics | `fn<T>` escritos pelo programador, sempre com argumentos explícitos (Q7) + const generics | 02, 04, 06, 08 |
 | **M5** ✅ | Conformidade | suíte golden `tests/conformance/**/*.ls`, `examples/` executando, subcomandos e flags do CLI | 10, 11 |
-| **M6** | `goto`/`label` | controle de fluxo explícito; `GotoForm_EquivalentToIf` verde | 16 |
-| **M7** | PE núcleo | constant folding, propagação, dead code, `lapis pe` | 12 |
+| **M6** ✅ | `goto`/`label` | controle de fluxo explícito; `GotoForm_EquivalentToIf` verde | 16 |
+| **M7** ✅ | PE núcleo | constant folding, propagação, dead code, `lapis pe` | 12 |
 | **M8** | Macro engine | `@unless`, `@square` expandindo; `lapis expand` | 17 |
 | **M9** | Compile time | `@post` com deduplicação de rota; `throw` e contexto | 18 |
 | **M10** | Reflection | `reflect(Color).variants` nas duas fases | 19 |

@@ -36,7 +36,7 @@ public static class SurfaceSExprPrinter
         switch (statement)
         {
             case DefStatement def:
-                Open(builder, indent, $"def {def.Name}");
+                Open(builder, indent, $"{(def.IsMutable ? "var" : "def")} {def.Name}");
 
                 if (def.Annotation is not null)
                 {
@@ -51,6 +51,26 @@ public static class SurfaceSExprPrinter
                 Open(builder, indent, "stmt");
                 PrintExpression(builder, expression.Expression, indent + 1);
                 Close(builder, indent);
+                break;
+
+            case AssignStatement assign:
+                Open(builder, indent, $"assign {assign.Name}");
+                PrintExpression(builder, assign.Value, indent + 1);
+                Close(builder, indent);
+                break;
+
+            case GotoStatement { Condition: null } jump:
+                Line(builder, indent, $"(goto {jump.Label})");
+                break;
+
+            case GotoStatement jump:
+                Open(builder, indent, $"goto-if {jump.Label}");
+                PrintExpression(builder, jump.Condition!, indent + 1);
+                Close(builder, indent);
+                break;
+
+            case LabelStatement label:
+                Line(builder, indent, $"(label {label.Label})");
                 break;
 
             default:

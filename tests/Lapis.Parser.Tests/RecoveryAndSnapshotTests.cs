@@ -92,6 +92,15 @@ public sealed class RecoveryTests : ParserTestBase
     [InlineData("((((")]
     [InlineData("{{{{")]
     [InlineData("def def def")]
+    [InlineData("match 1 { _ => a b }")]
+    [InlineData("match 1 { _ => a = 1 }")]
+    [InlineData("var")]
+    [InlineData("var =")]
+    [InlineData("x =")]
+    [InlineData("= 1;")]
+    [InlineData("goto")]
+    [InlineData("label")]
+    [InlineData("goto if;")]
     public void Parser_NeverThrows(string source) =>
         Should.NotThrow(() => ParseWithDiagnostics(source));
 

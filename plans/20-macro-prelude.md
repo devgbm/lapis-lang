@@ -67,6 +67,16 @@ LapisLang capaz de não terminar — o evaluator aborta com `LAP0303`.
 É também a demonstração mais forte da tese: **um laço, que em qualquer outra
 linguagem é trabalho de compilador, aqui é seis linhas de `prelude.ls`.**
 
+**Desbloqueado pela Q25.** Até o `var` existir, esta expansão rodava mas nunca
+iterava: nada mudava entre as voltas, então `condition` valia o mesmo sempre. Com
+mutação, o corpo do laço pode avançar o estado que a condição lê.
+
+Uma restrição de escrita fica: um `var` declarado **depois** de um `label` vive
+dentro daquele join e não é visível no seguinte, então a macro precisa expandir
+para uma forma em que as declarações do usuário fiquem **antes** do primeiro
+rótulo gerado. É a mesma regra de escopo do plano 16 §16.4, e é o que os testes
+de `@while` precisam cobrir.
+
 ### 20.3 Por que `@if` e `@match` ficaram de fora
 
 A parte deste plano que vale ser lida com atenção, porque é uma decisão revertida
@@ -117,7 +127,7 @@ seria projetar no escuro.
 
 ### Por que `@while` entra e `@foreach` não
 
-`@while` precisa só de `goto` para trás, que o M6 entrega. `@foreach` precisa de um
+`@while` precisa de `goto` para trás (M6) e de mutação (Q25) — os dois existem. `@foreach` precisa de um
 protocolo de iteração sobre coleções — `length` mais índice, ou um iterador — que a
 0.2 não define. É trabalho de biblioteca, não de macro.
 
@@ -147,6 +157,8 @@ Nenhuma substitui algo que o compilador já faz. É a divisão que sobrou depois
 | `While_Iterates` | contador até 10 | chega a 10 |
 | `While_ZeroIterations` | condição falsa de saída | corpo não executa |
 | `While_Infinite_Aborts` | `@while true { }` | `LAP0303` |
+| `While_CountsUp` | `var i = 0; @while i < 3 { i = i + 1; }` | itera 3 vezes |
+| `While_DeclarationsBeforeLabel` | `var` do usuário fica em escopo em todas as voltas | |
 | `While_DoesNotGrowStack` | 100.000 iterações | sem stack overflow |
 | `While_BodySeesOuterBindings` | `def` antes do laço | visível no corpo |
 

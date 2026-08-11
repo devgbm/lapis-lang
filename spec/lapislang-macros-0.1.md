@@ -555,6 +555,12 @@ Com saltos para trás, os joins de um mesmo grupo podem se referenciar mutuament
 junção é calculada sobre o conjunto todo, não em ordem — um join que só diverge
 contribui `Never` e não atrapalha.
 
+Na prática a junção nunca falha: a entrada e todo join que não é o último terminam
+em salto, e salto é `Never`. O valor do grupo é o do **último** join — o único
+caminho que produz valor. A junção fica no checker mesmo assim, porque é a operação
+correta, e porque deixaria de ser trivial no dia em que um join tiver parâmetros
+(§10.6).
+
 `Never` já se propaga por `Let`, `If`, `Binary`, `Unary` e `Call` desde o M1, então
 `goto` cabe em qualquer posição sem regra nova.
 
@@ -565,8 +571,40 @@ O evaluator representa `return` como **completion record**, não como exceção
 `Goto(rótulo)`. Um `Labeled` que define aquele rótulo captura a completion e segue
 pelo corpo do join — exatamente como a fronteira de chamada captura `Return`.
 
-Como os saltos são para frente e os joins são sufixos, a sequência de saltos é
-estritamente crescente e sempre termina.
+O laço que consome as completions é **iteração**, não recursão: um salto para trás é
+mais uma volta do `while` em C#, e a pilha do interpretador não cresce. O que
+termina a execução no pior caso é o orçamento de saltos (`LAP0303`).
+
+## 10.6 O que dá progresso ao laço: `var` (Q25)
+
+Salto para trás sozinho **não** produz laço com progresso. O corpo de um join é
+avaliado no ambiente **do grupo**, o mesmo em toda volta; com bindings imutáveis
+nada mudava entre iterações, então a condição de saída também não mudava — o laço
+ou não rodava, ou rodava até o orçamento acabar.
+
+A peça que faltava é a mutação, decidida na Q25:
+
+```c
+var i = 0;
+label repete;
+i = i + 1;
+print(i);
+goto repete if i < 3;   // 1, 2, 3
+```
+
+`var` declara um binding reatribuível; `x = e;` é a atribuição, **statement** e não
+expressão. Um `var` declarado **antes** do rótulo é o slot que atravessa as voltas.
+
+**Um `var` não atravessa fronteira de função** (`LAP0207`): nenhuma closure captura
+`var`. É o que dispensa escolher entre captura por valor e por referência, e o que
+mantém a closure como (código, ambiente imutável) para o partial evaluator.
+
+**Escopo entre joins:** o que é declarado depois de um `label` vive dentro daquele
+join e não é visível no próximo — a mesma regra que vale entre o `goto` e o
+`label`. Na prática, todo `var` que o laço usa é declarado antes do primeiro
+rótulo do bloco. É a restrição que *join com parâmetros* (`label L(x: Int)` /
+`goto L(x + 1)`) resolveria, e ela segue como evolução possível: não conflita com
+`var` e daria ao partial evaluator um grafo em forma canônica.
 
 ---
 

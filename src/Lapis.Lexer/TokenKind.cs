@@ -17,6 +17,7 @@ public enum TokenKind
 
     // palavras-chave
     DefKeyword,
+    VarKeyword,
     FnKeyword,
     TypeKeyword,
     EnumKeyword,
@@ -26,6 +27,7 @@ public enum TokenKind
     IfKeyword,
     ElseKeyword,
     MatchKeyword,
+    GotoKeyword,
 
     // delimitadores
     OpenParen,
@@ -102,6 +104,7 @@ public static class TokenKindExtensions
         TokenKind.FloatLiteral => "literal float",
         TokenKind.StringLiteral => "literal de string",
         TokenKind.DefKeyword => "'def'",
+        TokenKind.VarKeyword => "'var'",
         TokenKind.FnKeyword => "'fn'",
         TokenKind.TypeKeyword => "'type'",
         TokenKind.EnumKeyword => "'enum'",
@@ -111,6 +114,7 @@ public static class TokenKindExtensions
         TokenKind.IfKeyword => "'if'",
         TokenKind.ElseKeyword => "'else'",
         TokenKind.MatchKeyword => "'match'",
+        TokenKind.GotoKeyword => "'goto'",
         TokenKind.OpenParen => "'('",
         TokenKind.CloseParen => "')'",
         TokenKind.OpenBrace => "'{'",

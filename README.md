@@ -40,21 +40,21 @@ lapis hello.ls
 | **M3** — `match`, tipos definidos pelo usuário | ✅ concluído |
 | **M4** — generics escritos pelo programador | ✅ concluído |
 | **M5** — suíte de conformidade e subcomandos do CLI | ✅ concluído |
-| M6 — `goto`/`label` | ⏳ próximo |
-| M7 — PE núcleo (folding e propagação) | 📋 planejado |
-| M8–M11 — macros, `constraint`, reflection, `@unless`/`@while` | 📋 planejado |
+| **M6** — `goto`/`label` e mutação com `var` | ✅ concluído |
+| **M7** — PE núcleo (folding, propagação, dead code) | ✅ concluído |
+| M8–M11 — macros, `constraint`, reflection, `@unless`/`@while` | ⏳ próximo |
 | M12–M14 — PE: especialização, análise, equivalência | ⬜ |
 
-**1087 testes** cobrindo lexer, parser, desugar, type checker, runtime,
-evaluator e CLI — entre eles uma **suíte de conformidade** de 118 programas
-`.ls` que é a especificação executável do projeto: cada afirmação testável da
+**1302 testes** cobrindo lexer, parser, desugar, type checker, runtime,
+evaluator, partial evaluator e CLI — entre eles uma **suíte de conformidade** de
+145 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
 spec é um arquivo, e o nome do teste que falha já é o arquivo a abrir.
 
 A linguagem já roda programas de verdade: funções de primeira classe com
 closures, `return` explícito com verificação de "retorna em todos os caminhos",
 arrays com indexação segura, enums, `match` exaustivo, tipos definidos pelo
-usuário, generics (inclusive const generics) e um prelude escrito na própria
-linguagem.
+usuário, generics (inclusive const generics), `goto`/`label`, mutação com `var` e
+um prelude escrito na própria linguagem.
 
 ```c
 def numbers = [10, 20, 30];
@@ -94,8 +94,78 @@ print(scale<3>(5));    // 15
 print(twice<3>(5));    // 30
 ```
 
-O que falta (M6 em diante): `goto`/`label`, macros e o partial evaluator. O
-roteiro completo está em [`plans/`](plans/README.md).
+`goto`/`label` (M6) dão controle de fluxo explícito — saída antecipada sem
+aninhamento, e um grafo de fluxo que o partial evaluator vai analisar. O desugar
+decompõe o bloco em blocos básicos: cada `label` abre um *join point*, e o
+segmento anterior é fechado com um salto implícito.
+
+```c
+def buscar = fn(indice: Int) Int {
+    goto invalido if indice < 0;
+    goto invalido if indice > 2;
+
+    match valores[indice] {
+        Result.Ok(v) => return v,
+        Result.Err(e) => return -1
+    }
+
+    label invalido;
+    return -1;
+};
+```
+
+Saltar para trás é permitido, e com isso a terminação deixa de ser garantida por
+construção: o evaluator conta saltos e aborta com `LAP0303` em vez de travar.
+
+Para um laço **avançar** falta uma peça, e é a decisão Q25: mutação com `var`.
+
+```c
+var i = 0;
+
+label repete;
+i = i + 1;
+print(i);
+goto repete if i < 3;   // 1, 2, 3
+```
+
+`def` continua definitivo; `var` pode ser reatribuído com `x = e;` — statement, não
+expressão, o que elimina `if (x = 1)` e a confusão entre `=` e `==`. A restrição
+que faz a mutação caber sem virar um buraco: **um `var` não atravessa fronteira de
+função**. Nenhuma closure captura `var`, então não há aliasing, e a closure segue
+sendo (código, ambiente imutável) para o partial evaluator — que é a premissa dos
+planos 12 a 14.
+
+O **partial evaluator** (M7) é a razão do projeto existir. `lapis pe` imprime o
+programa residual — o mesmo programa com tudo o que já dava para decidir,
+decidido:
+
+```bash
+$ lapis pe examples/partial-evaluation.ls --stats
+print(30);
+{
+    print("ativo");
+};
+def f = fn(v: Int) Int {
+    return 15 + v
+};
+print(f(6));
+nós: 50 → 23; dobras: 9; ramos eliminados: 1; bindings eliminados: 0
+```
+
+A garantia é `evaluate(P) ≡ evaluate(PE(P))` (spec §40), e ela é verificada sobre
+**todo o corpus de conformidade** a cada execução da suíte: mesma saída, mesmo
+desfecho, residual reparseável e bem-tipado, `PE(PE(P)) == PE(P)`.
+
+O que o PE não faz, de propósito: `print` nunca executa em tempo de
+especialização, nem com argumento conhecido — executá-lo moveria a saída do
+programa para o tempo de compilação. Nenhum efeito é duplicado, eliminado ou
+reordenado. Sem `--dynamic` um programa fechado tende ao resultado já avaliado,
+porque a 0.2 não tem entrada externa; `--dynamic=nome` declara um nome como
+desconhecido e é o que torna o exercício interessante.
+
+O que falta (M8 em diante): macros, reflection e o resto do partial evaluator —
+especialização de chamadas e eliminação de bounds check. O roteiro completo está
+em [`plans/`](plans/README.md).
 
 ```bash
 $ lapis examples/hello.ls
@@ -106,6 +176,7 @@ $ lapis ast examples/hello.ls         # Surface AST
 $ lapis check examples/hello.ls       # só diagnósticos
 $ lapis tokens examples/hello.ls      # tokens com posição
 
+$ lapis pe examples/hello.ls                 # programa residual
 $ lapis desugar --source examples/hello.ls   # Core AST de volta como `.ls`
 $ lapis check --json programa.ls             # diagnósticos para ferramentas
 $ lapis check --no-color programa.ls         # sem ANSI (idem NO_COLOR=1)

@@ -24,6 +24,10 @@ public abstract class CoreVisitor<TResult>
         CoreMatch n => VisitMatch(n),
         CoreTypeDef n => VisitTypeDef(n),
         CoreConstruct n => VisitConstruct(n),
+        CoreGoto n => VisitGoto(n),
+        CoreGotoIf n => VisitGotoIf(n),
+        CoreLabeled n => VisitLabeled(n),
+        CoreAssign n => VisitAssign(n),
         _ => throw InternalCompilerException.Unreachable(node, node.Span),
     };
 
@@ -60,6 +64,14 @@ public abstract class CoreVisitor<TResult>
     protected abstract TResult VisitTypeDef(CoreTypeDef node);
 
     protected abstract TResult VisitConstruct(CoreConstruct node);
+
+    protected abstract TResult VisitGoto(CoreGoto node);
+
+    protected abstract TResult VisitGotoIf(CoreGotoIf node);
+
+    protected abstract TResult VisitLabeled(CoreLabeled node);
+
+    protected abstract TResult VisitAssign(CoreAssign node);
 }
 
 /// <summary>
@@ -177,6 +189,27 @@ public abstract class CoreWalker
                 foreach (var field in n.Fields)
                 {
                     Visit(field.Value);
+                }
+
+                break;
+
+            case CoreGoto:
+                break;
+
+            case CoreAssign n:
+                Visit(n.Value);
+                break;
+
+            case CoreGotoIf n:
+                Visit(n.Condition);
+                break;
+
+            case CoreLabeled n:
+                Visit(n.Entry);
+
+                foreach (var join in n.Joins)
+                {
+                    Visit(join.Body);
                 }
 
                 break;

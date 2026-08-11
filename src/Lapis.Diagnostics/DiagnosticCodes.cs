@@ -46,6 +46,10 @@ public static class DiagnosticCodes
     // ninguém produz ainda. Fica no catálogo para que o número não seja reusado.
     public const string UnusedBinding = "LAP0205";
 
+    // Mutação (Q25)
+    public const string NotAssignable = "LAP0206";
+    public const string MutableCapturedByFunction = "LAP0207";
+
     public const string TypeMismatch = "LAP0210";
 
     public const string NotCallable = "LAP0220";
@@ -93,10 +97,16 @@ public static class DiagnosticCodes
     // nenhum argumento genérico é inferido (Q7), todos são escritos.
     public const string CannotDetermineGenericArguments = "LAP0298";
 
+    // LAP052x — goto e label (plano 16)
+    public const string UnknownLabel = "LAP0520";
+    public const string LabelOutOfScope = "LAP0521";
+    public const string DuplicateLabel = "LAP0522";
+
     // LAP03xx — Execução
     //
     // LAP0301 (divisão por zero) foi aposentado: a divisão inteira por zero passou
     // a produzir o maior Int (Q9), então a operação é total e não há o que relatar.
     // O código não é reciclado.
     public const string CallDepthExceeded = "LAP0302";
+    public const string JumpLimitExceeded = "LAP0303";
 }

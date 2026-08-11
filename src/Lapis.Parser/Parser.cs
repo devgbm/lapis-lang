@@ -89,9 +89,24 @@ public sealed class Parser
     {
         _unwindingFromDepthLimit = false;
 
-        if (Current.Kind == TokenKind.DefKeyword)
+        if (Current.Kind is TokenKind.DefKeyword or TokenKind.VarKeyword)
         {
             return ParseDefStatement();
+        }
+
+        if (AtAssignment())
+        {
+            return ParseAssignStatement();
+        }
+
+        if (Current.Kind == TokenKind.GotoKeyword)
+        {
+            return ParseGotoStatement();
+        }
+
+        if (AtLabelStatement())
+        {
+            return ParseLabelStatement();
         }
 
         if (Current.Kind == TokenKind.Bad)
@@ -111,7 +126,7 @@ public sealed class Parser
 
         return new ExpressionStatement(expression)
         {
-            Span = SourceSpan.FromBounds(start, PreviousEnd()),
+            Span = SpanFrom(start),
         };
     }
 
@@ -123,10 +138,39 @@ public sealed class Parser
     private static bool IsBlockLike(Expression expression) =>
         expression is BlockExpression or IfExpression or MatchExpression;
 
+    /// <summary>
+    /// <c>IDENT "=" expressão ";"</c>. Não há ambiguidade a resolver: <c>==</c> é
+    /// outro token, e um identificador seguido de <c>=</c> em posição de statement
+    /// não pode ser mais nada.
+    /// </summary>
+    private bool AtAssignment() =>
+        Current.Kind == TokenKind.Identifier && _tokens.Peek(1).Kind == TokenKind.Equals;
+
+    private Statement ParseAssignStatement()
+    {
+        var start = Current.Span.Start;
+        var nameToken = _tokens.Advance();
+        _tokens.Advance(); // '='
+
+        var value = ParseExpression();
+
+        if (!ExpectSemicolon(start))
+        {
+            RecoverToStatementBoundary();
+        }
+
+        return new AssignStatement(nameToken.Text, value)
+        {
+            Span = SpanFrom(start),
+            NameSpan = nameToken.Span,
+        };
+    }
+
     private Statement ParseDefStatement()
     {
         var start = Current.Span.Start;
-        _tokens.Advance(); // 'def'
+        var isMutable = Current.Kind == TokenKind.VarKeyword;
+        _tokens.Advance(); // 'def' ou 'var'
 
         var nameToken = Current;
         var name = "?";
@@ -138,7 +182,10 @@ public sealed class Parser
         }
         else
         {
-            Report(DiagnosticCodes.ExpectedIdentifier, Current.Span, "esperado um identificador após 'def'");
+            Report(
+                DiagnosticCodes.ExpectedIdentifier,
+                Current.Span,
+                $"esperado um identificador após '{(isMutable ? "var" : "def")}'");
         }
 
         TypeSyntax? annotation = null;
@@ -152,7 +199,10 @@ public sealed class Parser
 
         if (Current.Kind != TokenKind.Equals)
         {
-            Report(DiagnosticCodes.ExpectedEquals, Current.Span, "esperado '=' em 'def'");
+            Report(
+                DiagnosticCodes.ExpectedEquals,
+                Current.Span,
+                $"esperado '=' em '{(isMutable ? "var" : "def")}'");
             value = ErrorExpr(Current.Span);
             RecoverToStatementBoundary();
         }
@@ -169,9 +219,95 @@ public sealed class Parser
 
         return new DefStatement(name, annotation, value)
         {
-            Span = SourceSpan.FromBounds(start, PreviousEnd()),
+            Span = SpanFrom(start),
             NameSpan = nameToken.Span,
+            IsMutable = isMutable,
         };
+    }
+
+    /// <summary>
+    /// <c>goto IDENT ("if" expressão)? ";"</c>.
+    ///
+    /// O <c>if</c> reaproveita <see cref="TokenKind.IfKeyword"/> sem ambiguidade:
+    /// o <c>goto</c> já determinou a produção.
+    /// </summary>
+    private Statement ParseGotoStatement()
+    {
+        var start = Current.Span.Start;
+        _tokens.Advance(); // 'goto'
+
+        var (label, labelSpan) = ParseLabelName();
+
+        Expression? condition = null;
+
+        if (_tokens.Match(TokenKind.IfKeyword))
+        {
+            condition = ParseExpression();
+        }
+
+        if (!ExpectSemicolon(start))
+        {
+            RecoverToStatementBoundary();
+        }
+
+        return new GotoStatement(label, condition)
+        {
+            Span = SpanFrom(start),
+            LabelSpan = labelSpan,
+        };
+    }
+
+    /// <summary>
+    /// <c>label</c> é palavra-chave <b>contextual</b>: só vale quando inicia um
+    /// statement e vem seguida de um identificador.
+    ///
+    /// Reservá-la quebraria programa válido — o exemplo da própria spec §13 usa
+    /// <c>label</c> como nome de campo (<c>type&lt;Label: Str, ...&gt; { label: Str; }</c>).
+    /// A ambiguidade não existe: dois identificadores seguidos nunca formam uma
+    /// expressão. <c>goto</c>, ao contrário, é reservada — ninguém a usa como nome,
+    /// e reservá-la é o que permite dizer "esperado um rótulo" em vez de deixar a
+    /// linha virar uma expressão malformada.
+    /// </summary>
+    private bool AtLabelStatement() =>
+        Current.Kind == TokenKind.Identifier
+        && Current.Text == "label"
+        && _tokens.Peek(1).Kind == TokenKind.Identifier;
+
+    private Statement ParseLabelStatement()
+    {
+        var start = Current.Span.Start;
+        _tokens.Advance(); // 'label'
+
+        var (label, labelSpan) = ParseLabelName();
+
+        if (!ExpectSemicolon(start))
+        {
+            RecoverToStatementBoundary();
+        }
+
+        return new LabelStatement(label)
+        {
+            Span = SpanFrom(start),
+            LabelSpan = labelSpan,
+        };
+    }
+
+    /// <summary>
+    /// Rótulos são identificadores comuns (spec §7). Vivem num espaço de nomes
+    /// separado do de valores, então <c>label x</c> e <c>def x</c> convivem.
+    /// </summary>
+    private (string Name, SourceSpan Span) ParseLabelName()
+    {
+        var token = Current;
+
+        if (token.Kind != TokenKind.Identifier)
+        {
+            Report(DiagnosticCodes.ExpectedIdentifier, token.Span, "esperado um rótulo");
+            return ("?", token.Span);
+        }
+
+        _tokens.Advance();
+        return (token.Text, token.Span);
     }
 
     private bool ExpectSemicolon(int statementStart)
@@ -203,7 +339,7 @@ public sealed class Parser
                     _tokens.Advance();
                     return;
 
-                case TokenKind.DefKeyword when depth == 0:
+                case TokenKind.DefKeyword or TokenKind.VarKeyword when depth == 0:
                     return;
 
                 case TokenKind.CloseBrace when depth == 0:
@@ -346,7 +482,7 @@ public sealed class Parser
                 case TokenKind.Less when TryParseInstantiation(out var arguments):
                     expression = new InstantiateExpression(expression, arguments)
                     {
-                        Span = SourceSpan.FromBounds(expression.Span.Start, PreviousEnd()),
+                        Span = SpanFrom(expression.Span.Start),
                     };
                     continue;
 
@@ -467,7 +603,7 @@ public sealed class Parser
 
             return new MemberExpression(target, "?")
             {
-                Span = SourceSpan.FromBounds(target.Span.Start, PreviousEnd()),
+                Span = SpanFrom(target.Span.Start),
                 NameSpan = nameToken.Span,
             };
         }
@@ -1273,9 +1409,21 @@ public sealed class Parser
         {
             var before = _tokens.Mark();
 
-            if (Current.Kind == TokenKind.DefKeyword)
+            if (Current.Kind is TokenKind.DefKeyword or TokenKind.VarKeyword)
             {
                 statements.Add(ParseDefStatement());
+            }
+            else if (AtAssignment())
+            {
+                statements.Add(ParseAssignStatement());
+            }
+            else if (Current.Kind == TokenKind.GotoKeyword)
+            {
+                statements.Add(ParseGotoStatement());
+            }
+            else if (AtLabelStatement())
+            {
+                statements.Add(ParseLabelStatement());
             }
             else if (Current.Kind == TokenKind.Bad)
             {
@@ -1301,7 +1449,7 @@ public sealed class Parser
 
                 statements.Add(new ExpressionStatement(expression)
                 {
-                    Span = SourceSpan.FromBounds(statementStart, PreviousEnd()),
+                    Span = SpanFrom(statementStart),
                 });
             }
 
@@ -1521,7 +1669,7 @@ public sealed class Parser
 
         return new NamedTypeSyntax(token.Text, arguments)
         {
-            Span = SourceSpan.FromBounds(token.Span.Start, PreviousEnd()),
+            Span = SpanFrom(token.Span.Start),
         };
     }
 
@@ -1591,7 +1739,15 @@ public sealed class Parser
 
     private static Expression ErrorExpr(SourceSpan span) => new ErrorExpression { Span = span };
 
-    private SourceSpan SpanFrom(int start) => SourceSpan.FromBounds(start, PreviousEnd());
+    /// <summary>
+    /// Do início da construção até o último token consumido.
+    ///
+    /// O limite nunca inverte: quando a recuperação rebobina o fluxo para antes de
+    /// <paramref name="start"/>, o fim fica sendo o próprio início — um span vazio
+    /// ali é a resposta honesta, e o parser não pode lançar por causa de um
+    /// programa mal escrito (plano 04).
+    /// </summary>
+    private SourceSpan SpanFrom(int start) => SourceSpan.FromBounds(start, Math.Max(start, PreviousEnd()));
 
     private int PreviousEnd() => _tokens.Peek(-1).Span.End;
 

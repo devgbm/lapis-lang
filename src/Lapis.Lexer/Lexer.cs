@@ -17,6 +17,7 @@ public sealed class Lexer
     private static readonly Dictionary<string, TokenKind> Keywords = new(StringComparer.Ordinal)
     {
         ["def"] = TokenKind.DefKeyword,
+        ["var"] = TokenKind.VarKeyword,
         ["fn"] = TokenKind.FnKeyword,
         ["type"] = TokenKind.TypeKeyword,
         ["enum"] = TokenKind.EnumKeyword,
@@ -26,6 +27,7 @@ public sealed class Lexer
         ["if"] = TokenKind.IfKeyword,
         ["else"] = TokenKind.ElseKeyword,
         ["match"] = TokenKind.MatchKeyword,
+        ["goto"] = TokenKind.GotoKeyword,
     };
 
     private readonly SourceText _source;

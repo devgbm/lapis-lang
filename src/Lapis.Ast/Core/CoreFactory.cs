@@ -28,8 +28,16 @@ public sealed class CoreFactory
         CoreExpr value,
         CoreExpr body,
         bool isSynthetic,
-        SourceSpan? nameSpan = null) =>
-        new(Next(), span, name, annotation, value, body, isSynthetic) { NameSpan = nameSpan ?? span };
+        SourceSpan? nameSpan = null,
+        bool isMutable = false) =>
+        new(Next(), span, name, annotation, value, body, isSynthetic)
+        {
+            NameSpan = nameSpan ?? span,
+            IsMutable = isMutable,
+        };
+
+    public CoreAssign Assign(SourceSpan span, string name, CoreExpr value, SourceSpan nameSpan) =>
+        new(Next(), span, name, value) { NameSpan = nameSpan };
 
     public CoreLambda Lambda(
         SourceSpan span,
@@ -88,6 +96,15 @@ public sealed class CoreFactory
         ImmutableArray<CoreFieldInit> fields,
         SourceSpan typeNameSpan) =>
         new(Next(), span, typeName, typeArguments, fields) { TypeNameSpan = typeNameSpan };
+
+    public CoreGoto Goto(SourceSpan span, string label, SourceSpan labelSpan, bool isImplicit = false) =>
+        new(Next(), span, label) { LabelSpan = labelSpan, IsImplicit = isImplicit };
+
+    public CoreGotoIf GotoIf(SourceSpan span, string label, CoreExpr condition, SourceSpan labelSpan) =>
+        new(Next(), span, label, condition) { LabelSpan = labelSpan };
+
+    public CoreLabeled Labeled(SourceSpan span, CoreExpr entry, ImmutableArray<CoreJoin> joins) =>
+        new(Next(), span, entry, joins);
 
     public CoreProgram Program(CoreExpr body) => new(body, _nextNodeId);
 

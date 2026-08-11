@@ -83,6 +83,19 @@ public sealed class RoundTripTests : DesugarTestBase
     [InlineData("def x = 100000000000000000000.0;")]
     [InlineData("def x = 0.00001234;")]
     [InlineData("def x = 0.000000000000000000000001;")]
+    [InlineData("goto fim;\nlabel fim;")]
+    [InlineData("goto fim if c;\nprint(1);\nlabel fim;\nprint(2);")]
+    [InlineData("def x = 1;\ngoto fim;\ndef y = 2;\nlabel fim;\nprint(x);")]
+    [InlineData("goto c;\nlabel a;\nlabel b;\nlabel c;\nprint(1);")]
+    [InlineData("label a;\ngoto a;")]
+    [InlineData("goto b;\nlabel a;\nprint(1);\nlabel b;\ngoto a;")]
+    [InlineData("def f = fn() Void { goto fim; print(1); label fim; };")]
+    [InlineData("def x = { goto fim; label fim; 1 };")]
+    [InlineData("var x = 1;")]
+    [InlineData("var x: Int = 1;")]
+    [InlineData("var x = 1;\nx = 2;")]
+    [InlineData("var i = 0;\nlabel repete;\ni = i + 1;\ngoto repete if i < 3;")]
+    [InlineData("def f = fn() Int { var x = 1; x = 2; return x; };")]
     public void PrintThenReparse_ProducesTheSameCore(string source)
     {
         var original = Print(source);
