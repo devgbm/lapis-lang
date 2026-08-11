@@ -20,6 +20,7 @@
     <ProjectReference Include="../../src/Lapis.Desugar/Lapis.Desugar.csproj" />
     <ProjectReference Include="../../src/Lapis.Parser/Lapis.Parser.csproj" />
     <ProjectReference Include="../../src/Lapis.Runtime/Lapis.Runtime.csproj" />
+    <ProjectReference Include="../../src/Lapis.Cli/Lapis.Cli.csproj" />
   </ItemGroup>
 
 </Project>

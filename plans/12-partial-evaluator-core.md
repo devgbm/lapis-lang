@@ -366,9 +366,58 @@ void AssertPE(string source, StaticEnvironment env, string expectedResidual)
 
 ## Critérios de conclusão
 
-- [ ] `10 + 20` → `30` e `x + 20` → `x + 20` (spec §38).
-- [ ] Todas as regras de efeito de §12.4 implementadas e testadas.
-- [ ] `PE_Equivalence_OverConformanceCorpus` verde sobre todo o corpus.
-- [ ] `PE(PE(P)) == PE(P)`.
-- [ ] Residual sempre re-tipável e re-parseável.
-- [ ] `lapis pe examples/hello.ls` produz residual legível.
+- [x] `10 + 20` → `30` e `x + 20` → `x + 20` (spec §38).
+- [x] Todas as regras de efeito de §12.4 implementadas e testadas.
+- [x] `PE_Equivalence_OverConformanceCorpus` verde sobre todo o corpus.
+- [x] `PE(PE(P)) == PE(P)`.
+- [x] Residual sempre re-tipável e re-parseável.
+- [x] `lapis pe examples/hello.ls` produz residual legível.
+
+---
+
+## O que a implementação mudou no plano
+
+### Indexação estática não dobra — foi para o plano 14
+
+§12.3 previa `[10,20,30][1]` → `Result.Ok(20)`. O resultado de uma indexação é um
+**enum construído**, e um enum construído não volta a ser expressão sem citar o
+nome do enum (`Result.Ok`) — nome que pode estar sombreado no ponto onde o
+residual é emitido. Um PE que captura nome deixa de preservar o comportamento, e
+preservar o comportamento é a única coisa que ele não pode negociar (spec §40).
+
+A regra que ficou: **um valor só é `Known` se voltar a ser expressão sem depender
+de nome nenhum** — primitivos e arrays não vazios deles. O resto atravessa o PE
+como expressão. Isso empurra a dobra de indexação para o plano 14, que é onde ela
+deixa de ser detalhe: lá, junto com a eliminação de bounds check, construir o
+`Result` é o ponto do trabalho, não um efeito colateral.
+
+### Um array vazio não é residualizável
+
+Descoberto pela equivalência sobre o corpus. `def a: Int[] = []; print(a);`
+propagava o valor e emitia `print([]);` — que **não compila** (`LAP0241`: array
+vazio requer anotação). O valor existe, mas a forma sintática que o representa
+perdeu a anotação que a tornava válida. Array vazio saiu de `CanResidualize`.
+
+### `FreeVariables` precisa ver nomes que não são `CoreVariable`
+
+Também descoberto pela equivalência. `.Flag { on: true }` referencia o tipo por
+**string**, não por nó de variável — então `def Flag = type { ... };` era
+eliminado como código morto e o residual quebrava. O mesmo vale para anotações de
+tipo (`def r: Result<Int, E> = ...`), para o nome do enum num padrão de variante
+(`Result.Ok(v)`) e para argumentos genéricos nomeados.
+
+### As duas flags precisam ser independentes de verdade
+
+§12.7 diz que cada transformação fica atrás de uma flag "para que os testes de
+equivalência possam isolar qual transformação quebrou uma propriedade". Isso só
+funciona se `DeadCodeElimination: false` realmente mantiver o binding — inclusive
+quando o valor é conhecido e foi propagado. Propagar o valor e **apagar** o
+binding são duas transformações, e agora são duas decisões.
+
+### `--dynamic` precisa forçar, não só declarar
+
+Declarar `n` como desconhecido na raiz não tem efeito nenhum: o próprio
+`def n = 2;` do programa sombreia a declaração. Sem entrada externa na v0.2, todo
+top-level é estático por construção — então `--dynamic` marca o nome e o
+especializador **recusa** conhecê-lo ao processar aquele `Let` top-level. É o que
+dá ao comando um programa interessante para especializar.

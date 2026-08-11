@@ -40,14 +40,14 @@ lapis hello.ls
 | **M3** — `match`, tipos definidos pelo usuário | ✅ concluído |
 | **M4** — generics escritos pelo programador | ✅ concluído |
 | **M5** — suíte de conformidade e subcomandos do CLI | ✅ concluído |
-| **M6** — `goto`/`label` | ✅ concluído |
-| M7 — PE núcleo (folding e propagação) | ⏳ próximo |
-| M8–M11 — macros, `constraint`, reflection, `@unless`/`@while` | 📋 planejado |
+| **M6** — `goto`/`label` e mutação com `var` | ✅ concluído |
+| **M7** — PE núcleo (folding, propagação, dead code) | ✅ concluído |
+| M8–M11 — macros, `constraint`, reflection, `@unless`/`@while` | ⏳ próximo |
 | M12–M14 — PE: especialização, análise, equivalência | ⬜ |
 
-**1227 testes** cobrindo lexer, parser, desugar, type checker, runtime,
-evaluator e CLI — entre eles uma **suíte de conformidade** de 141 programas
-`.ls` que é a especificação executável do projeto: cada afirmação testável da
+**1302 testes** cobrindo lexer, parser, desugar, type checker, runtime,
+evaluator, partial evaluator e CLI — entre eles uma **suíte de conformidade** de
+145 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
 spec é um arquivo, e o nome do teste que falha já é o arquivo a abrir.
 
 A linguagem já roda programas de verdade: funções de primeira classe com
@@ -135,7 +135,36 @@ função**. Nenhuma closure captura `var`, então não há aliasing, e a closure
 sendo (código, ambiente imutável) para o partial evaluator — que é a premissa dos
 planos 12 a 14.
 
-O que falta (M7 em diante): macros e o partial evaluator. O roteiro completo está
+O **partial evaluator** (M7) é a razão do projeto existir. `lapis pe` imprime o
+programa residual — o mesmo programa com tudo o que já dava para decidir,
+decidido:
+
+```bash
+$ lapis pe examples/partial-evaluation.ls --stats
+print(30);
+{
+    print("ativo");
+};
+def f = fn(v: Int) Int {
+    return 15 + v
+};
+print(f(6));
+nós: 50 → 23; dobras: 9; ramos eliminados: 1; bindings eliminados: 0
+```
+
+A garantia é `evaluate(P) ≡ evaluate(PE(P))` (spec §40), e ela é verificada sobre
+**todo o corpus de conformidade** a cada execução da suíte: mesma saída, mesmo
+desfecho, residual reparseável e bem-tipado, `PE(PE(P)) == PE(P)`.
+
+O que o PE não faz, de propósito: `print` nunca executa em tempo de
+especialização, nem com argumento conhecido — executá-lo moveria a saída do
+programa para o tempo de compilação. Nenhum efeito é duplicado, eliminado ou
+reordenado. Sem `--dynamic` um programa fechado tende ao resultado já avaliado,
+porque a 0.2 não tem entrada externa; `--dynamic=nome` declara um nome como
+desconhecido e é o que torna o exercício interessante.
+
+O que falta (M8 em diante): macros, reflection e o resto do partial evaluator —
+especialização de chamadas e eliminação de bounds check. O roteiro completo está
 em [`plans/`](plans/README.md).
 
 ```bash
@@ -147,6 +176,7 @@ $ lapis ast examples/hello.ls         # Surface AST
 $ lapis check examples/hello.ls       # só diagnósticos
 $ lapis tokens examples/hello.ls      # tokens com posição
 
+$ lapis pe examples/hello.ls                 # programa residual
 $ lapis desugar --source examples/hello.ls   # Core AST de volta como `.ls`
 $ lapis check --json programa.ls             # diagnósticos para ferramentas
 $ lapis check --no-color programa.ls         # sem ANSI (idem NO_COLOR=1)

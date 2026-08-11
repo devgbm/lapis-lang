@@ -55,7 +55,7 @@ critérios de conclusão satisfeitos.
 
 | # | Plano | Projeto | Milestone |
 |---|---|---|---|
-| 12 | [Partial Evaluator — núcleo](12-partial-evaluator-core.md) | `Lapis.PartialEvaluator` | M7 |
+| 12 | [Partial Evaluator — núcleo](12-partial-evaluator-core.md) | `Lapis.PartialEvaluator` | M7 ✅ |
 | 13 | [Partial Evaluator — especialização](13-partial-evaluator-specialization.md) | `Lapis.PartialEvaluator` | M12 |
 | 14 | [Partial Evaluator — análise e BCE](14-partial-evaluator-analysis-and-bce.md) | `Lapis.PartialEvaluator` | M13 |
 | 15 | [Ferramentas de pesquisa e tracing](15-research-tooling-and-tracing.md) | `Lapis.Cli` | M13 |
@@ -98,7 +98,7 @@ variante com segurança — foi **adiada**, e com ela `@if`/`@match` saíram do 
 | **M4** ✅ | Generics | `fn<T>` escritos pelo programador, sempre com argumentos explícitos (Q7) + const generics | 02, 04, 06, 08 |
 | **M5** ✅ | Conformidade | suíte golden `tests/conformance/**/*.ls`, `examples/` executando, subcomandos e flags do CLI | 10, 11 |
 | **M6** ✅ | `goto`/`label` | controle de fluxo explícito; `GotoForm_EquivalentToIf` verde | 16 |
-| **M7** | PE núcleo | constant folding, propagação, dead code, `lapis pe` | 12 |
+| **M7** ✅ | PE núcleo | constant folding, propagação, dead code, `lapis pe` | 12 |
 | **M8** | Macro engine | `@unless`, `@square` expandindo; `lapis expand` | 17 |
 | **M9** | Compile time | `@post` com deduplicação de rota; `throw` e contexto | 18 |
 | **M10** | Reflection | `reflect(Color).variants` nas duas fases | 19 |

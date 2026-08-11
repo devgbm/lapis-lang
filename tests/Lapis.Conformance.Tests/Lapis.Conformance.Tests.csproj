@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/Lapis.Cli/Lapis.Cli.csproj" />
+    <ProjectReference Include="../../src/Lapis.PartialEvaluator/Lapis.PartialEvaluator.csproj" />
   </ItemGroup>
 
   <ItemGroup>

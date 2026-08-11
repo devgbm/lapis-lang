@@ -327,14 +327,18 @@ public static class CoreSourcePrinter
     /// </summary>
     private static void PrintLabeled(StringBuilder builder, CoreLabeled node, int indent, bool topLevel)
     {
-        PrintSequence(builder, node.Entry, indent, topLevel);
+        // A entrada e todo join que não é o último são **seguidos** por um
+        // `label L;`, então o que os fecha é statement, não cauda: precisa de `;`.
+        // Só o último join carrega o valor do construto, e aí a regra volta a ser
+        // a do chamador.
+        PrintSequence(builder, node.Entry, indent, topLevel: true);
 
-        foreach (var join in node.Joins)
+        for (var i = 0; i < node.Joins.Length; i++)
         {
             Indent(builder, indent);
-            builder.Append("label ").Append(join.Name).AppendLine(";");
+            builder.Append("label ").Append(node.Joins[i].Name).AppendLine(";");
 
-            PrintSequence(builder, join.Body, indent, topLevel);
+            PrintSequence(builder, node.Joins[i].Body, indent, i == node.Joins.Length - 1 && topLevel);
         }
     }
 
