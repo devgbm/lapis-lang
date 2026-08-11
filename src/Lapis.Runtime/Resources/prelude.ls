@@ -73,12 +73,17 @@ def TypeInfo = type {
 //
 // Os rótulos que estas macros introduzem são higienizados: dois `@while` no mesmo
 // bloco não colidem, e um `label top` do usuário não é o `top` daqui.
+//
+// O corpo vai entre chaves — `{ body; }`, e não `body;` — de propósito. Uma
+// captura de bloco escrita nua é **colada** no lugar, e o que ela declara
+// escaparia para fora; entre chaves ela é um escopo, como o corpo de um `if`.
+// Quem escreve uma macro escolhe entre as duas formas.
 
 macro unless
     match Expression:condition Block:body
     expand {
         goto done if condition;
-        body;
+        { body; }
         label done;
     };
 
@@ -99,7 +104,7 @@ macro while
     expand {
         label top;
         goto done if !condition;
-        body;
+        { body; }
         goto top;
         label done;
     };

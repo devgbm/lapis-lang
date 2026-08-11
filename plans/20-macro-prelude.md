@@ -210,14 +210,11 @@ primeira: higiene renomeia `top` e `done`, a captura de bloco é *spliced* em ve
 de virar escopo aninhado, e a invocação gulosa consome `i < 3 { ... }` inteiro.
 O M8 e o M6 já tinham resolvido o que era preciso.
 
-### 3. A restrição de escrita é maior do que o §20.2 previu
+### 3. A restrição de escrita apareceu — e foi removida
 
 O plano diz que "a macro precisa expandir para uma forma em que as declarações do
-usuário fiquem antes do primeiro rótulo gerado", e trata disso como um cuidado ao
-escrever a macro. O que a implementação mostrou é uma regra **do usuário**, e mais
-larga:
-
-> **Todo `var` que um laço usa se declara antes do primeiro `@while` do bloco.**
+usuário fiquem antes do primeiro rótulo gerado", e trata disso como cuidado ao
+escrever a macro. A implementação mostrou uma regra **do usuário**, e mais larga:
 
 ```c
 var i = 0;
@@ -226,18 +223,28 @@ var k = 0;                      // preso no join que `@while` deixou aberto
 @while k < 3 { k = k + 1; }     // LAP0201: 'k' não existe
 ```
 
-A causa é do M6 e está correta: joins são **irmãos**, não aninhados, e um não
-enxerga os bindings do outro porque um salto pode ter pulado a declaração. O que o
-M11 muda é que os rótulos passaram a ser **invisíveis** — quem escreve `@while` não
-tem por que saber que um `label` foi introduzido.
+A causa vinha do M6: `DesugarWithLabels` achatava **todos** os rótulos do bloco
+num grupo só, e joins irmãos não enxergam o que o outro declarou.
 
-Não é bug e não tem correção barata: a saída é *join com parâmetros*
-(`label L(x: Int);` / `goto L(x + 1);`), registrada como evolução possível desde o
-M6. Até lá a regra está em letras grandes no `examples/control.ls` e travada por
-teste, para que o dia em que deixar de valer seja visível.
+O diagnóstico inicial foi de que não havia correção barata — que a saída seria
+*join com parâmetros*. Estava errado, e a discussão que corrigiu isso vale ser
+registrada: a irmandade só é **necessária** entre rótulos que se referenciam. Dois
+`@while` independentes não têm salto entre si, e o segundo pode ser um grupo
+**aninhado** na continuação do primeiro. Ver `Desugarer.CanSplitBefore`.
 
-Um `@unless` **aninhado no corpo** de um `@while` não sofre disso: o corpo é um
-join só, e a macro interna não abre um irmão dele.
+O que a regra protegia continua protegido, e agora com precisão: onde um `goto`
+explícito atravessa a fronteira, os rótulos continuam irmãos e o destino continua
+sem enxergar o que o salto pode ter pulado.
+
+### 4. O corpo da macro precisava ser um escopo
+
+Ao lado disso apareceu uma inconsistência menor e independente: um `Block:body`
+escrito nu no `expand` é **colado** no lugar (`Substitution.ApplyStatementSpliced`,
+do M8), então `@while c { def x = 1; }` deixava `x` visível depois do laço —
+diferente de `if c { def x = 1; }`.
+
+O `expand` passou a escrever `{ body; }`. As duas formas são legítimas e a
+diferença agora é a escolha do autor da macro: `body;` cola, `{ body; }` escopa.
 
 ---
 

@@ -10,10 +10,11 @@
 // imutáveis nada mudava entre iterações e o laço só parava pelo orçamento de
 // saltos. Um `var` declarado antes do rótulo é o slot que atravessa as voltas.
 //
-// Note que TODAS as declarações vêm antes do primeiro `label`. Não é estilo: o
-// que é declarado depois de um rótulo vive dentro daquele join, e um join não
-// enxerga os bindings de outro — o salto pode ter pulado a declaração. É a mesma
-// regra que vale entre o `goto` e o `label`.
+// Aqui as declarações vêm todas antes do primeiro `label` por clareza, não por
+// obrigação: rótulos que não saltam um para o outro formam grupos aninhados, e
+// um `var` escrito entre dois laços é visível no segundo. O que continua
+// invisível é o que um `goto` **explícito** pode ter pulado — ver
+// `tests/conformance/eval/mutation/scope_across_joins_with_jump.ls`.
 //
 // Este arquivo escreve os laços **à mão**, com `goto` e `label`, para mostrar a
 // forma. O `@while` do prelude gera exatamente isto; `examples/control.ls` tem a

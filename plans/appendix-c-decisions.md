@@ -754,17 +754,29 @@ closure enxerga um desses.
 - **O tipo do `var` é o da declaração e não muda:** uma atribuição que não cabe é
   `LAP0210`.
 
-### O que ficou de fora, e é a ergonomia a melhorar
+### A restrição de escopo entre joins, e como ela encolheu
 
-Uma declaração feita **depois** de um `label` vive dentro daquele join, e um join
-não enxerga os bindings de outro — é a mesma regra que vale entre o `goto` e o
-`label` (o salto pode ter pulado a declaração). Na prática, todo `var` que um laço
-usa precisa ser declarado **antes do primeiro rótulo** do bloco.
+A formulação original desta seção era: uma declaração feita **depois** de um
+`label` vive dentro daquele join, um join não enxerga os bindings de outro, e
+portanto todo `var` que um laço usa precisa ser declarado **antes do primeiro
+rótulo** do bloco.
 
-Funciona, e o exemplo `examples/loops.ls` mostra a forma. Mas é a restrição que
-**join com parâmetros** (`label L(x: Int);` / `goto L(x + 1);`) resolveria, e ela
-segue valendo como possível evolução: não conflita com `var`, e daria ao partial
-evaluator um grafo de fluxo em forma canônica.
+A primeira metade continua verdadeira; a conclusão, não. Ela vinha de o desugar
+achatar **todos** os rótulos de um bloco num grupo só — e a irmandade só é
+necessária entre rótulos que se referenciam. Rótulos sem salto entre si formam
+grupos **aninhados**, e aí uma declaração escrita entre dois laços os atravessa
+como um `Let` comum.
+
+O que resta da regra é exatamente o que ela sempre quis proteger, sem o excesso:
+
+> O que um `goto` **explícito** pode ter pulado não está em escopo no destino.
+
+Ver `Desugarer.CanSplitBefore` e os dois casos irmãos em
+`tests/conformance/eval/mutation/`.
+
+**Join com parâmetros** (`label L(x: Int);` / `goto L(x + 1);`) segue valendo como
+possível evolução, agora por outro motivo: não é mais para contornar escopo, e sim
+porque daria ao partial evaluator um grafo de fluxo em forma canônica.
 
 ---
 

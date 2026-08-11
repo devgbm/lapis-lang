@@ -186,23 +186,19 @@ public sealed class PreludeMacroTests : ConstraintTestBase
     // ---------------------------------------------- a restrição de escrita
 
     /// <summary>
-    /// <b>Todo <c>var</c> que um laço usa se declara antes do primeiro
-    /// <c>@while</c> do bloco.</b>
+    /// Um <c>var</c> declarado <b>entre</b> dois laços é visível no segundo.
     ///
-    /// Cada <c>label</c> de um bloco abre um join, e joins são <b>irmãos</b>, não
-    /// aninhados: um não enxerga os bindings declarados no outro, porque um salto
-    /// pode ter pulado a declaração. Um <c>var</c> escrito entre dois
-    /// <c>@while</c> fica preso no join que o primeiro deixou aberto.
+    /// Foi a restrição que o M11 expôs e que o regrouping do desugar removeu: os
+    /// rótulos do bloco não formam mais um grupo só. Dois <c>@while</c>
+    /// independentes não têm salto entre si, então o segundo vira um grupo
+    /// <b>aninhado</b> no corpo do primeiro, e a declaração o envolve como um
+    /// <c>Let</c> comum.
     ///
-    /// A regra é semanticamente correta e vem do M6 — o que o M11 muda é que
-    /// agora os rótulos são <b>invisíveis</b>: quem escreve <c>@while</c> não tem
-    /// por que saber que um <c>label</c> foi introduzido. Por isso ela está
-    /// travada aqui: se um dia deixar de valer (join com parâmetros), é uma
-    /// melhoria, e este teste é onde ela aparece.
+    /// Este teste já afirmou o contrário. A troca é a melhoria.
     /// </summary>
     [Fact]
-    public void While_VarDeclaredBetweenTwoLoops_IsNotVisible() =>
-        Codes("""
+    public void While_VarDeclaredBetweenTwoLoops_IsVisible() =>
+        Output("""
             var i = 0;
 
             @while i < 2 { i = i + 1; }
@@ -210,11 +206,13 @@ public sealed class PreludeMacroTests : ConstraintTestBase
             var k = 0;
 
             @while k < 3 { k = k + 1; }
-            """).ShouldContain(DiagnosticCodes.UnknownVariable);
 
-    /// <summary>E declarados antes do primeiro laço, os dois funcionam.</summary>
+            print(i);
+            print(k);
+            """).ShouldBe("2\n3\n");
+
     [Fact]
-    public void While_AllVarsBeforeTheFirstLoop_Works() =>
+    public void While_AllVarsBeforeTheFirstLoop_AlsoWorks() =>
         Output("""
             var i = 0;
             var k = 0;
@@ -225,6 +223,66 @@ public sealed class PreludeMacroTests : ConstraintTestBase
             print(i);
             print(k);
             """).ShouldBe("2\n3\n");
+
+    /// <summary>
+    /// Três laços seguidos, cada um declarando o seu contador logo antes: a forma
+    /// que qualquer um escreveria, e que antes não compilava.
+    /// </summary>
+    [Fact]
+    public void While_SeveralLoops_EachWithItsOwnVar() =>
+        Output("""
+            var a = 0;
+            @while a < 1 { a = a + 1; }
+
+            var b = 0;
+            @while b < 2 { b = b + 1; }
+
+            var c = 0;
+            @while c < 3 { c = c + 1; }
+
+            print(a + b + c);
+            """).ShouldBe("6\n");
+
+    /// <summary>
+    /// O corpo de um laço é um <b>escopo</b>, como o de um <c>if</c>: o que ele
+    /// declara não escapa.
+    ///
+    /// Vem de o <c>expand</c> escrever <c>{ body; }</c> e não <c>body;</c> — uma
+    /// captura de bloco nua é colada no lugar, entre chaves é um escopo. Sem isso,
+    /// <c>@while</c> se comportaria diferente de <c>if</c> sem nenhuma razão.
+    /// </summary>
+    [Fact]
+    public void While_BodyIsAScope() =>
+        Codes("""
+            var i = 0;
+
+            @while i < 2 {
+                def x = 1;
+                i = i + 1;
+            }
+
+            print(x);
+            """).ShouldContain(DiagnosticCodes.UnknownVariable);
+
+    [Fact]
+    public void Unless_BodyIsAScope() =>
+        Codes("@unless false { def x = 1; }\nprint(x);")
+            .ShouldContain(DiagnosticCodes.UnknownVariable);
+
+    /// <summary>E o corpo continua enxergando o que está fora dele.</summary>
+    [Fact]
+    public void While_BodyStillSeesTheOutside() =>
+        Output("""
+            def passo = 2;
+            var i = 0;
+
+            @while i < 4 {
+                def dobro = passo;
+                i = i + dobro;
+            }
+
+            print(i);
+            """).ShouldBe("4\n");
 
     /// <summary>
     /// Um <c>@unless</c> aninhado no corpo de um <c>@while</c> enxerga o que está

@@ -12,29 +12,12 @@
 // estavam —, então um `@while` quebrado não tem como regredir um programa que já
 // funcionava.
 //
-// ------------------------------------------------------------------------
-// A REGRA DE ESCRITA QUE VOCÊ PRECISA SABER
+// Escopo, que é onde a implementação de um laço por macro costuma vazar:
 //
-// **Todo `var` que um laço usa se declara antes do primeiro `@while` do bloco.**
-//
-// Não é estilo. `@while` expande para `label`, e cada `label` de um bloco abre um
-// *join* — e um join não enxerga os bindings declarados em outro, porque um salto
-// pode ter pulado a declaração. Um `var` escrito entre dois `@while` fica preso no
-// join que o primeiro deixou aberto, e o segundo não o encontra:
-//
-//     var i = 0;
-//     @while i < 2 { i = i + 1; }
-//     var k = 0;                      // preso no join que `@while` abriu
-//     @while k < 3 { k = k + 1; }     // LAP0201: 'k' não existe
-//
-// É a mesma regra de escopo que `examples/loops.ls` documenta com `goto` e
-// `label` escritos à mão. A diferença é que aqui os rótulos são **invisíveis** —
-// quem escreve `@while` não tem por que saber que um `label` foi introduzido —, e
-// por isso ela precisa estar escrita em letras grandes.
-//
-// A ergonomia que falta é *join com parâmetros* (`label L(x: Int);` /
-// `goto L(x + 1);`), registrada como evolução possível desde o M6.
-// ------------------------------------------------------------------------
+//   - o corpo é um escopo, como o de um `if` — o que ele declara não escapa;
+//   - um `var` declarado entre dois laços é visível no segundo;
+//   - o que um `goto` explícito pode ter pulado continua invisível no destino,
+//     que é a única forma de o contrário ser mentira.
 //
 // Saída esperada:
 //   1
@@ -47,23 +30,28 @@
 //   fim
 
 var i = 0;
-var n = 1;
-var soma = 0;
-var k = 0;
 
 @while i < 3 {
     i = i + 1;
     print(i);
 }
 
-// Duas invocações no mesmo bloco convivem: os rótulos que a macro introduz são
-// higienizados, então o `top` de uma não é o `top` da outra.
+// Cada laço declara o seu próprio estado, logo antes de si: os rótulos que a
+// macro introduz abrem um grupo aninhado, não um irmão do anterior.
+var n = 1;
+var soma = 0;
+
 @while n <= 10 {
-    soma = soma + n;
+    // `parcial` é do corpo, e não existe depois do laço.
+    def parcial = soma + n;
+
+    soma = parcial;
     n = n + 1;
 }
 
 print(soma);
+
+var k = 0;
 
 @while k < 6 {
     k = k + 1;

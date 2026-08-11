@@ -271,10 +271,11 @@ para isso — `if` e `match` continuam onde estavam, com desestruturação de ca
 que é justamente o que nenhuma macro faria com segurança (Q23). Um `@while`
 quebrado não tem como regredir um programa que já funcionava.
 
-A regra de escrita que vem junto: **todo `var` que um laço usa se declara antes do
-primeiro `@while` do bloco.** Cada `label` abre um *join*, joins são irmãos, e um
-não enxerga os bindings do outro — um salto pode ter pulado a declaração.
-`examples/control.ls` explica com exemplo.
+O escopo se comporta como se esperaria: o corpo do laço é um escopo (o que ele
+declara não escapa), e um `var` declarado entre dois laços é visível no segundo.
+Só o que um `goto` **explícito** pode ter pulado continua invisível no destino —
+que é a única forma de o contrário ser mentira. `examples/control.ls` mostra os
+três casos.
 
 O que falta (M12 em diante): o resto do partial evaluator — especialização de
 chamadas e eliminação de bounds check. O roteiro completo está em
