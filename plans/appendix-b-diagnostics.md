@@ -110,6 +110,16 @@ evaluator teria de modelar antes de especializar qualquer coisa com closure.
 | `LAP0241` | error | array vazio requer anotação de tipo |
 | `LAP0242` | error | `{0}` não é indexável |
 | `LAP0243` | error | índice deve ser `Int`, encontrado `{0}` |
+| `LAP0244` | error | índice {0} fora dos limites de `[{1};{2}]` *(plano 24)* |
+| `LAP0245` | error | o tamanho de um array deve ser um `Int` não negativo *(plano 24)* |
+
+`LAP0244` só existe porque o tamanho passa a viver no tipo (plano 24): com
+`[Int;3]`, `arr[3]` é erro **de tipo**, checado pela mesma maquinaria que rejeita
+`def a: Str = 1;`. Índice dinâmico ou array `[T;?]` continuam devolvendo
+`Result<T, IndexError>` — provar `i < n` para um `i` derivado de laço é trabalho do
+partial evaluator (plano 14), não do checker.
+
+`LAP0241` continua valendo: `.[]` diz o tamanho, não o tipo do elemento.
 
 ### Campos, variantes e construção
 

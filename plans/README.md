@@ -76,7 +76,7 @@ variante com segurança — foi **adiada**, e com ela `@if`/`@match` saíram do 
 | 19 | [Reflection](19-reflection.md) | `Lapis.Runtime` + `Lapis.TypeChecker` | M10 ✅ |
 | 20 | [Macros de controle no prelude](20-macro-prelude.md) | `prelude.ls` | M11 ✅ |
 
-### Type members (proposta)
+### Fechar a linguagem (proposta)
 
 Especificação: [`../spec/lapislang-type-members-0.1.md`](../spec/lapislang-type-members-0.1.md).
 **Q26** decidida — member resolution é type checking, não uma fase própria, e é
@@ -88,11 +88,16 @@ Mutabilidade segue o **binding**: `mutavel.campo = e` vale quando o binding é
 `var`, e é açúcar para reconstruir o valor e reatribuir o slot. Todo `Value`
 continua imutável e não há aliasing — Q25 intacta.
 
+Arrays passam a carregar o tamanho no tipo (`[Int;3]`), com construção
+`.[1, 2, 3]` — o mesmo ponto de `.User { }`. **Q29** (`[T;N]` atribuível a
+`[T;?]`) bloqueia o plano 24; **Q30** (aritmética de tamanho) fica adiada.
+
 | # | Plano | Projeto | Milestone |
 |---|---|---|---|
-| 21 | [Type members](21-type-members.md) | `Lapis.Parser` … `Lapis.Evaluator` | M12 |
-| 22 | [Métodos de instância e `self`](22-instance-members.md) | `Lapis.TypeChecker` + `Lapis.Evaluator` | M13 |
-| 23 | [Extensions genéricas](23-generic-extensions.md) | `Lapis.TypeChecker` | M14 ⏳ Q27 |
+| 24 | [Arrays com tamanho no tipo](24-sized-arrays.md) | `Lapis.Ast` + `Lapis.TypeChecker` + `prelude.ls` | M12 ⏳ Q29 |
+| 21 | [Type members](21-type-members.md) | `Lapis.Parser` … `Lapis.Evaluator` | M13 |
+| 22 | [Métodos de instância e `self`](22-instance-members.md) | `Lapis.TypeChecker` + `Lapis.Evaluator` | M14 |
+| 23 | [Extensions genéricas](23-generic-extensions.md) | `Lapis.TypeChecker` | M15 ⏳ Q27 |
 
 ### Apêndices normativos
 
@@ -121,12 +126,18 @@ continua imutável e não há aliasing — Q25 intacta.
 | **M9** ✅ | Compile time | `@post` com deduplicação de rota; `throw` e contexto | 18 |
 | **M10** ✅ | Reflection | `reflect(Color).variants` nas duas fases | 19 |
 | **M11** ✅ | Macros de controle | `@unless` e `@while` no prelude; **nada é retirado** da Core | 20 |
-| **M12** | Type members | `def User.create`, `User.defaultAge`, `mutavel.campo = e` | 21 |
-| **M13** | Métodos de instância | `user.hello()` ≡ chamar a função com `user` no argumento 0 | 22 |
-| **M14** | Extensions genéricas | `def<T> Result<T>.isOk` — **bloqueado por Q27** | 23 |
-| **M15** | PE especialização | beta reduction, inlining, especialização de funções | 13 |
-| **M16** | PE análise | range analysis, bounds-check elimination, `lapis pe --trace` | 14, 15 |
-| **M17** | Equivalência | property-based: `eval(P,S) ≡ eval(PE(P,S),S)` | 11, 14 |
+| **M12** | Arrays com tamanho | `[Int;3]`, `.[1,2,3]`, índice literal checado, `length` constante — **bloqueado por Q29** | 24 |
+| **M13** | Type members | `def User.create`, `User.defaultAge`, `mutavel.campo = e` | 21 |
+| **M14** | Métodos de instância | `user.hello()` ≡ chamar a função com `user` no argumento 0 | 22 |
+| **M15** | Extensions genéricas | `def<T> Result<T>.isOk` — **bloqueado por Q27** | 23 |
+| **M16** | PE especialização | beta reduction, inlining, especialização de funções | 13 |
+| **M17** | PE análise | range analysis, bounds-check elimination, `lapis pe --trace` | 14, 15 |
+| **M18** | Equivalência | property-based: `eval(P,S) ≡ eval(PE(P,S),S)` | 11, 14 |
+
+**Por que arrays vêm primeiro.** O plano 24 muda a sintaxe de tipo de array e o
+`prelude.ls` junto — `TypeInfo` tem quatro campos de array. Migrar prelude,
+exemplos e corpus é a maior parte daquele plano, e fazê-la **antes** dos type
+members evita migrar duas vezes.
 
 **Por que fechar a linguagem antes do partial evaluator** (decisão do autor):
 
@@ -187,9 +198,9 @@ O M6 vir primeiro também paga uma dívida: o plano 14 (bounds-check elimination
               ↓
         17 → 18 → 19 → 20                           (M8–M11)
               ↓
-        21 → 22 → 23                                (M12–M14)
+        24 → 21 → 22 → 23                           (M12–M15)
               ↓
-        13 → 14 → 15                                (M15–M17)
+        13 → 14 → 15                                (M16–M18)
 ```
 
 Observação sobre a ordem da spec: a spec §43–§52 sugere construir o evaluator

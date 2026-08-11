@@ -113,6 +113,13 @@ primary        = INT | FLOAT | STRING | "true" | "false"
 
 array_literal  = "[" ( expression ( "," expression )* ","? )? "]" ;
 
+(* Muda no plano 24: a construção passa a levar ponto, como `.User { }` (Q2).
+
+   array_literal = "." "[" ( expression ( "," expression )* ","? )? "]" ;
+
+   `[` inicia um tipo, `.[` inicia um valor — a desambiguação é de um token, e é a
+   mesma regra que já vale para construção de `type`. *)
+
 if_expr        = "if" expression block ( "else" ( block | if_expr ) )? ;
 
 match_expr     = "match" expression "{" match_arm ( "," match_arm )* ","? "}" ;
@@ -153,6 +160,21 @@ type_primary   = IDENT generic_args?
                | "fn" "(" ( type ( "," type )* )? ")" type
                | "(" type ")" ;
 ```
+
+> **Muda no plano 24.** O tamanho passa a viver no tipo, e a forma pós-fixa sai:
+>
+> ```ebnf
+> type_primary   = "[" type ";" array_size "]"     (* [Int;3]  [Int;?] *)
+>                | IDENT generic_args?
+>                | "fn" "(" ( type ( "," type )* )? ")" type
+>                | "(" type ")" ;
+>
+> array_size     = INT | "?" | IDENT ;             (* literal, desconhecido, const generic *)
+> ```
+>
+> `Int[]` deixa de existir: manter as duas formas exigiria escolher qual delas
+> carrega o tamanho, e dois jeitos de escrever o mesmo tipo é o que este projeto
+> evita. E `[` deixa de ser ambíguo — **`[` é tipo, `.[` é valor** (A.5).
 
 `Int`, `Float`, `Bool`, `Str`, `Void` são `IDENT` resolvidos pelo checker — não
 são palavras-chave. Isso permite ao usuário sombreá-los, com as consequências

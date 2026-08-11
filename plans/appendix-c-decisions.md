@@ -826,9 +826,41 @@ coexistem, `Result<Int>` tem dois. A recomendação é **erro** (`LAP0720`) em v
 uma regra de especificidade — falhar ruidosamente, como a 0.2 já faz com
 `a < b < c`.
 
+## Q29 — `[T;N]` é atribuível a `[T;?]`? ⏳
+
+**Sem decisão. Bloqueia o plano 24.**
+
+```c
+def imprime = fn(a: [Int;?]) Void { ... };
+imprime(.[1, 2, 3]);        // `[Int;3]` num parâmetro `[Int;?]`
+```
+
+Sem isso nenhuma função aceita arrays de tamanhos diferentes, e o tamanho no tipo
+vira camisa de força. Com isso, a linguagem ganha a **segunda** regra de
+subtipagem — hoje só existe `Never <: T` (Q13).
+
+**Recomendação:** aceitar, numa direção só (`[T;N] <: [T;?]`, nunca o contrário).
+É esquecer informação, que é sempre seguro, e não abre a porta para variância —
+o elemento continua invariante.
+
+## Q30 — aritmética de tamanho no tipo ⏳
+
+`arr.concat(.[4,5])` sobre `[Int;3]` daria `[Int;5]`, o que exige somar tamanhos
+**no tipo**. É o primeiro degrau de tipos dependentes.
+
+**Recomendação:** não agora. `concat` devolve `[T;?]`; quem precisa do tamanho
+exato reconstrói com `.[...]`. Const generics (Q18) já cobrem o caso de passar um
+tamanho adiante sem calculá-lo.
+
 ## Q28 — `arr[i] = v` ⏳
 
 **Sem decisão.** Ela não sai de graça do mesmo mecanismo de `u.campo = e`.
+
+> **Atualização com o plano 24.** Com o tamanho no tipo, o caso `[T;N]` com índice
+> literal deixa de ser dinâmico: `arr[1] = v` sobre `[Int;3]` teria alvo estático,
+> como um campo. O que continua sem resposta é `[T;?]` e índice dinâmico — e a
+> decisão do autor foi que **nenhuma** das duas formas é permitida por enquanto,
+> com a mutação de array indo por API (`push`, `setElement`) e não por sintaxe.
 
 Atribuição a campo funciona porque o caminho é **estático**: o checker sabe qual
 campo, e a falha possível ("não existe") é de compilação. Um índice é dinâmico, e
