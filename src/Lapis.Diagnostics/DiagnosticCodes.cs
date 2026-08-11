@@ -46,6 +46,10 @@ public static class DiagnosticCodes
     // ninguém produz ainda. Fica no catálogo para que o número não seja reusado.
     public const string UnusedBinding = "LAP0205";
 
+    // Mutação (Q25)
+    public const string NotAssignable = "LAP0206";
+    public const string MutableCapturedByFunction = "LAP0207";
+
     public const string TypeMismatch = "LAP0210";
 
     public const string NotCallable = "LAP0220";

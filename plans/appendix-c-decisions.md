@@ -29,7 +29,7 @@ implementação.
 | Q22 | `if` e `match` **continuam** no compilador; `@while` entra no prelude | ✅ decidido |
 | Q23 | construção de linguagem para ler carga de variante com segurança | ⏳ adiada, com requisito escrito |
 | Q24 | `goto` pode saltar para trás; fim da terminação por construção | ✅ decidido |
-| Q25 | o que dá progresso a um laço (join com parâmetros, mutação ou recursão) | ⏳ aberta — bloqueia `@while` |
+| Q25 | mutação com `var`; closure não captura `var` | ✅ decidido |
 
 **A spec 0.2 precisa ser atualizada** em quatro pontos por causa destas decisões:
 §15/§16/§22 (variantes qualificadas), §44 (tokens `!`, `&&`, `\|\|`), §14/§24
@@ -698,44 +698,73 @@ recursão.
 **O que não se perde:** a pilha de C#. Um salto para trás é mais uma volta do laço
 que consome completions no evaluator, não uma chamada recursiva.
 
-**O que o M6 revelou, e a decisão não previa:** o salto para trás **não produz laço
-com progresso**. Bindings são imutáveis e o corpo de um join roda no ambiente do
-grupo, o mesmo em toda volta — nada muda entre iterações, logo a condição de saída
-também não muda. Um laço ou não roda, ou roda até `LAP0303`.
-
-Ou seja: o item "o que se ganha" acima ainda **não** está entregue. `@while`
-depende de uma decisão que ainda não foi tomada — ver Q25.
+**O que o M6 revelou, e a decisão não previa:** o salto para trás, sozinho, **não
+produz laço com progresso** — nada mudava entre as voltas. Resolvido pela Q25, com
+`var`.
 
 ---
 
-## Q25 ⏳ — O que dá progresso a um laço
+## Q25 ✅ — Mutação com `var`
 
-**Problema.** `goto` para trás está implementado (M6) e funciona, mas nenhum laço
-escrito com ele consegue avançar: a linguagem não tem como um valor mudar entre
-iterações. `@while` (plano 20) está bloqueado por isso.
+**Problema.** `goto` para trás funciona (M6), mas nenhum laço escrito com ele
+avançava: a linguagem não tinha como um valor mudar entre iterações.
 
 ```c
 def i = 0;
 label repete;
 def j = i + 1;
 print(j);
-goto repete if j < 3;   // imprime 1 para sempre, até LAP0303
+goto repete if j < 3;   // imprimia 1 para sempre, até LAP0303
 ```
 
-**Três saídas, e o custo de cada uma:**
+**✅ Decidido pelo autor: mutação, com a palavra reservada `var`.**
 
-| Caminho | Forma | O que custa |
-|---|---|---|
-| **Join com parâmetros** | `label L(x: Int);` / `goto L(x + 1);` | sintaxe nova, mas é o que um join point é na literatura (um `phi` de SSA), casa com a Core sem `Block` e mantém tudo imutável |
-| **Mutação** | `var x = 0;` e atribuição | muda a semântica da linguagem inteira, e o partial evaluator junto — a §8 exclui atribuição de propósito |
-| **Laço por recursão** | derrubar a Q8 | traz de volta exatamente o que a Q8 evitava, e o PE precisa de estratégia de terminação |
+```c
+var i = 0;
+label repete;
+i = i + 1;
+print(i);
+goto repete if i < 3;   // 1, 2, 3
+```
 
-**Recomendação:** join com parâmetros. É a única das três que não desfaz uma
-decisão anterior, e a que deixa o partial evaluator com um grafo de fluxo em forma
-canônica — que é o que os planos 14 e 15 querem analisar.
+`def` continua definitivo; `var` pode ser reatribuído com `x = e;`. A atribuição é
+**statement**, não expressão — o que elimina de uma vez `if (x = 1)` e a confusão
+entre `=` e `==`.
 
-**Nada urgente:** `goto`/`label` já entregam saída antecipada, `@unless` e o grafo
-de fluxo explícito. Só `@while` espera.
+### A restrição que faz isso caber: um `var` não atravessa fronteira de função
+
+**✅ Decidido pelo autor: closure não captura `var`.** Usar um `var` de fora dentro
+de uma função — lendo ou escrevendo — é `LAP0207`.
+
+É o que dispensa a pergunta que uma linguagem com mutação normalmente precisa
+responder: captura por valor ou por referência? Nenhuma das duas, porque não há
+captura. E o preço que **não** se paga é o que importa aqui: sem aliasing, uma
+closure continua sendo (código, ambiente imutável) para o partial evaluator, que é
+a premissa dos planos 12 a 14.
+
+O `Environment` continua persistente na **estrutura** — nenhum ambiente ganha ou
+perde nomes. O que muda é o conteúdo de um slot marcado como mutável, e nenhuma
+closure enxerga um desses.
+
+### O que mais decorre
+
+- **`var` nunca é constante de compilação:** `Somefn<umVar>()` é `LAP0294`, como a
+  Q18 exige. O valor de hoje não é o de amanhã.
+- **Atribuir a um `def` ou a um parâmetro é `LAP0206`.**
+- **O tipo do `var` é o da declaração e não muda:** uma atribuição que não cabe é
+  `LAP0210`.
+
+### O que ficou de fora, e é a ergonomia a melhorar
+
+Uma declaração feita **depois** de um `label` vive dentro daquele join, e um join
+não enxerga os bindings de outro — é a mesma regra que vale entre o `goto` e o
+`label` (o salto pode ter pulado a declaração). Na prática, todo `var` que um laço
+usa precisa ser declarado **antes do primeiro rótulo** do bloco.
+
+Funciona, e o exemplo `examples/loops.ls` mostra a forma. Mas é a restrição que
+**join com parâmetros** (`label L(x: Int);` / `goto L(x + 1);`) resolveria, e ela
+segue valendo como possível evolução: não conflita com `var`, e daria ao partial
+evaluator um grafo de fluxo em forma canônica.
 
 ---
 
@@ -747,8 +776,8 @@ Sem decisão; listadas para não serem esquecidas.
 |---|---|
 | Recursão | `def` recursivo? mutuamente recursivo? qual estratégia de terminação no PE? |
 | Módulos | a spec §3 diz "não existe conceito de módulo"; quando isso muda? |
-| Mutabilidade | §8 exclui atribuição; análise de ranges fica bem mais interessante com laços |
-| Laços | `for`/`while` estão em §23 como candidatos a desugar — ver Q25 |
+| Mutabilidade | resolvido pela Q25 (`var`); falta decidir se `var` sobrevive à especialização do PE |
+| Laços | `for`/`while` continuam candidatos a macro (plano 20), agora que `var` os torna possíveis |
 | Operador `?` | §23 cita "Result propagation" |
 | Métodos | §23 cita "method syntax" |
 | Conversões numéricas | sem promoção implícita, é preciso `intToFloat` no prelude |

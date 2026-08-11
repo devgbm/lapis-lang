@@ -8,12 +8,25 @@ namespace Lapis.TypeChecker;
 public enum BindingKind
 {
     Value,
+
+    /// <summary>Declarado com <c>var</c>: pode ser reatribuído (Q25).</summary>
+    Variable,
+
     Parameter,
     Native,
 }
 
 public sealed record BindingInfo(BindingId Id, string Name, LapisType Type, SourceSpan Span, BindingKind Kind)
 {
+    public bool IsMutable => Kind == BindingKind.Variable;
+
+    /// <summary>
+    /// Quantas fronteiras de função havia acima deste binding quando ele foi
+    /// declarado. Só importa para <c>var</c>: usá-lo de dentro de uma função
+    /// aninhada é erro (Q25), e a profundidade é como se detecta isso.
+    /// </summary>
+    public int FunctionDepth { get; init; }
+
     /// <summary>
     /// O valor deste binding, quando conhecido em tempo de compilação — é o que
     /// permite passá-lo como argumento const genérico (Q18).

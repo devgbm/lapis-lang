@@ -22,13 +22,34 @@ public sealed record SourceFile(ImmutableArray<Statement> Statements) : SurfaceN
 
 public abstract record Statement : SurfaceNode;
 
-/// <summary>A única forma de introduzir um nome (spec §2, §8).</summary>
+/// <summary>A forma de introduzir um nome (spec §2, §8).</summary>
 public sealed record DefStatement(string Name, TypeSyntax? Annotation, Expression Value) : Statement
 {
     public required SourceSpan NameSpan { get; init; }
+
+    /// <summary>
+    /// <c>var</c> em vez de <c>def</c>: o nome pode ser reatribuído.
+    ///
+    /// É a mesma declaração porque tudo o mais é igual — só a permissão de
+    /// reatribuir muda, e ela é uma propriedade do binding, não uma construção
+    /// à parte.
+    /// </summary>
+    public bool IsMutable { get; init; }
 }
 
 public sealed record ExpressionStatement(Expression Expression) : Statement;
+
+/// <summary>
+/// <c>x = e;</c> — reatribuição de um <c>var</c>.
+///
+/// É <c>Statement</c>, não <c>Expression</c>: atribuição não produz valor, e
+/// mantê-la fora da gramática de expressão elimina de uma vez <c>if (x = 1)</c>
+/// e a confusão entre <c>=</c> e <c>==</c>.
+/// </summary>
+public sealed record AssignStatement(string Name, Expression Value) : Statement
+{
+    public required SourceSpan NameSpan { get; init; }
+}
 
 /// <summary>
 /// <c>goto L;</c> ou <c>goto L if e;</c>.

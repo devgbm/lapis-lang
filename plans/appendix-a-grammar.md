@@ -11,11 +11,14 @@ Terminais em maiúsculas são tokens do plano 03.
 program        = statement* EOF ;
 
 statement      = def_statement
+               | assign_statement
                | goto_statement
                | label_statement
                | expr_statement ;
 
-def_statement  = "def" IDENT ( ":" type )? "=" expression ";" ;
+def_statement  = ( "def" | "var" ) IDENT ( ":" type )? "=" expression ";" ;
+
+assign_statement = IDENT "=" expression ";" ;
 
 goto_statement = "goto" IDENT ( "if" expression )? ";" ;
 
@@ -355,8 +358,12 @@ dos demais statements.
 ## A.12 Palavras reservadas
 
 ```text
-def  fn  type  enum  return  true  false  if  else  match  goto
+def  var  fn  type  enum  return  true  false  if  else  match  goto
 ```
+
+`var` declara um binding reatribuível (Q25); `def` continua definitivo. A
+atribuição é **statement**: `=` nunca aparece em posição de expressão, então
+`if (x = 1)` não existe e não há como confundir `=` com `==`.
 
 `label` **não** é reservada: é palavra-chave **contextual**, só reconhecida quando
 inicia um statement e vem seguida de um identificador. Reservá-la quebraria

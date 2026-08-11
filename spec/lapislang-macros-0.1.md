@@ -575,36 +575,36 @@ O laço que consome as completions é **iteração**, não recursão: um salto p
 mais uma volta do `while` em C#, e a pilha do interpretador não cresce. O que
 termina a execução no pior caso é o orçamento de saltos (`LAP0303`).
 
-## 10.6 O que o salto para trás **não** dá: laço com progresso
+## 10.6 O que dá progresso ao laço: `var` (Q25)
 
-Implementado o M6, um fato ficou visível e precisa estar escrito aqui: **um laço
-construído com salto para trás não consegue avançar**.
+Salto para trás sozinho **não** produz laço com progresso. O corpo de um join é
+avaliado no ambiente **do grupo**, o mesmo em toda volta; com bindings imutáveis
+nada mudava entre iterações, então a condição de saída também não mudava — o laço
+ou não rodava, ou rodava até o orçamento acabar.
+
+A peça que faltava é a mutação, decidida na Q25:
 
 ```c
-def i = 0;
+var i = 0;
 label repete;
-def j = i + 1;
-print(j);
-goto repete if j < 3;   // imprime 1 para sempre, até LAP0303
+i = i + 1;
+print(i);
+goto repete if i < 3;   // 1, 2, 3
 ```
 
-O motivo não é o salto — é o resto da linguagem. Bindings são imutáveis (`def`, sem
-`var`), e o corpo de um join é avaliado no ambiente **do grupo**, o mesmo em toda
-volta. Nada muda entre iterações, então a condição de saída também não muda: ou o
-laço não roda, ou roda até o orçamento acabar.
+`var` declara um binding reatribuível; `x = e;` é a atribuição, **statement** e não
+expressão. Um `var` declarado **antes** do rótulo é o slot que atravessa as voltas.
 
-A consequência é para o plano 20: **`@while` não pode ser construído só com
-`goto`/`label` como estão**. Falta uma de três coisas, e a escolha é do autor:
+**Um `var` não atravessa fronteira de função** (`LAP0207`): nenhuma closure captura
+`var`. É o que dispensa escolher entre captura por valor e por referência, e o que
+mantém a closure como (código, ambiente imutável) para o partial evaluator.
 
-| Caminho | O que muda | Custo |
-|---|---|---|
-| **join com parâmetros** (`label L(x: Int)` / `goto L(x + 1)`) | join point vira o que ele é na literatura — um `phi` de SSA | sintaxe nova, mas é a forma que casa com a Core sem `Block` e mantém tudo imutável |
-| **mutação** (`var`, atribuição) | a linguagem deixa de ser puramente imutável | muda a semântica inteira, e o partial evaluator junto |
-| **laço por recursão** | derruba a Q8 | recursão traz de volta os problemas que a Q8 evitava |
-
-Nada disso é urgente: `goto`/`label` já pagam sozinhos o que o M6 prometeu — saída
-antecipada sem aninhamento, `@unless`, e um grafo de fluxo explícito para o partial
-evaluator (planos 14 e 15). Mas `@while` fica bloqueado até a decisão.
+**Escopo entre joins:** o que é declarado depois de um `label` vive dentro daquele
+join e não é visível no próximo — a mesma regra que vale entre o `goto` e o
+`label`. Na prática, todo `var` que o laço usa é declarado antes do primeiro
+rótulo do bloco. É a restrição que *join com parâmetros* (`label L(x: Int)` /
+`goto L(x + 1)`) resolveria, e ela segue como evolução possível: não conflita com
+`var` e daria ao partial evaluator um grafo em forma canônica.
 
 ---
 

@@ -70,6 +70,16 @@ dispara, asseverando **código + span** — nunca a mensagem.
 | ~~`LAP0203`~~ | — | **aposentado** (Q3): com variantes sempre qualificadas não há injeção no escopo, logo não há colisão possível |
 | `LAP0204` | error | tipo `'{0}'` não existe |
 | `LAP0205` | warning | `'{0}'` foi definido mas nunca usado — **reservado**, nenhum milestone o emite ainda |
+| `LAP0206` | error | não é possível atribuir a `'{0}'` |
+| `LAP0207` | error | `'{0}'` é `var` e não pode ser usado dentro de outra função |
+
+`LAP0206` traz nota apontando a declaração: só um `var` pode ser reatribuído, e um
+`def` ou parâmetro é definitivo.
+
+`LAP0207` é a restrição que faz a mutação caber na linguagem (Q25): **nenhuma
+closure captura `var`**, lendo ou escrevendo. Sem isso seria preciso decidir entre
+captura por valor e por referência — e a segunda traria aliasing, que o partial
+evaluator teria de modelar antes de especializar qualquer coisa com closure.
 
 ### Anotações e atribuição
 

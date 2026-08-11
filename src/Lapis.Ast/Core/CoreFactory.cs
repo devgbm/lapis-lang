@@ -28,8 +28,16 @@ public sealed class CoreFactory
         CoreExpr value,
         CoreExpr body,
         bool isSynthetic,
-        SourceSpan? nameSpan = null) =>
-        new(Next(), span, name, annotation, value, body, isSynthetic) { NameSpan = nameSpan ?? span };
+        SourceSpan? nameSpan = null,
+        bool isMutable = false) =>
+        new(Next(), span, name, annotation, value, body, isSynthetic)
+        {
+            NameSpan = nameSpan ?? span,
+            IsMutable = isMutable,
+        };
+
+    public CoreAssign Assign(SourceSpan span, string name, CoreExpr value, SourceSpan nameSpan) =>
+        new(Next(), span, name, value) { NameSpan = nameSpan };
 
     public CoreLambda Lambda(
         SourceSpan span,

@@ -80,7 +80,7 @@ public static class CoreSourcePrinter
             }
             else
             {
-                builder.Append("def ").Append(let.Name);
+                builder.Append(let.IsMutable ? "var " : "def ").Append(let.Name);
 
                 if (let.Annotation is not null)
                 {
@@ -161,6 +161,11 @@ public static class CoreSourcePrinter
 
             case CoreGoto n:
                 builder.Append("goto ").Append(n.Label);
+                break;
+
+            case CoreAssign n:
+                builder.Append(n.Name).Append(" = ");
+                Print(builder, n.Value, indent, Precedence.Lowest);
                 break;
 
             case CoreGotoIf n:

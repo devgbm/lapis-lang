@@ -126,6 +126,7 @@ public sealed class TypeChecker
             CoreGoto n => CheckGoto(n),
             CoreGotoIf n => CheckGotoIf(n, scope),
             CoreLabeled n => CheckLabeled(n, scope),
+            CoreAssign n => CheckAssign(n, scope),
             _ => throw InternalCompilerException.Unreachable(node, node.Span),
         };
 
@@ -139,6 +140,7 @@ public sealed class TypeChecker
     {
         if (scope.TryLookup(node.Name, out var binding))
         {
+            ReportIfCrossesFunction(binding, node.Span);
             _resolutions[node.NodeId] = new VariableResolution(binding.Id);
             return binding.Type;
         }
@@ -189,9 +191,17 @@ public sealed class TypeChecker
         // blocos ainda existem; aqui um `Let` interno sempre sombreia legitimamente.
         var inner = scope.Child();
 
-        inner.Declare(new BindingInfo(NextBindingId(), node.Name, valueType, node.NameSpan, BindingKind.Value)
+        inner.Declare(new BindingInfo(
+            NextBindingId(),
+            node.Name,
+            valueType,
+            node.NameSpan,
+            node.IsMutable ? BindingKind.Variable : BindingKind.Value)
         {
-            Constant = ConstantOf(node.Value, valueType, scope),
+            // Um `var` nunca é constante de compilação: o valor de hoje não é o de
+            // amanhã. É o que faz `Somefn<umVar>()` cair em LAP0294, como a Q18 exige.
+            Constant = node.IsMutable ? null : ConstantOf(node.Value, valueType, scope),
+            FunctionDepth = _functions.Count,
         });
 
         var valueReturns = ReturnAnalysis.DefinitelyReturns(node.Value);
@@ -681,6 +691,81 @@ public sealed class TypeChecker
         }
 
         return joined;
+    }
+
+    // ----------------------------------------------------------- mutação
+
+    /// <summary>
+    /// <c>x = e</c>. Tipo <c>Void</c>: a atribuição não produz valor.
+    /// </summary>
+    private LapisType CheckAssign(CoreAssign node, Scope scope)
+    {
+        var valueType = CheckExpression(node.Value, scope);
+
+        if (!scope.TryLookup(node.Name, out var binding))
+        {
+            var notes = FindSuggestion(node.Name, scope) is { } suggestion
+                ? new[] { new DiagnosticNote($"você quis dizer '{suggestion}'?") }
+                : [];
+
+            _diagnostics.ReportError(
+                DiagnosticCodes.UnknownVariable, node.NameSpan, $"variável '{node.Name}' não existe", notes);
+
+            return PrimitiveType.Void;
+        }
+
+        _resolutions[node.NodeId] = new VariableResolution(binding.Id);
+
+        if (!binding.IsMutable)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.NotAssignable,
+                node.NameSpan,
+                $"não é possível atribuir a '{node.Name}'",
+                new DiagnosticNote("só um 'var' pode ser reatribuído; este é um 'def'", binding.Span));
+
+            return PrimitiveType.Void;
+        }
+
+        if (ReportIfCrossesFunction(binding, node.NameSpan))
+        {
+            return PrimitiveType.Void;
+        }
+
+        // O tipo do `var` é o da declaração e não muda: uma atribuição precisa
+        // caber nele, como um argumento precisa caber no parâmetro.
+        if (valueType is not ErrorType and not NeverType && valueType != binding.Type)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.TypeMismatch,
+                node.Value.Span,
+                $"esperado {binding.Type.ToDisplayString()}, encontrado {valueType.ToDisplayString()}");
+        }
+
+        return PrimitiveType.Void;
+    }
+
+    /// <summary>
+    /// Um <c>var</c> só existe dentro da função que o declarou (Q25).
+    ///
+    /// A restrição é o que dispensa decidir se uma closure captura por valor ou por
+    /// referência: nenhuma closure captura <c>var</c>. Sem aliasing, o partial
+    /// evaluator continua vendo uma closure como (código, ambiente imutável).
+    /// </summary>
+    private bool ReportIfCrossesFunction(BindingInfo binding, SourceSpan span)
+    {
+        if (!binding.IsMutable || binding.FunctionDepth == _functions.Count)
+        {
+            return false;
+        }
+
+        _diagnostics.ReportError(
+            DiagnosticCodes.MutableCapturedByFunction,
+            span,
+            $"'{binding.Name}' é 'var' e não pode ser usado dentro de outra função",
+            new DiagnosticNote("declarado aqui; uma função não captura 'var'", binding.Span));
+
+        return true;
     }
 
     // ------------------------------------------------------------ saltos

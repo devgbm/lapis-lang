@@ -17,6 +17,7 @@ public enum TokenKind
 
     // palavras-chave
     DefKeyword,
+    VarKeyword,
     FnKeyword,
     TypeKeyword,
     EnumKeyword,
@@ -103,6 +104,7 @@ public static class TokenKindExtensions
         TokenKind.FloatLiteral => "literal float",
         TokenKind.StringLiteral => "literal de string",
         TokenKind.DefKeyword => "'def'",
+        TokenKind.VarKeyword => "'var'",
         TokenKind.FnKeyword => "'fn'",
         TokenKind.TypeKeyword => "'type'",
         TokenKind.EnumKeyword => "'enum'",

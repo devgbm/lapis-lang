@@ -122,6 +122,7 @@ public sealed class Evaluator
         CoreGoto n => Completion.Goto(n.Label),
         CoreGotoIf n => EvaluateGotoIf(n, environment),
         CoreLabeled n => EvaluateLabeled(n, environment),
+        CoreAssign n => EvaluateAssign(n, environment),
         _ => throw InternalCompilerException.Unreachable(node, node.Span),
     };
 
@@ -156,7 +157,31 @@ public sealed class Evaluator
             return value;
         }
 
-        return Evaluate(node.Body, environment.Extend(node.Name, value.Value));
+        return Evaluate(node.Body, environment.Extend(node.Name, value.Value, node.IsMutable));
+    }
+
+    /// <summary>
+    /// <c>x = e</c>. O slot já existe — quem o criou foi o <c>Let</c> mutável —,
+    /// então a atribuição só troca o conteúdo. É por isso que o corpo de um join,
+    /// que roda sempre no mesmo ambiente, enxerga o valor da volta anterior: é o
+    /// que faz um laço avançar (Q25).
+    /// </summary>
+    private Completion EvaluateAssign(CoreAssign node, Environment environment)
+    {
+        var value = Evaluate(node.Value, environment);
+
+        if (!value.IsNormal)
+        {
+            return value;
+        }
+
+        if (!environment.TryAssign(node.Name, value.Value))
+        {
+            throw new InternalCompilerException(
+                $"atribuição a '{node.Name}', que não existe no ambiente");
+        }
+
+        return Completion.Normal(VoidValue.Instance);
     }
 
     private Completion EvaluateLambda(CoreLambda node, Environment environment)

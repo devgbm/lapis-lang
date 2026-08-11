@@ -36,7 +36,7 @@ public static class SurfaceSExprPrinter
         switch (statement)
         {
             case DefStatement def:
-                Open(builder, indent, $"def {def.Name}");
+                Open(builder, indent, $"{(def.IsMutable ? "var" : "def")} {def.Name}");
 
                 if (def.Annotation is not null)
                 {
@@ -50,6 +50,12 @@ public static class SurfaceSExprPrinter
             case ExpressionStatement expression:
                 Open(builder, indent, "stmt");
                 PrintExpression(builder, expression.Expression, indent + 1);
+                Close(builder, indent);
+                break;
+
+            case AssignStatement assign:
+                Open(builder, indent, $"assign {assign.Name}");
+                PrintExpression(builder, assign.Value, indent + 1);
                 Close(builder, indent);
                 break;
 

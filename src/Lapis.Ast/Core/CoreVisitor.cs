@@ -27,6 +27,7 @@ public abstract class CoreVisitor<TResult>
         CoreGoto n => VisitGoto(n),
         CoreGotoIf n => VisitGotoIf(n),
         CoreLabeled n => VisitLabeled(n),
+        CoreAssign n => VisitAssign(n),
         _ => throw InternalCompilerException.Unreachable(node, node.Span),
     };
 
@@ -69,6 +70,8 @@ public abstract class CoreVisitor<TResult>
     protected abstract TResult VisitGotoIf(CoreGotoIf node);
 
     protected abstract TResult VisitLabeled(CoreLabeled node);
+
+    protected abstract TResult VisitAssign(CoreAssign node);
 }
 
 /// <summary>
@@ -191,6 +194,10 @@ public abstract class CoreWalker
                 break;
 
             case CoreGoto:
+                break;
+
+            case CoreAssign n:
+                Visit(n.Value);
                 break;
 
             case CoreGotoIf n:

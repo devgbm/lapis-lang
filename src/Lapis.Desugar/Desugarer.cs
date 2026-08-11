@@ -112,13 +112,22 @@ public sealed class Desugarer
                 DesugarExpression(def.Value),
                 rest,
                 isSynthetic: false,
-                def.NameSpan),
+                def.NameSpan,
+                def.IsMutable),
 
             ExpressionStatement expression => _factory.Let(
                 expression.Span,
                 _names.Next(),
                 annotation: null,
                 DesugarExpression(expression.Expression),
+                rest,
+                isSynthetic: true),
+
+            AssignStatement assign => _factory.Let(
+                assign.Span,
+                _names.Next(),
+                annotation: null,
+                DesugarAssign(assign),
                 rest,
                 isSynthetic: true),
 
@@ -249,13 +258,22 @@ public sealed class Desugarer
                     DesugarExpression(def.Value),
                     terminator,
                     isSynthetic: false,
-                    def.NameSpan),
+                    def.NameSpan,
+                    def.IsMutable),
 
                 ExpressionStatement expression => _factory.Let(
                     expression.Span,
                     _names.Next(),
                     annotation: null,
                     DesugarExpression(expression.Expression),
+                    terminator,
+                    isSynthetic: true),
+
+                AssignStatement assign => _factory.Let(
+                    assign.Span,
+                    _names.Next(),
+                    annotation: null,
+                    DesugarAssign(assign),
                     terminator,
                     isSynthetic: true),
 
@@ -273,6 +291,9 @@ public sealed class Desugarer
 
         return terminator;
     }
+
+    private CoreExpr DesugarAssign(AssignStatement node) =>
+        _factory.Assign(node.Span, node.Name, DesugarExpression(node.Value), node.NameSpan);
 
     private CoreExpr DesugarGoto(GotoStatement node) =>
         node.Condition is null

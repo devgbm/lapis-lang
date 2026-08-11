@@ -187,6 +187,12 @@ public static class CoreSExprPrinter
                 Line(builder, indent, $"({tag}goto {n.Label})");
                 break;
 
+            case CoreAssign n:
+                Open(builder, indent, $"{tag}assign {n.Name}");
+                PrintExpression(builder, n.Value, indent + 1, ids);
+                Close(builder, indent);
+                break;
+
             case CoreGotoIf n:
                 Open(builder, indent, $"{tag}goto-if {n.Label}");
                 PrintExpression(builder, n.Condition, indent + 1, ids);
@@ -267,7 +273,11 @@ public static class CoreSExprPrinter
                 var annotation = let.Annotation is null
                     ? string.Empty
                     : $" : {SurfaceSExprPrinter.PrintType(let.Annotation)}";
-                Open(builder, indent + 1, $"{(ids ? $"#{let.NodeId} " : string.Empty)}let {let.Name}{annotation}");
+                var keyword = let.IsMutable ? "var" : "let";
+                Open(
+                    builder,
+                    indent + 1,
+                    $"{(ids ? $"#{let.NodeId} " : string.Empty)}{keyword} {let.Name}{annotation}");
                 PrintExpression(builder, let.Value, indent + 2, ids);
                 Close(builder, indent + 1);
             }

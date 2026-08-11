@@ -63,6 +63,31 @@ public sealed class CoreLet(
     /// <summary>Verdadeiro quando o <c>Let</c> só existe para sequenciar um statement.</summary>
     public bool IsSynthetic { get; } = isSynthetic;
 
+    /// <summary>Declarado com <c>var</c>: pode ser reatribuído (Q25).</summary>
+    public bool IsMutable { get; init; }
+
+    public SourceSpan NameSpan { get; init; } = span;
+}
+
+/// <summary>
+/// <c>x = e</c> — reatribuição do <c>Let</c> mutável que introduziu <c>x</c>.
+/// Tipo <c>Void</c>: a atribuição não produz valor.
+///
+/// Sem nó de referência e sem célula na Core: quem resolve o nome é o mesmo
+/// mecanismo léxico de <see cref="CoreVariable"/>. Isso só é possível porque um
+/// <c>var</c> não atravessa fronteira de função (Q25) — não há aliasing para o
+/// partial evaluator modelar, só um slot local que muda.
+/// </summary>
+public sealed class CoreAssign(
+    int nodeId,
+    SourceSpan span,
+    string name,
+    CoreExpr value) : CoreExpr(nodeId, span)
+{
+    public string Name { get; } = name;
+
+    public CoreExpr Value { get; } = value;
+
     public SourceSpan NameSpan { get; init; } = span;
 }
 

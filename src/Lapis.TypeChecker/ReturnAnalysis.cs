@@ -66,6 +66,10 @@ public static class ReturnAnalysis
 
             CoreLabeled n => DefinitelyReturns(n, joins),
 
+            // `x = return 1;` é tipável: `Return` tem tipo Never e cabe em
+            // qualquer posição.
+            CoreAssign n => DefinitelyReturns(n.Value, joins),
+
             // Um `return` dentro de uma lambda aninhada encerra **aquela** função,
             // não a que a contém (spec §12, último bullet).
             CoreLambda => false,

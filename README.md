@@ -45,16 +45,16 @@ lapis hello.ls
 | M8–M11 — macros, `constraint`, reflection, `@unless`/`@while` | 📋 planejado |
 | M12–M14 — PE: especialização, análise, equivalência | ⬜ |
 
-**1165 testes** cobrindo lexer, parser, desugar, type checker, runtime,
-evaluator e CLI — entre eles uma **suíte de conformidade** de 130 programas
+**1227 testes** cobrindo lexer, parser, desugar, type checker, runtime,
+evaluator e CLI — entre eles uma **suíte de conformidade** de 141 programas
 `.ls` que é a especificação executável do projeto: cada afirmação testável da
 spec é um arquivo, e o nome do teste que falha já é o arquivo a abrir.
 
 A linguagem já roda programas de verdade: funções de primeira classe com
 closures, `return` explícito com verificação de "retorna em todos os caminhos",
 arrays com indexação segura, enums, `match` exaustivo, tipos definidos pelo
-usuário, generics (inclusive const generics), `goto`/`label` e um prelude escrito
-na própria linguagem.
+usuário, generics (inclusive const generics), `goto`/`label`, mutação com `var` e
+um prelude escrito na própria linguagem.
 
 ```c
 def numbers = [10, 20, 30];
@@ -115,10 +115,25 @@ def buscar = fn(indice: Int) Int {
 ```
 
 Saltar para trás é permitido, e com isso a terminação deixa de ser garantida por
-construção: o evaluator conta saltos e aborta com `LAP0303` em vez de travar. Um
-laço, porém, ainda **não consegue avançar** — bindings são imutáveis e o corpo de
-um join roda sempre no mesmo ambiente, então nada muda entre as voltas. É a
-questão Q25 do apêndice C, e é o que bloqueia `@while`.
+construção: o evaluator conta saltos e aborta com `LAP0303` em vez de travar.
+
+Para um laço **avançar** falta uma peça, e é a decisão Q25: mutação com `var`.
+
+```c
+var i = 0;
+
+label repete;
+i = i + 1;
+print(i);
+goto repete if i < 3;   // 1, 2, 3
+```
+
+`def` continua definitivo; `var` pode ser reatribuído com `x = e;` — statement, não
+expressão, o que elimina `if (x = 1)` e a confusão entre `=` e `==`. A restrição
+que faz a mutação caber sem virar um buraco: **um `var` não atravessa fronteira de
+função**. Nenhuma closure captura `var`, então não há aliasing, e a closure segue
+sendo (código, ambiente imutável) para o partial evaluator — que é a premissa dos
+planos 12 a 14.
 
 O que falta (M7 em diante): macros e o partial evaluator. O roteiro completo está
 em [`plans/`](plans/README.md).
