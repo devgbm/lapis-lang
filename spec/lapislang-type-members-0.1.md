@@ -179,28 +179,84 @@ esta é a parte da proposta que exige decisão antes de virar código.
 
 ---
 
-# 9. O que a feature **não** traz
+# 9. Mutabilidade
 
-**Mutação de campo.** A proposta original mostrava:
-
-```c
-def User.rename = fn(self, name: Str) Void {
-    self.name = name;      // NÃO — a 0.2 não tem mutação de campo
-};
-```
-
-`var` reatribui um **binding**, nunca um campo, e a restrição que fez a mutação
-caber (Q25) foi justamente um `var` não atravessar fronteira de função. Mutar
-campo reintroduz aliasing, que o partial evaluator teria de modelar antes de
-especializar qualquer coisa — o oposto do que Q25 comprou.
-
-A forma que a linguagem suporta devolve um valor novo:
+**Decisão do autor.** A mutabilidade segue o **binding**, não a forma do alvo:
 
 ```c
-def User.renamed = fn(self, name: Str) User {
-    return .User { name: name, age: self.age };
-};
+def User = type { name: Str; };
+def User.hello = fn(self) Void { ... };
+
+def fixa = .User { name: "teste" };
+fixa.name = "outro";               // ✗ `fixa` é `def`
+
+var mutavel = .User { name: "a" };
+mutavel.name = "Gilberto";         // ✓ `mutavel` é `var`
+mutavel.hello();                   // ✓
+
+mutavel.hello = fn() Void { ... }; // ✗ `hello` é membro do tipo, não campo da instância
+mutavel.outroCampo = 12;           // ✗ `outroCampo` não existe em `User`
 ```
+
+| Escrita | Válido | Código |
+|---|---|---|
+| `def T.m = e;` | sim | — |
+| `var T.m = e;` | não | `LAP0705` |
+| `def instancia.campo = e;` | não | `LAP0704` — o dono de um membro é um tipo |
+| `instancia.campo = e;` com `def` | não | `LAP0206` |
+| `mutavel.campo = e;` com `var` | **sim** | — |
+| `mutavel.campo = <tipo errado>;` | não | `LAP0210` |
+| `mutavel.membro = e;` | não | `LAP0707` |
+| `mutavel.naoExiste = e;` | não | `LAP0250` |
+
+## 9.1 Semântica: atualização funcional, não mutação de heap
+
+`mutavel.name = "Gilberto"` **não** muda o struct no lugar. Ela é açúcar para
+reconstruir o valor e reatribuir o binding:
+
+```c
+mutavel = .User { name: "Gilberto" };    // demais campos copiados de `mutavel`
+```
+
+Isso não é detalhe de implementação — é o que preserva tudo o que Q25 comprou:
+
+- todo `Value` continua **imutável** (spec §27);
+- a única coisa mutável continua sendo o **slot do ambiente**;
+- um `var` continua sem atravessar fronteira de função (`LAP0207`), então nenhuma
+  closure alcança o slot;
+- **não há aliasing**, e o partial evaluator não precisa modelar heap.
+
+A consequência é observável e precisa ser dita:
+
+```c
+var a = .User { name: "x" };
+def b = a;
+
+a.name = "y";
+
+print(b.name);    // "x" — `b` guarda o valor antigo
+```
+
+Quem espera semântica de referência ("`b` também vê `y`") está pedindo outra
+linguagem: aliasing obrigaria o PE a raciocinar sobre quem aponta para quê antes
+de especializar qualquer coisa, que é exatamente o custo que Q25 evitou.
+
+## 9.2 Caminhos
+
+O alvo é um **caminho a partir de um nome**: `nome(.campo)+`. Aninhado funciona
+pela mesma regra:
+
+```c
+var u = .User { endereco: .Endereco { rua: "A" } };
+u.endereco.rua = "B";
+```
+
+O receptor tem de ser um nome, nunca uma expressão qualquer: `proximo().name = x`
+não tem sentido — mutaria um temporário que ninguém mais vê.
+
+**`arr[i] = v` fica de fora**, e não por esquecimento: a atribuição é *statement*,
+então não tem como devolver `Result` quando `i` está fora dos limites — e Q9
+eliminou os caminhos de aborto. É uma pergunta própria, registrada como **Q28**.
 
 **Herança, virtual dispatch, vtable, `this`, overload** — nenhum deles, por §2 da
 proposta e porque nada aqui precisa.

@@ -304,6 +304,16 @@ Planos 21–23. **Nenhum implementado.**
 | `LAP0703` | error | `'{0}'` já é variante de `{1}` |
 | `LAP0704` | error | o dono de um membro deve ser um tipo declarado |
 | `LAP0705` | error | um membro não pode ser `var` |
+| `LAP0707` | error | `'{0}'` é um membro de `{1}` e não um campo da instância |
+
+**Atribuição a campo reusa os códigos que já existem.** `mutavel.campo = e` é
+válido quando o binding é `var`; os erros são `LAP0206` (o binding é `def`),
+`LAP0210` (tipo errado) e `LAP0250` (campo inexistente). `LAP0707` é o único novo,
+e existe porque a mensagem certa é específica: `u.hello = ...` falha não porque
+`hello` não exista, mas porque ele é membro do **tipo**, não campo da instância.
+
+`LAP0706` ficou **livre**: chegou a ser alocado para "nada qualificado é
+atribuível", leitura que a decisão do autor corrigiu antes de virar código.
 
 `LAP0703` existe porque `Color.Red` e `Color.membro` ocupam a **mesma** sintaxe:
 sem ele, declarar um membro com nome de variante seria resolvido por precedência

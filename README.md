@@ -47,7 +47,8 @@ lapis hello.ls
 | **M9** — `constraint`, `throw` e contexto de compilação | ✅ concluído |
 | **M10** — reflection nas duas fases | ✅ concluído |
 | **M11** — `@unless` e `@while` no prelude | ✅ concluído |
-| M12–M14 — PE: especialização, análise, equivalência | ⏳ próximo |
+| M12–M14 — type members, métodos de instância, extensions | ⏳ próximo |
+| M15–M17 — PE: especialização, análise, equivalência | ⬜ |
 
 **1486 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
 evaluator, partial evaluator e CLI — entre eles uma **suíte de conformidade** de
@@ -278,9 +279,11 @@ Só o que um `goto` **explícito** pode ter pulado continua invisível no destin
 que é a única forma de o contrário ser mentira. `examples/control.ls` mostra os
 três casos.
 
-O que falta (M12 em diante): o resto do partial evaluator — especialização de
-chamadas e eliminação de bounds check. O roteiro completo está em
-[`plans/`](plans/README.md).
+O que falta: **fechar a linguagem** primeiro — type members e extension methods
+(M12–M14), porque o partial evaluator precisa de um caso para cada construção, e
+escrevê-lo contra uma superfície que ainda cresce significa reabri-lo a cada
+milestone. Depois o resto do PE (M15–M17): especialização de chamadas e eliminação
+de bounds check. O roteiro completo está em [`plans/`](plans/README.md).
 
 ```bash
 $ lapis examples/hello.ls

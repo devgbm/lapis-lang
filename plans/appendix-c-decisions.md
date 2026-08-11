@@ -826,6 +826,30 @@ coexistem, `Result<Int>` tem dois. A recomendação é **erro** (`LAP0720`) em v
 uma regra de especificidade — falhar ruidosamente, como a 0.2 já faz com
 `a < b < c`.
 
+## Q28 — `arr[i] = v` ⏳
+
+**Sem decisão.** Ela não sai de graça do mesmo mecanismo de `u.campo = e`.
+
+Atribuição a campo funciona porque o caminho é **estático**: o checker sabe qual
+campo, e a falha possível ("não existe") é de compilação. Um índice é dinâmico, e
+a falha é de execução — `arr[10] = v` num array de 3.
+
+As saídas conhecidas não servem:
+
+| Saída | Por que não |
+|---|---|
+| devolver `Result` | atribuição é **statement**; não há onde o `Result` ir parar |
+| abortar | Q9 eliminou os caminhos de aborto de propósito, e a leitura `arr[i]` já é total por devolver `Result` |
+| ignorar em silêncio | perde escrita sem avisar — pior que as duas |
+
+A leitura de array devolve `Result` justamente para não ter caminho de aborto; a
+escrita precisaria da mesma honestidade em uma posição da gramática que não a
+comporta. Uma saída possível é uma forma que **seja** expressão
+(`def novo = arr.comIndice(i, v);` ou similar), que é biblioteca e não sintaxe.
+
+Fica registrada porque a spec de type members §9.2 a encosta, não porque o
+milestone dependa dela.
+
 ---
 
 ## Questões deixadas em aberto para a 0.3
