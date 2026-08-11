@@ -74,7 +74,7 @@ variante com segurança — foi **adiada**, e com ela `@if`/`@match` saíram do 
 | 17 | [Macro engine](17-macro-engine.md) | `Lapis.Macros` | M8 ✅ |
 | 18 | [`constraint`, `throw` e contexto](18-compile-time-evaluation.md) | `Lapis.Macros` + `Lapis.Cli` | M9 ✅ |
 | 19 | [Reflection](19-reflection.md) | `Lapis.Runtime` + `Lapis.TypeChecker` | M10 ✅ |
-| 20 | [Macros de controle no prelude](20-macro-prelude.md) | `prelude.ls` | M11 |
+| 20 | [Macros de controle no prelude](20-macro-prelude.md) | `prelude.ls` | M11 ✅ |
 
 ### Apêndices normativos
 
@@ -102,7 +102,7 @@ variante com segurança — foi **adiada**, e com ela `@if`/`@match` saíram do 
 | **M8** ✅ | Macro engine | `@unless`, `@square` expandindo; `lapis expand` | 17 |
 | **M9** ✅ | Compile time | `@post` com deduplicação de rota; `throw` e contexto | 18 |
 | **M10** ✅ | Reflection | `reflect(Color).variants` nas duas fases | 19 |
-| **M11** | Macros de controle | `@unless` e `@while` no prelude; **nada é retirado** da Core | 20 |
+| **M11** ✅ | Macros de controle | `@unless` e `@while` no prelude; **nada é retirado** da Core | 20 |
 | **M12** | PE especialização | beta reduction, inlining, especialização de funções | 13 |
 | **M13** | PE análise | range analysis, bounds-check elimination, `lapis pe --trace` | 14, 15 |
 | **M14** | Equivalência | property-based: `eval(P,S) ≡ eval(PE(P,S),S)` | 11, 14 |

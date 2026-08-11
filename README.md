@@ -45,19 +45,20 @@ lapis hello.ls
 | **M8** — macro engine (`match`/`expand`, higiene, `lapis expand`) | ✅ concluído |
 | **M9** — `constraint`, `throw` e contexto de compilação | ✅ concluído |
 | **M10** — reflection nas duas fases | ✅ concluído |
-| M11 — macros de controle no prelude | ⏳ próximo |
-| M12–M14 — PE: especialização, análise, equivalência | ⬜ |
+| **M11** — `@unless` e `@while` no prelude | ✅ concluído |
+| M12–M14 — PE: especialização, análise, equivalência | ⏳ próximo |
 
-**1453 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
+**1486 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
 evaluator, partial evaluator e CLI — entre eles uma **suíte de conformidade** de
-167 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
+171 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
 spec é um arquivo, e o nome do teste que falha já é o arquivo a abrir.
 
 A linguagem já roda programas de verdade: funções de primeira classe com
 closures, `return` explícito com verificação de "retorna em todos os caminhos",
 arrays com indexação segura, enums, `match` exaustivo, tipos definidos pelo
-usuário, generics (inclusive const generics), `goto`/`label`, mutação com `var` e
-um prelude escrito na própria linguagem.
+usuário, generics (inclusive const generics), `goto`/`label`, mutação com `var`,
+macros higiênicas com validação em tempo de compilação, reflection, e um prelude
+escrito na própria linguagem — laços inclusive.
 
 ```c
 def numbers = [10, 20, 30];
@@ -251,9 +252,33 @@ E porque é tudo valor comum, o partial evaluator dobra reflection de graça:
 `reflect(User).name` residualiza como `"User"`, e o programa não paga nada por ter
 usado.
 
-O que falta (M11 em diante): as macros de controle no prelude e o resto do partial
-evaluator — especialização de chamadas e eliminação de bounds check. O roteiro
-completo está em [`plans/`](plans/README.md).
+E o **prelude** (M11) usa tudo isso para escrever, na própria linguagem, as
+construções de controle que a LapisLang não tem:
+
+```c
+var i = 0;
+
+@while i < 3 {          // vem do prelude — não precisa declarar
+    i = i + 1;
+    print(i);
+}
+```
+
+`@while` são seis linhas de `prelude.ls` sobre `goto` e `label`. É a tese do
+sistema de macros em uma frase: **um laço, que em qualquer outra linguagem é
+trabalho de compilador, aqui é biblioteca.** E nada foi retirado do compilador
+para isso — `if` e `match` continuam onde estavam, com desestruturação de carga,
+que é justamente o que nenhuma macro faria com segurança (Q23). Um `@while`
+quebrado não tem como regredir um programa que já funcionava.
+
+A regra de escrita que vem junto: **todo `var` que um laço usa se declara antes do
+primeiro `@while` do bloco.** Cada `label` abre um *join*, joins são irmãos, e um
+não enxerga os bindings do outro — um salto pode ter pulado a declaração.
+`examples/control.ls` explica com exemplo.
+
+O que falta (M12 em diante): o resto do partial evaluator — especialização de
+chamadas e eliminação de bounds check. O roteiro completo está em
+[`plans/`](plans/README.md).
 
 ```bash
 $ lapis examples/hello.ls

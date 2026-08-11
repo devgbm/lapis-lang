@@ -178,8 +178,76 @@ mudar o comportamento de nenhum programa que já funcionava.**
 
 ## Critérios de conclusão
 
-- [ ] `@unless` e `@while` no `prelude.ls`, escritos em LapisLang.
-- [ ] `@while` iterando sem crescer a pilha de C#, e abortando com `LAP0303` quando
+- [x] `@unless` e `@while` no `prelude.ls`, escritos em LapisLang.
+- [x] `@while` iterando sem crescer a pilha de C#, e abortando com `LAP0303` quando
       não termina.
-- [ ] `if`, `match` e a desestruturação de carga **intactos**.
-- [ ] Zero alteração de expectativa em qualquer teste anterior.
+- [x] `if`, `match` e a desestruturação de carga **intactos**.
+- [x] Zero alteração de expectativa em qualquer teste anterior.
+
+---
+
+## O que a implementação mudou no plano
+
+### 1. Macros do prelude precisaram de uma camada no registro
+
+O plano trata o `prelude.ls` como se macros já viajassem com ele. Não viajavam: o
+`MacroRegistry` era por arquivo, e o `PreludeLoader` nem roda expansão — uma
+`macro` no prelude chegaria ao desugar.
+
+Duas peças pequenas resolveram, e as duas espelham o que já existia para valores:
+
+- `PreludeLoader` separa as `MacroDeclaration` antes do desugar, e `PreludeScope`
+  as guarda ao lado dos bindings. Não são `PreludeBinding` porque uma macro não
+  tem tipo nem valor (Q19).
+- `MacroRegistry` ganhou uma camada de base. Uma macro do arquivo com o mesmo
+  nome **sombreia** a do prelude, sem diagnóstico — a mesma regra de
+  `def Result = ...`; duas do próprio arquivo continuam sendo `LAP0511`.
+
+### 2. A expansão funcionou sem nenhuma mudança no engine
+
+`@unless` e `@while` são exatamente o que o plano escreveu, e passaram de
+primeira: higiene renomeia `top` e `done`, a captura de bloco é *spliced* em vez
+de virar escopo aninhado, e a invocação gulosa consome `i < 3 { ... }` inteiro.
+O M8 e o M6 já tinham resolvido o que era preciso.
+
+### 3. A restrição de escrita é maior do que o §20.2 previu
+
+O plano diz que "a macro precisa expandir para uma forma em que as declarações do
+usuário fiquem antes do primeiro rótulo gerado", e trata disso como um cuidado ao
+escrever a macro. O que a implementação mostrou é uma regra **do usuário**, e mais
+larga:
+
+> **Todo `var` que um laço usa se declara antes do primeiro `@while` do bloco.**
+
+```c
+var i = 0;
+@while i < 2 { i = i + 1; }
+var k = 0;                      // preso no join que `@while` deixou aberto
+@while k < 3 { k = k + 1; }     // LAP0201: 'k' não existe
+```
+
+A causa é do M6 e está correta: joins são **irmãos**, não aninhados, e um não
+enxerga os bindings do outro porque um salto pode ter pulado a declaração. O que o
+M11 muda é que os rótulos passaram a ser **invisíveis** — quem escreve `@while` não
+tem por que saber que um `label` foi introduzido.
+
+Não é bug e não tem correção barata: a saída é *join com parâmetros*
+(`label L(x: Int);` / `goto L(x + 1);`), registrada como evolução possível desde o
+M6. Até lá a regra está em letras grandes no `examples/control.ls` e travada por
+teste, para que o dia em que deixar de valer seja visível.
+
+Um `@unless` **aninhado no corpo** de um `@while` não sofre disso: o corpo é um
+join só, e a macro interna não abre um irmão dele.
+
+---
+
+## O que ficou de fora
+
+**`@if` e `@match`** — pelo motivo do §20.3, que a implementação não teve razão
+nenhuma para revisitar. `match` continua no compilador **com** desestruturação de
+carga, que é justamente o que nenhuma macro conseguiria fazer com segurança.
+
+**`@foreach`** — continua precisando de um protocolo de iteração sobre coleções.
+E de algo mais básico que o plano não menciona: **não há como perguntar o tamanho
+de um array**. `array_length` está previsto no plano 09 mas nunca foi
+implementado, e sem ele nem a forma `índice < tamanho` se escreve.

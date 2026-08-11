@@ -45,15 +45,26 @@ public sealed class MacroExpander
     /// normalmente, e encontrar uma <b>com</b> constraint é erro interno, não
     /// silêncio.
     /// </param>
+    /// <param name="preludeMacros">
+    /// As macros do <c>prelude.ls</c> (plano 20), disponíveis em todo arquivo sem
+    /// declaração. Uma macro homônima no arquivo as sombreia.
+    /// </param>
     public static SourceFile Expand(
         SourceFile file,
         DiagnosticBag diagnostics,
-        IConstraintRunner? constraints = null)
+        IConstraintRunner? constraints = null,
+        IEnumerable<MacroDeclaration>? preludeMacros = null)
     {
         ArgumentNullException.ThrowIfNull(file);
         ArgumentNullException.ThrowIfNull(diagnostics);
 
         var expander = new MacroExpander(diagnostics, constraints);
+
+        if (preludeMacros is not null)
+        {
+            expander._registry.RegisterPrelude(preludeMacros);
+        }
+
         var statements = expander.ExpandStatements(file.Statements, depth: 0);
 
         return file with { Statements = statements };

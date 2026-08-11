@@ -101,7 +101,7 @@ public static class Pipeline
             diagnostics,
             compileTimeOutput ?? new StringOutput());
 
-        surface = Macros.MacroExpander.Expand(surface, diagnostics, constraints);
+        surface = Macros.MacroExpander.Expand(surface, diagnostics, constraints, scope.Macros);
 
         if (stopAfter == PipelineStage.Expand || diagnostics.HasErrors)
         {

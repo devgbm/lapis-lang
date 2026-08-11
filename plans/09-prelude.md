@@ -78,6 +78,16 @@ Funções auxiliares (`unwrapOr`, `map`) **não** entram no prelude na 0.2: cada
 precisaria de generics já estáveis e ampliaria a superfície de teste sem servir a
 nenhum objetivo da spec. Ficam para v0.3.
 
+### 9.1b Macros do prelude
+
+O M11 acrescentou `@unless` e `@while` (plano 20). Elas **não** são
+`PreludeBinding`: uma macro não tem tipo nem valor, e não é first-class citizen
+(Q19). Ficam em `PreludeScope.Macros`, e a carga as separa do arquivo antes do
+desugar — macro é sintaxe, não código, e o resto do pipeline não a conhece.
+
+Redeclarar uma delas no arquivo do usuário **sombreia**, sem diagnóstico, do mesmo
+jeito que `def Result = ...` sombreia o `Result` do prelude.
+
 ### 9.2 Nativos
 
 Os únicos nomes que **não** dá para escrever em LapisLang, registrados

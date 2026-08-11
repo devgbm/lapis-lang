@@ -59,3 +59,47 @@ def TypeInfo = type {
     fields: FieldInfo[];
     variants: VariantInfo[];
 };
+
+// ---------------------------------------------------------------- controle
+//
+// As construções de controle que a LapisLang **não tem**, escritas na própria
+// linguagem sobre `goto` e `label` (spec de macros §12, plano 20).
+//
+// É a demonstração mais forte da tese do sistema de macros: um laço, que em
+// qualquer outra linguagem é trabalho de compilador, aqui é uma declaração de
+// biblioteca. Nada foi **retirado** do compilador para isso — `if` e `match`
+// continuam onde estavam —, então não há como um `@while` quebrado regredir um
+// programa que já funcionava.
+//
+// Os rótulos que estas macros introduzem são higienizados: dois `@while` no mesmo
+// bloco não colidem, e um `label top` do usuário não é o `top` daqui.
+
+macro unless
+    match Expression:condition Block:body
+    expand {
+        goto done if condition;
+        body;
+        label done;
+    };
+
+// A razão de `goto` poder saltar para trás (plano 16), e o primeiro programa
+// LapisLang capaz de não terminar — daí o orçamento de saltos e o `LAP0303`.
+//
+// Só passou a iterar de verdade com `var` (Q25): antes da mutação nada mudava
+// entre as voltas, então `condition` valia o mesmo sempre e o laço ou não rodava
+// ou não parava.
+//
+// Um `var` declarado **depois** de um `label` vive dentro daquele join. Por isso
+// as declarações que o laço lê ficam antes da invocação, e não dentro do corpo:
+//
+//     var i = 0;
+//     @while i < 3 { i = i + 1; }
+macro while
+    match Expression:condition Block:body
+    expand {
+        label top;
+        goto done if !condition;
+        body;
+        goto top;
+        label done;
+    };

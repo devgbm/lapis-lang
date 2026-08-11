@@ -15,6 +15,10 @@
 // enxerga os bindings de outro — o salto pode ter pulado a declaração. É a mesma
 // regra que vale entre o `goto` e o `label`.
 //
+// Este arquivo escreve os laços **à mão**, com `goto` e `label`, para mostrar a
+// forma. O `@while` do prelude gera exatamente isto; `examples/control.ls` tem a
+// versão que se escreve no dia a dia.
+//
 // Saída esperada:
 //   1
 //   2
@@ -35,7 +39,7 @@ i = i + 1;
 print(i);
 goto conta if i < 3;
 
-// Somatório de 1 a 10 — a forma que o `@while` do plano 20 vai gerar por macro.
+// Somatório de 1 a 10 — exatamente a forma que `@while` gera por macro.
 label somando;
 soma = soma + n;
 n = n + 1;

@@ -35,9 +35,17 @@ public sealed class PreludeScope
     public const string StructVariant = "Struct";
     public const string EnumVariant = "Enum";
 
-    public PreludeScope(ImmutableArray<PreludeBinding> bindings)
+    /// <param name="macros">
+    /// As macros que o <c>prelude.ls</c> declara (plano 20). São dado como os
+    /// bindings: quem as registra é o expander, e quem as lê do arquivo é o
+    /// orquestrador.
+    /// </param>
+    public PreludeScope(
+        ImmutableArray<PreludeBinding> bindings,
+        ImmutableArray<Ast.Surface.MacroDeclaration> macros = default)
     {
         Bindings = bindings;
+        Macros = macros.IsDefault ? [] : macros;
         Result = RequireEnum(bindings, ResultName, OkVariant, ErrVariant);
         IndexError = RequireEnum(bindings, IndexErrorName, OutOfBoundsVariant);
         ContextError = RequireEnum(bindings, ContextErrorName, MissingVariant);
@@ -61,6 +69,16 @@ public sealed class PreludeScope
     }
 
     public ImmutableArray<PreludeBinding> Bindings { get; }
+
+    /// <summary>
+    /// As construções que a linguagem <b>não tem</b>, escritas na própria
+    /// linguagem: <c>@unless</c> e <c>@while</c> (plano 20).
+    ///
+    /// Elas não têm tipo nem valor, e por isso não são <see cref="PreludeBinding"/>:
+    /// uma macro não é first-class citizen (Q19). Ficam aqui porque o prelude é o
+    /// lugar de tudo o que todo programa enxerga.
+    /// </summary>
+    public ImmutableArray<Ast.Surface.MacroDeclaration> Macros { get; }
 
     public TypeDefinition Result { get; }
 
