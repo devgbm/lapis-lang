@@ -28,6 +28,9 @@ public enum TokenKind
     ElseKeyword,
     MatchKeyword,
     GotoKeyword,
+    MacroKeyword,
+    ExpandKeyword,
+    ConstraintKeyword,
 
     // delimitadores
     OpenParen,
@@ -45,6 +48,7 @@ public enum TokenKind
     Dot,
     Underscore,
     FatArrow,
+    At,
 
     // operadores
     Plus,
@@ -93,6 +97,7 @@ public static class TokenKindExtensions
         or TokenKind.OpenBrace
         or TokenKind.OpenBracket
         or TokenKind.Dot
+        or TokenKind.At
         or TokenKind.Minus
         or TokenKind.Bang;
 
@@ -115,6 +120,10 @@ public static class TokenKindExtensions
         TokenKind.ElseKeyword => "'else'",
         TokenKind.MatchKeyword => "'match'",
         TokenKind.GotoKeyword => "'goto'",
+        TokenKind.MacroKeyword => "'macro'",
+        TokenKind.ExpandKeyword => "'expand'",
+        TokenKind.ConstraintKeyword => "'constraint'",
+        TokenKind.At => "'@'",
         TokenKind.OpenParen => "'('",
         TokenKind.CloseParen => "')'",
         TokenKind.OpenBrace => "'{'",

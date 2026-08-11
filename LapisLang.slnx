@@ -7,6 +7,7 @@
     <Project Path="src/Lapis.Evaluator/Lapis.Evaluator.csproj" />
     <Project Path="src/Lapis.Lexer/Lapis.Lexer.csproj" />
     <Project Path="src/Lapis.Parser/Lapis.Parser.csproj" />
+    <Project Path="src/Lapis.Macros/Lapis.Macros.csproj" />
     <Project Path="src/Lapis.PartialEvaluator/Lapis.PartialEvaluator.csproj" />
     <Project Path="src/Lapis.Runtime/Lapis.Runtime.csproj" />
     <Project Path="src/Lapis.TypeChecker/Lapis.TypeChecker.csproj" />
@@ -18,6 +19,7 @@
     <Project Path="tests/Lapis.Evaluator.Tests/Lapis.Evaluator.Tests.csproj" />
     <Project Path="tests/Lapis.Lexer.Tests/Lapis.Lexer.Tests.csproj" />
     <Project Path="tests/Lapis.Parser.Tests/Lapis.Parser.Tests.csproj" />
+    <Project Path="tests/Lapis.Macros.Tests/Lapis.Macros.Tests.csproj" />
     <Project Path="tests/Lapis.PartialEvaluator.Tests/Lapis.PartialEvaluator.Tests.csproj" />
     <Project Path="tests/Lapis.TypeChecker.Tests/Lapis.TypeChecker.Tests.csproj" />
   </Folder>

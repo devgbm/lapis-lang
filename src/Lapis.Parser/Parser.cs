@@ -39,6 +39,16 @@ public sealed class Parser
         _diagnostics = diagnostics;
     }
 
+    /// <summary>
+    /// Um parser posicionado sobre uma lista de tokens arbitrária, para o matcher
+    /// de macros (plano 17 §17.5). Fica <c>internal</c> porque só o
+    /// <see cref="SyntaxFragmentReader"/> deste projeto tem por que usá-lo.
+    /// </summary>
+    internal static Parser OverFragment(ImmutableArray<Token> tokens, DiagnosticBag diagnostics) =>
+        new(new TokenStream(tokens), diagnostics);
+
+    internal TokenStream Tokens => _tokens;
+
     public static SourceFile Parse(SourceText source, DiagnosticBag diagnostics)
     {
         var tokens = Lexer.Lexer.Tokenize(source, diagnostics);
@@ -85,7 +95,7 @@ public sealed class Parser
 
     // --------------------------------------------------------- statements
 
-    private Statement? ParseStatement()
+    internal Statement? ParseStatement()
     {
         _unwindingFromDepthLimit = false;
 
@@ -97,6 +107,11 @@ public sealed class Parser
         if (AtAssignment())
         {
             return ParseAssignStatement();
+        }
+
+        if (Current.Kind == TokenKind.MacroKeyword)
+        {
+            return ParseMacroDeclaration();
         }
 
         if (Current.Kind == TokenKind.GotoKeyword)
@@ -136,7 +151,11 @@ public sealed class Parser
     /// <c>if x &lt; 0 { return -x; }</c> seguido de <c>return x;</c> — não parsearia.
     /// </summary>
     private static bool IsBlockLike(Expression expression) =>
-        expression is BlockExpression or IfExpression or MatchExpression;
+        expression is BlockExpression or IfExpression or MatchExpression
+        // Uma invocação que terminou em bloco dispensa `;` pelo mesmo motivo que
+        // `if p { }` dispensa: `@unless c { }` é a forma que a macro define, e
+        // exigir `;` ali contrariaria a sintaxe que ela escolheu (spec de macros §4).
+        || expression is MacroInvocation { Arguments: [.., { Kind: TokenKind.CloseBrace }] };
 
     /// <summary>
     /// <c>IDENT "=" expressão ";"</c>. Não há ambiguidade a resolver: <c>==</c> é
@@ -222,6 +241,276 @@ public sealed class Parser
             Span = SpanFrom(start),
             NameSpan = nameToken.Span,
             IsMutable = isMutable,
+        };
+    }
+
+    // -------------------------------------------------------------- macros
+
+    /// <summary>
+    /// <c>macro nome (match &lt;padrão&gt; (constraint bloco)? expand bloco)+ ";"</c>
+    /// (spec de macros §3).
+    /// </summary>
+    private Statement ParseMacroDeclaration()
+    {
+        var start = Current.Span.Start;
+        _tokens.Advance(); // 'macro'
+
+        var nameToken = Current;
+        var name = "?";
+
+        if (Current.Kind == TokenKind.Identifier)
+        {
+            name = Current.Text;
+            _tokens.Advance();
+        }
+        else
+        {
+            Report(DiagnosticCodes.ExpectedIdentifier, Current.Span, "esperado um nome de macro após 'macro'");
+        }
+
+        var rules = ImmutableArray.CreateBuilder<MacroRule>();
+
+        while (Current.Kind == TokenKind.MatchKeyword)
+        {
+            rules.Add(ParseMacroRule());
+        }
+
+        if (rules.Count == 0)
+        {
+            Report(DiagnosticCodes.UnexpectedToken, Current.Span, "uma macro precisa de ao menos um 'match'");
+        }
+
+        if (!ExpectSemicolon(start))
+        {
+            RecoverToStatementBoundary();
+        }
+
+        return new MacroDeclaration(name, rules.ToImmutable())
+        {
+            Span = SpanFrom(start),
+            NameSpan = nameToken.Span,
+        };
+    }
+
+    private MacroRule ParseMacroRule()
+    {
+        var start = Current.Span.Start;
+        _tokens.Advance(); // 'match'
+
+        var pattern = ParseMacroPattern();
+
+        BlockExpression? constraint = null;
+
+        if (_tokens.Match(TokenKind.ConstraintKeyword))
+        {
+            constraint = ParseMacroBody("constraint");
+        }
+
+        if (Current.Kind != TokenKind.ExpandKeyword)
+        {
+            Report(DiagnosticCodes.UnexpectedToken, Current.Span, "esperado 'expand' na regra da macro");
+
+            return new MacroRule(pattern, constraint, EmptyBlock(Current.Span)) { Span = SpanFrom(start) };
+        }
+
+        _tokens.Advance(); // 'expand'
+
+        return new MacroRule(pattern, constraint, ParseMacroBody("expand")) { Span = SpanFrom(start) };
+    }
+
+    private BlockExpression ParseMacroBody(string keyword)
+    {
+        if (Current.Kind == TokenKind.OpenBrace)
+        {
+            return ParseBlock();
+        }
+
+        Report(DiagnosticCodes.UnexpectedToken, Current.Span, $"esperado '{{' depois de '{keyword}'");
+        return EmptyBlock(Current.Span);
+    }
+
+    private static BlockExpression EmptyBlock(SourceSpan span) => new([], null) { Span = span };
+
+    /// <summary>
+    /// O padrão vai do <c>match</c> até o <c>constraint</c> ou o <c>expand</c>.
+    ///
+    /// Nada aqui é a gramática da linguagem: é uma sequência de capturas e de
+    /// tokens literais, e é justamente isso que permite a uma macro definir
+    /// sintaxe própria sem tocar no lexer (spec de macros §5).
+    /// </summary>
+    private MacroPattern ParseMacroPattern()
+    {
+        var start = Current.Span.Start;
+        var items = ImmutableArray.CreateBuilder<MacroPattern>();
+
+        while (Current.Kind is not (TokenKind.ExpandKeyword or TokenKind.ConstraintKeyword
+            or TokenKind.Semicolon or TokenKind.EndOfFile))
+        {
+            var before = _tokens.Mark();
+            items.Add(ParseMacroPatternItem());
+
+            if (_tokens.Mark() == before)
+            {
+                _tokens.Advance();
+            }
+        }
+
+        return new PatternSequence(items.ToImmutable()) { Span = SpanFrom(start) };
+    }
+
+    private MacroPattern ParseMacroPatternItem()
+    {
+        var start = Current.Span.Start;
+
+        // `( sub-padrão )* separado por <token>` — repetição de grupo.
+        if (Current.Kind == TokenKind.OpenParen)
+        {
+            _tokens.Advance();
+            var group = ImmutableArray.CreateBuilder<MacroPattern>();
+
+            while (Current.Kind is not (TokenKind.CloseParen or TokenKind.EndOfFile))
+            {
+                var before = _tokens.Mark();
+                group.Add(ParseMacroPatternItem());
+
+                if (_tokens.Mark() == before)
+                {
+                    _tokens.Advance();
+                }
+            }
+
+            if (!_tokens.Match(TokenKind.CloseParen))
+            {
+                Report(DiagnosticCodes.UnexpectedToken, Current.Span, "esperado ')' no grupo do padrão");
+            }
+
+            var inner = new PatternSequence(group.ToImmutable()) { Span = SpanFrom(start) };
+            return FinishRepeat(inner, start);
+        }
+
+        // `Categoria:nome` — captura.
+        if (Current.Kind == TokenKind.Identifier && _tokens.Peek(1).Kind == TokenKind.Colon)
+        {
+            var categoryToken = _tokens.Advance();
+            _tokens.Advance(); // ':'
+
+            var capturedName = Current.Kind == TokenKind.Identifier ? _tokens.Advance().Text : "?";
+
+            if (!Enum.TryParse<SyntaxCategory>(categoryToken.Text, ignoreCase: false, out var category))
+            {
+                Report(
+                    DiagnosticCodes.UnknownSyntaxCategory,
+                    categoryToken.Span,
+                    $"categoria sintática desconhecida: '{categoryToken.Text}'",
+                    new DiagnosticNote(
+                        "categorias: " + string.Join(", ", Enum.GetNames<SyntaxCategory>())));
+            }
+
+            var capture = new PatternCapture(category, capturedName) { Span = SpanFrom(start) };
+            return FinishRepeat(capture, start);
+        }
+
+        // Qualquer outro token é literal sintático desta macro.
+        var literal = _tokens.Advance();
+        return new PatternLiteral(literal.Text) { Span = literal.Span };
+    }
+
+    /// <summary><c>* separado por &lt;token&gt;</c>, quando houver.</summary>
+    private MacroPattern FinishRepeat(MacroPattern item, int start)
+    {
+        if (Current.Kind != TokenKind.Star)
+        {
+            return item;
+        }
+
+        _tokens.Advance(); // '*'
+
+        // `separado` e `por` são identificadores comuns: a repetição é sintaxe da
+        // declaração de macro, não da linguagem, então não há palavra a reservar.
+        if (Current.Kind == TokenKind.Identifier && Current.Text == "separado")
+        {
+            _tokens.Advance();
+
+            if (Current.Kind == TokenKind.Identifier && Current.Text == "por")
+            {
+                _tokens.Advance();
+            }
+        }
+
+        var separator = Current.Kind is TokenKind.ExpandKeyword or TokenKind.ConstraintKeyword
+            ? ","
+            : _tokens.Advance().Text;
+
+        return new PatternRepeat(item, separator) { Span = SpanFrom(start) };
+    }
+
+    /// <summary>
+    /// <c>@nome &lt;tokens&gt;</c>.
+    ///
+    /// O parser não conhece a forma da macro, então só <b>delimita</b>: consome
+    /// até o <c>;</c> de nível 0 de aninhamento, ou até o <c>}</c> que fecha um
+    /// bloco aberto no nível 0. Também para em <c>,</c> e <c>)</c> de nível 0,
+    /// para que <c>f(@foo a, b)</c> não engula o resto da chamada.
+    /// </summary>
+    private Expression ParseMacroInvocation()
+    {
+        var start = Current.Span.Start;
+        _tokens.Advance(); // '@'
+
+        var nameToken = Current;
+        var name = "?";
+
+        if (Current.Kind == TokenKind.Identifier)
+        {
+            name = Current.Text;
+            _tokens.Advance();
+        }
+        else
+        {
+            Report(DiagnosticCodes.ExpectedIdentifier, Current.Span, "esperado um nome de macro após '@'");
+        }
+
+        var arguments = ImmutableArray.CreateBuilder<Token>();
+        var depth = 0;
+
+        while (!_tokens.AtEnd)
+        {
+            var token = Current;
+
+            switch (token.Kind)
+            {
+                case TokenKind.Semicolon when depth == 0:
+                case TokenKind.Comma when depth == 0:
+                case TokenKind.CloseParen when depth == 0:
+                case TokenKind.CloseBracket when depth == 0:
+                case TokenKind.CloseBrace when depth == 0:
+                    return Invocation();
+
+                case TokenKind.OpenParen or TokenKind.OpenBrace or TokenKind.OpenBracket:
+                    depth++;
+                    break;
+
+                case TokenKind.CloseParen or TokenKind.CloseBrace or TokenKind.CloseBracket:
+                    depth--;
+                    break;
+            }
+
+            arguments.Add(_tokens.Advance());
+
+            // Um bloco aberto no nível 0 e fechado encerra a invocação: é a forma
+            // `@unless c { ... }`, que não termina em `;`.
+            if (depth == 0 && token.Kind != TokenKind.OpenBrace && arguments[^1].Kind == TokenKind.CloseBrace)
+            {
+                return Invocation();
+            }
+        }
+
+        return Invocation();
+
+        Expression Invocation() => new MacroInvocation(name, arguments.ToImmutable())
+        {
+            Span = SpanFrom(start),
+            NameSpan = nameToken.Span,
         };
     }
 
@@ -339,7 +628,7 @@ public sealed class Parser
                     _tokens.Advance();
                     return;
 
-                case TokenKind.DefKeyword or TokenKind.VarKeyword when depth == 0:
+                case TokenKind.DefKeyword or TokenKind.VarKeyword or TokenKind.MacroKeyword when depth == 0:
                     return;
 
                 case TokenKind.CloseBrace when depth == 0:
@@ -364,7 +653,7 @@ public sealed class Parser
 
     // -------------------------------------------------------- expressions
 
-    private Expression ParseExpression()
+    internal Expression ParseExpression()
     {
         if (++_depth > MaxDepth)
         {
@@ -700,6 +989,19 @@ public sealed class Parser
 
             case TokenKind.Dot:
                 return ParseConstruct();
+
+            case TokenKind.At:
+                return ParseMacroInvocation();
+
+            case TokenKind.MacroKeyword:
+                // Q19: macro não é valor. `def m = macro ...` diria o contrário.
+                Report(
+                    DiagnosticCodes.MacroIsNotAValue,
+                    token.Span,
+                    "uma macro não é um valor e não pode aparecer em posição de expressão",
+                    new DiagnosticNote("declare-a no topo: 'macro nome match ... expand { ... };'"));
+                RecoverToStatementBoundary();
+                return ErrorExpr(token.Span);
 
             default:
                 var code = token.Kind == TokenKind.EndOfFile
@@ -1396,7 +1698,7 @@ public sealed class Parser
         return new ValueArgumentSyntax(value) { Span = value.Span };
     }
 
-    private BlockExpression ParseBlock()
+    internal BlockExpression ParseBlock()
     {
         var start = Current.Span.Start;
         var openBrace = Current.Span;
@@ -1416,6 +1718,10 @@ public sealed class Parser
             else if (AtAssignment())
             {
                 statements.Add(ParseAssignStatement());
+            }
+            else if (Current.Kind == TokenKind.MacroKeyword)
+            {
+                statements.Add(ParseMacroDeclaration());
             }
             else if (Current.Kind == TokenKind.GotoKeyword)
             {
@@ -1601,7 +1907,7 @@ public sealed class Parser
 
     // --------------------------------------------------------------- tipos
 
-    private TypeSyntax ParseType()
+    internal TypeSyntax ParseType()
     {
         var type = ParseTypePrimary();
 
@@ -1757,11 +2063,11 @@ public sealed class Parser
     /// sob a outra leitura. Durante o desempilhamento do limite de profundidade
     /// também não: ver <see cref="_unwindingFromDepthLimit"/>.
     /// </summary>
-    private void Report(string code, SourceSpan span, string message)
+    private void Report(string code, SourceSpan span, string message, params DiagnosticNote[] notes)
     {
         if (_speculating == 0 && !_unwindingFromDepthLimit)
         {
-            _diagnostics.ReportError(code, span, message);
+            _diagnostics.ReportError(code, span, message, notes);
         }
     }
 }

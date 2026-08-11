@@ -8,7 +8,7 @@ public sealed class RobustnessTests : LexerTestBase
     [Fact]
     public void UnknownChar_ProducesBadAndProgresses()
     {
-        var (tokens, diagnostics) = Lex("def x = @ ;");
+        var (tokens, diagnostics) = Lex("def x = # ;");
 
         diagnostics.ShouldHaveSingleItem().Code.ShouldBe(DiagnosticCodes.UnexpectedCharacter);
         tokens.Select(t => t.Kind).ShouldContain(TokenKind.Bad);
@@ -18,20 +18,22 @@ public sealed class RobustnessTests : LexerTestBase
     [Fact]
     public void MultipleUnknownChars_AllReported()
     {
-        var (_, diagnostics) = Lex("@ # $");
+        var (_, diagnostics) = Lex("~ # $");
 
         diagnostics.Length.ShouldBe(3);
         diagnostics.ShouldAllBe(d => d.Code == DiagnosticCodes.UnexpectedCharacter);
     }
 
-    /// <summary>Um único <c>&amp;</c> ou <c>|</c> não é operador na 0.2.</summary>
+    /// <summary>
+    /// Um único <c>&amp;</c> ou <c>|</c> não é operador na 0.2. <c>@</c> saiu desta
+    /// lista no M8: passou a ser o token que inicia uma invocação de macro.
+    /// </summary>
     [Theory]
     [InlineData("&")]
     [InlineData("|")]
     [InlineData("~")]
     [InlineData("%")]
     [InlineData("^")]
-    [InlineData("@")]
     [InlineData("$")]
     [InlineData("#")]
     [InlineData("?")]
@@ -41,6 +43,16 @@ public sealed class RobustnessTests : LexerTestBase
 
         tokens[0].Kind.ShouldBe(TokenKind.Bad);
         diagnostics.ShouldHaveSingleItem();
+    }
+
+    /// <summary>E `@` agora é um token de verdade, não um caractere inesperado.</summary>
+    [Fact]
+    public void At_IsAToken()
+    {
+        var (tokens, diagnostics) = Lex("@");
+
+        tokens[0].Kind.ShouldBe(TokenKind.At);
+        diagnostics.ShouldBeEmpty();
     }
 
     [Theory]

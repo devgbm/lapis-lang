@@ -97,6 +97,16 @@ public static class DiagnosticCodes
     // nenhum argumento genérico é inferido (Q7), todos são escritos.
     public const string CannotDetermineGenericArguments = "LAP0298";
 
+    // LAP050x — macros (plano 17)
+    public const string NoMacroRuleMatches = "LAP0501";
+    public const string AmbiguousMacroRules = "LAP0502";
+    public const string UnknownSyntaxCategory = "LAP0504";
+    public const string MacroExpansionTooDeep = "LAP0505";
+    public const string MacroExpansionWrongContext = "LAP0506";
+    public const string UnknownMacro = "LAP0509";
+    public const string MacroIsNotAValue = "LAP0510";
+    public const string DuplicateMacro = "LAP0511";
+
     // LAP052x — goto e label (plano 16)
     public const string UnknownLabel = "LAP0520";
     public const string LabelOutOfScope = "LAP0521";

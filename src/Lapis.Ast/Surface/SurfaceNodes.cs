@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Lapis.Diagnostics;
+using Lapis.Lexer;
 
 namespace Lapis.Ast.Surface;
 
@@ -69,6 +70,91 @@ public sealed record GotoStatement(string Label, Expression? Condition) : Statem
 public sealed record LabelStatement(string Label) : Statement
 {
     public required SourceSpan LabelSpan { get; init; }
+}
+
+// ------------------------------------------------------------------ macros
+
+/// <summary>
+/// <c>macro nome match &lt;padrão&gt; expand { ... };</c>
+///
+/// É <c>Statement</c>, e não valor ligado por <c>def</c>: uma macro <b>não é
+/// first-class citizen</b> (Q19). Não existe em runtime, não é argumento, não é
+/// retorno. Forçá-la a passar por <c>def</c> exigiria um tipo que só existe para
+/// proibir tudo o que <c>def</c> normalmente permite.
+///
+/// Macros ocupam um espaço de nomes próprio: <c>macro log</c> e
+/// <c>def log = fn ...</c> convivem, porque <c>@log</c> e <c>log</c> nunca se
+/// confundem.
+/// </summary>
+public sealed record MacroDeclaration(string Name, ImmutableArray<MacroRule> Rules) : Statement
+{
+    public required SourceSpan NameSpan { get; init; }
+}
+
+/// <summary>
+/// Uma regra: o trio <c>match</c> / <c>constraint</c>? / <c>expand</c>.
+/// </summary>
+/// <param name="Constraint">
+/// Validação em tempo de compilação. Parseada desde já, mas só executada no
+/// plano 18 — falha de <c>match</c> quer dizer "não é esta a forma"; falha de
+/// <c>constraint</c>, "esta forma está errada" (spec de macros §7.1).
+/// </param>
+public sealed record MacroRule(
+    MacroPattern Pattern,
+    BlockExpression? Constraint,
+    BlockExpression Expansion) : SurfaceNode;
+
+/// <summary>Categorias sintáticas que uma captura pode pedir (spec de macros §5.1).</summary>
+public enum SyntaxCategory
+{
+    Expression,
+    Statement,
+    Block,
+    Type,
+    Identifier,
+    Literal,
+    Int,
+    Float,
+    Str,
+    Bool,
+}
+
+public abstract record MacroPattern : SurfaceNode;
+
+public sealed record PatternSequence(ImmutableArray<MacroPattern> Items) : MacroPattern;
+
+/// <summary><c>Expression:e</c> — casa e liga o nome.</summary>
+public sealed record PatternCapture(SyntaxCategory Category, string Name) : MacroPattern;
+
+/// <summary>
+/// Um token exato: o <c>in</c> de <c>match Identifier:i in Expression:c</c>.
+///
+/// Pertence à sintaxe <b>daquela macro</b> e não vira palavra reservada da
+/// linguagem — é o que permite a uma biblioteca definir construções próprias sem
+/// tocar no lexer.
+/// </summary>
+public sealed record PatternLiteral(string Text) : MacroPattern;
+
+/// <summary>
+/// <c>Item* separado por ,</c>. Cada captura de dentro liga uma <b>lista</b>, e as
+/// listas são paralelas.
+/// </summary>
+public sealed record PatternRepeat(MacroPattern Item, string Separator) : MacroPattern;
+
+/// <summary>
+/// <c>@nome &lt;tokens&gt;</c>.
+///
+/// Guarda <b>tokens</b>, não árvore: o parser não sabe a forma de <c>@unless</c>
+/// até a macro estar registrada, então ele delimita a invocação e entrega os
+/// tokens crus. Quem parseia é o matcher, que conhece o padrão — é o que dá
+/// sentido real a "macros definem sua própria sintaxe" (spec de macros §9).
+///
+/// É <c>Expression</c> porque uma invocação pode aparecer nas duas posições; a
+/// validação de contexto acontece na expansão (<c>LAP0506</c>).
+/// </summary>
+public sealed record MacroInvocation(string Name, ImmutableArray<Token> Arguments) : Expression
+{
+    public required SourceSpan NameSpan { get; init; }
 }
 
 // ------------------------------------------------------------ expressions

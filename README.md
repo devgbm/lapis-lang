@@ -42,12 +42,13 @@ lapis hello.ls
 | **M5** — suíte de conformidade e subcomandos do CLI | ✅ concluído |
 | **M6** — `goto`/`label` e mutação com `var` | ✅ concluído |
 | **M7** — PE núcleo (folding, propagação, dead code) | ✅ concluído |
-| M8–M11 — macros, `constraint`, reflection, `@unless`/`@while` | ⏳ próximo |
+| **M8** — macro engine (`match`/`expand`, higiene, `lapis expand`) | ✅ concluído |
+| M9–M11 — `constraint`, reflection, macros do prelude | ⏳ próximo |
 | M12–M14 — PE: especialização, análise, equivalência | ⬜ |
 
-**1302 testes** cobrindo lexer, parser, desugar, type checker, runtime,
+**1373 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
 evaluator, partial evaluator e CLI — entre eles uma **suíte de conformidade** de
-145 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
+157 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
 spec é um arquivo, e o nome do teste que falha já é o arquivo a abrir.
 
 A linguagem já roda programas de verdade: funções de primeira classe com
@@ -163,9 +164,37 @@ reordenado. Sem `--dynamic` um programa fechado tende ao resultado já avaliado,
 porque a 0.2 não tem entrada externa; `--dynamic=nome` declara um nome como
 desconhecido e é o que torna o exercício interessante.
 
-O que falta (M8 em diante): macros, reflection e o resto do partial evaluator —
-especialização de chamadas e eliminação de bounds check. O roteiro completo está
-em [`plans/`](plans/README.md).
+**Macros** (M8) são sintaxe → sintaxe, definidas pela própria linguagem e
+expandidas entre o parser e o desugar:
+
+```c
+macro unless
+    match Expression:condition Block:body
+    expand {
+        goto done if condition;
+        body;
+        label done;
+    };
+
+@unless pular {
+    print("executou");
+}
+```
+
+Uma macro é declarada por `macro`, não por `def`: ela não é first-class citizen
+(Q19) — não existe em runtime, não é argumento, não é retorno, e some do programa
+antes do desugar. A invocação começa com `@` e **não** exige parênteses: o que ela
+consome é determinado pelo `match` da própria macro, e um literal sintático como o
+`in` de `@bind x in 7 { }` pertence àquela macro sem virar palavra reservada.
+
+A expansão é higiênica — o `temp` que a macro introduz não é o `temp` do programa
+— e `lapis expand` imprime a Surface AST depois da expansão, que é a ferramenta
+sem a qual macro vira adivinhação.
+
+O que falta (M9 em diante): `constraint` em tempo de compilação, reflection, as
+macros do prelude, e o resto do partial evaluator — especialização de chamadas e
+eliminação de bounds check. O roteiro completo está em
+[`plans/`](plans/README.md).
 
 ```bash
 $ lapis examples/hello.ls
@@ -176,6 +205,7 @@ $ lapis ast examples/hello.ls         # Surface AST
 $ lapis check examples/hello.ls       # só diagnósticos
 $ lapis tokens examples/hello.ls      # tokens com posição
 
+$ lapis expand examples/macros.ls            # Surface AST depois das macros
 $ lapis pe examples/hello.ls                 # programa residual
 $ lapis desugar --source examples/hello.ls   # Core AST de volta como `.ls`
 $ lapis check --json programa.ls             # diagnósticos para ferramentas

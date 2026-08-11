@@ -318,9 +318,72 @@ O último é o que garante que este plano **não pode quebrar M1–M4**.
 
 ## Critérios de conclusão
 
-- [ ] `NoMacros_IsIdentity` verde — a suíte inteira anterior intacta.
-- [ ] `@unless`, `@square`, `@log` e `@foreach` funcionando ponta a ponta.
-- [ ] Ambiguidade e ausência de match com código e span.
-- [ ] Higiene testada nos dois sentidos (introduzido e capturado).
-- [ ] `lapis expand` operante.
-- [ ] `Lapis.Macros` sem referência a `TypeChecker` ou `Evaluator`.
+- [x] `NoMacros_IsIdentity` verde — a suíte inteira anterior intacta.
+- [x] `@unless`, `@square`, `@log` e a forma de `@foreach` funcionando ponta a ponta.
+- [x] Ambiguidade e ausência de match com código e span.
+- [x] Higiene testada nos dois sentidos (introduzido e capturado).
+- [x] `lapis expand` operante.
+- [x] `Lapis.Macros` sem referência a `TypeChecker` ou `Evaluator`.
+
+---
+
+## O que a implementação mudou no plano
+
+### `Lapis.Ast` passou a enxergar `Lapis.Lexer`
+
+§17.2 define `MacroInvocation` guardando `ImmutableArray<Token>` — e `Token` mora
+em `Lapis.Lexer`. A dependência inversa (`Lexer → Ast`) existia no `.csproj` e
+**nunca foi usada**: o lexer não referencia nada de `Lapis.Ast`. Removida ela, a
+direção certa aparece sozinha.
+
+É uma afirmação arquitetural, não um atalho: a Surface AST é a saída do parser, e
+uma invocação de macro carrega sintaxe **não parseada** por design (§9 da spec de
+macros). Tokens são parte da representação de superfície.
+
+### Higiene precisou de um nome *lexável*
+
+§17.8 diz que `@` não é lexável em identificadores, "então colisão é impossível".
+Isso era verdade antes de `@` virar o sigilo de invocação — e continuou verdade
+para o *lexer*, o que criou um problema novo: `def temp@1 = ...` é impresso pelo
+`CoreSourcePrinter`, e o round-trip exige que o impresso **reparseie**. Sem isso o
+`lapis pe` deixaria de emitir programa executável para qualquer fonte com macro.
+
+O lexer passou a aceitar `@dígitos` como sufixo de identificador, e só aí: `@` no
+início continua sendo a invocação. O custo é que a garantia enfraquece de
+"impossível" para "reservado" — um nome como `temp@1` é escrevível à mão. Não há
+como manter as duas coisas: um nome que a expansão produz e o printer imprime tem
+de ser um nome que o lexer lê.
+
+### Um `def` cujo nome é captura usa o nome capturado
+
+`match Identifier:i ... expand { def i = ...; }` precisa declarar o nome que o
+autor escreveu, não a letra que a macro usou. A higiene se aplica ao que a macro
+**introduz**; um nome que veio de captura é do programa.
+
+### Higiene renomeia o que a macro *liga*, não tudo
+
+A leitura literal de §17.8 ("todo identificador que não vem de captura") renomeia
+`print` também. O que a macro introduz são os `def`, `var` e `label` escritos
+dentro do `expand`; o resto são referências livres, que precisam resolver no
+escopo de quem invocou.
+
+### A invocação é gulosa até o delimitador
+
+Consequência direta de §17.3, e vale registrar porque surpreende: em
+`expand { (@square e * @square e) }` a primeira invocação engole
+`e * @square e`. É o mesmo mecanismo que faz `@square x + 1` capturar `x + 1`
+inteiro (§4.1 da spec) — quem quer o contrário parenteza:
+`((@square e) * (@square e))`.
+
+---
+
+## O que ficou de fora, e por quê
+
+**Repetição em `expand`.** O padrão `Type:t* separado por ,` casa e liga listas
+paralelas — está implementado e testado. Usar essas listas no `expand` exigiria
+uma sintaxe de splice (`campo...`), que a spec §5.2 menciona mas nenhum dos testes
+deste plano exercita, e que precisa de regra de emenda em cada posição onde uma
+lista pode aparecer (statements, argumentos de chamada, elementos de array).
+
+Nenhuma das macros que o plano exige — `@unless`, `@square`, `@log`, `@foreach` —
+usa repetição. Entra junto com a primeira macro que precisar dela.

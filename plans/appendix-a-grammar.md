@@ -14,6 +14,7 @@ statement      = def_statement
                | assign_statement
                | goto_statement
                | label_statement
+               | macro_declaration
                | expr_statement ;
 
 def_statement  = ( "def" | "var" ) IDENT ( ":" type )? "=" expression ";" ;
@@ -299,9 +300,12 @@ block_comment  = "/*" ... "*/" ;              (* não aninha *)
 Da [spec de macros](../spec/lapislang-macros-0.1.md), planos 16–20. **Ainda não
 implementada**; entra aqui para que a gramática tenha um lugar só.
 
+**`macro_declaration`, o padrão e a invocação estão implementados (M8)**; o resto
+desta seção segue proposta.
+
 ```ebnf
 (* declaração nomeada — Q19: macro não é valor, não passa por `def` *)
-macro_decl     = "macro" IDENT macro_rule+ ";" ;
+macro_declaration = "macro" IDENT macro_rule+ ";" ;
 macro_rule     = "match" macro_pattern
                  ( "constraint" block )?
                  "expand" block ;
@@ -359,7 +363,12 @@ dos demais statements.
 
 ```text
 def  var  fn  type  enum  return  true  false  if  else  match  goto
+macro  expand  constraint
 ```
+
+`macro`, `expand` e `constraint` entraram no M8. `@` passou a ser token: inicia
+uma invocação de macro, e — só depois do primeiro caractere de um identificador,
+seguido de dígitos — é o sufixo de higiene que a expansão produz (`temp@1`).
 
 `var` declara um binding reatribuível (Q25); `def` continua definitivo. A
 atribuição é **statement**: `=` nunca aparece em posição de expressão, então
@@ -373,8 +382,7 @@ identificadores seguidos nunca formam expressão. `goto` é reservada de verdade
 ninguém a usa como nome, e reservá-la é o que permite dizer "esperado um rótulo"
 em vez de deixar a linha virar uma expressão malformada.
 
-A proposta de macros acrescenta `macro`, `constraint`, `expand` e `throw`.
-**Nada sai:** `if` e `match` continuam construções do compilador (Q22), e
+A proposta de macros ainda acrescentaria `throw` (plano 18). **Nada sai:** `if` e `match` continuam construções do compilador (Q22), e
 `match` é reaproveitada dentro de `macro`, onde inicia uma regra — sem ambiguidade,
 porque ali só pode ser isso.
 

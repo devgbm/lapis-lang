@@ -13,6 +13,10 @@ public enum PipelineStage
 {
     Tokens,
     Parse,
+
+    /// <summary>Surface AST depois da expansão de macros (plano 17).</summary>
+    Expand,
+
     Desugar,
     TypeCheck,
     Evaluate,
@@ -63,6 +67,15 @@ public static class Pipeline
         var surface = Parser.Parser.Parse(tokens, diagnostics);
 
         if (stopAfter == PipelineStage.Parse || diagnostics.HasErrors)
+        {
+            return Result(diagnostics, tokens, surface);
+        }
+
+        // Macros ficam entre o parser e o desugar, operando sobre a Surface AST.
+        // Um arquivo sem `@` sai idêntico daqui (spec de macros §1).
+        surface = Macros.MacroExpander.Expand(surface, diagnostics);
+
+        if (stopAfter == PipelineStage.Expand || diagnostics.HasErrors)
         {
             return Result(diagnostics, tokens, surface);
         }

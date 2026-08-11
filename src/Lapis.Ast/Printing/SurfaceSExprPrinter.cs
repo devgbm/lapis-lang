@@ -73,6 +73,30 @@ public static class SurfaceSExprPrinter
                 Line(builder, indent, $"(label {label.Label})");
                 break;
 
+            case MacroDeclaration macro:
+                Open(builder, indent, $"macro {macro.Name}");
+
+                foreach (var rule in macro.Rules)
+                {
+                    Open(builder, indent + 1, "rule");
+                    Line(builder, indent + 2, $"(match {PrintPattern(rule.Pattern)})");
+
+                    if (rule.Constraint is not null)
+                    {
+                        Open(builder, indent + 2, "constraint");
+                        PrintExpression(builder, rule.Constraint, indent + 3);
+                        Close(builder, indent + 2);
+                    }
+
+                    Open(builder, indent + 2, "expand");
+                    PrintExpression(builder, rule.Expansion, indent + 3);
+                    Close(builder, indent + 2);
+                    Close(builder, indent + 1);
+                }
+
+                Close(builder, indent);
+                break;
+
             default:
                 Line(builder, indent, $"(<desconhecido {statement.GetType().Name}>)");
                 break;
@@ -105,6 +129,13 @@ public static class SurfaceSExprPrinter
 
             case IdentifierExpression n:
                 Line(builder, indent, $"(name {n.Name})");
+                break;
+
+            case MacroInvocation n:
+                Line(
+                    builder,
+                    indent,
+                    $"(macro-call {n.Name} {string.Join(" ", n.Arguments.Select(t => t.Text))})".TrimEnd());
                 break;
 
             case ErrorExpression:
@@ -323,6 +354,16 @@ public static class SurfaceSExprPrinter
         // expressão (Q17), onde quem imprime é o CoreSourcePrinter, a partir da
         // Core. Aqui ela nunca chega.
         _ => "<?>",
+    };
+
+    /// <summary>O padrão de uma regra, na forma em que foi escrito.</summary>
+    public static string PrintPattern(MacroPattern pattern) => pattern switch
+    {
+        PatternSequence p => string.Join(" ", p.Items.Select(PrintPattern)),
+        PatternCapture p => $"{p.Category}:{p.Name}",
+        PatternLiteral p => p.Text,
+        PatternRepeat p => $"({PrintPattern(p.Item)})* separado por {p.Separator}",
+        _ => "?",
     };
 
     public static string PrintType(TypeSyntax type) => type switch

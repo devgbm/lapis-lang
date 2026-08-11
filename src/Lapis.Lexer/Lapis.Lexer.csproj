@@ -1,7 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="../Lapis.Ast/Lapis.Ast.csproj" />
     <ProjectReference Include="../Lapis.Diagnostics/Lapis.Diagnostics.csproj" />
   </ItemGroup>
 

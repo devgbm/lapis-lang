@@ -242,6 +242,13 @@ Introduzidos pela [spec de macros](../spec/lapislang-macros-0.1.md). Planos 16�
 `constraint` passou a `throw`. O span é sempre o da **invocação**, com nota
 apontando o ponto dentro da macro.
 
+`LAP0501`, `LAP0502`, `LAP0504`–`LAP0506`, `LAP0509`, `LAP0510` e `LAP0511`
+estão **implementados** (M8). `LAP0503`, `LAP0507` e `LAP0508` chegam com
+`constraint` e `throw` (plano 18).
+
+`LAP0511` (macro já declarada) não estava na proposta: apareceu ao implementar o
+registro. Um nome de macro é único no arquivo, como um `def` no mesmo bloco.
+
 ### Controle de fluxo
 
 `LAP0520`–`LAP0522` saíram da proposta: estão implementados (M6) e documentados

@@ -66,7 +66,7 @@ public static class Program
 
         var (command, path) = options.Positional switch
         {
-            ["run" or "check" or "tokens" or "ast" or "desugar" or "pe", var file] => (options.Positional[0], file),
+            ["run" or "check" or "tokens" or "ast" or "expand" or "desugar" or "pe", var file] => (options.Positional[0], file),
             [var file] => ("run", file),
             _ => (null, null),
         };
@@ -104,6 +104,7 @@ public static class Program
             "check" => CheckProgram(source, options, stderr),
             "tokens" => PrintStage(source, PipelineStage.Tokens, options, stdout, stderr),
             "ast" => PrintStage(source, PipelineStage.Parse, options, stdout, stderr),
+            "expand" => PrintStage(source, PipelineStage.Expand, options, stdout, stderr),
             "desugar" => PrintStage(source, PipelineStage.Desugar, options, stdout, stderr),
             "pe" => PartiallyEvaluate(source, options, stdout, stderr),
             _ => ExitCodes.Usage,
@@ -298,6 +299,7 @@ public static class Program
                 break;
 
             case PipelineStage.Parse:
+            case PipelineStage.Expand:
                 stdout.WriteLine(SurfaceSExprPrinter.Print(result.Surface!));
                 break;
 
@@ -367,6 +369,7 @@ public static class Program
         writer.WriteLine("  check <arquivo>.ls     apenas compila e reporta diagnósticos");
         writer.WriteLine("  tokens <arquivo>.ls    imprime os tokens");
         writer.WriteLine("  ast <arquivo>.ls       imprime a Surface AST");
+        writer.WriteLine("  expand <arquivo>.ls    imprime a Surface AST depois das macros");
         writer.WriteLine("  desugar <arquivo>.ls   imprime a Core AST");
         writer.WriteLine("  pe <arquivo>.ls        imprime o programa residual (partial evaluation)");
         writer.WriteLine();

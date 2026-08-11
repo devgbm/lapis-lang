@@ -36,7 +36,7 @@ public sealed class RecoveryTests : ParserTestBase
     [Fact]
     public void BadTokenFromLexer_DoesNotProduceDuplicateError()
     {
-        var (_, diagnostics) = ParseWithDiagnostics("@");
+        var (_, diagnostics) = ParseWithDiagnostics("#");
 
         diagnostics.ShouldHaveSingleItem().Code.ShouldBe(DiagnosticCodes.UnexpectedCharacter);
     }
