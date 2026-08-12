@@ -19,7 +19,18 @@ public sealed record VariableResolution(BindingId Binding) : Resolution;
 /// <summary>Argumentos genéricos e o tipo já instanciado de uma chamada.</summary>
 public sealed record CallResolution(
     ImmutableArray<GenericArgument> TypeArguments,
-    FunctionType Instantiated) : Resolution;
+    FunctionType Instantiated) : Resolution
+{
+    /// <summary>
+    /// Preenchido quando a chamada é por instância: <c>user</c> em
+    /// <c>user.hello(x)</c> (plano 22 §22.2).
+    ///
+    /// O receptor <b>não</b> está em <c>CoreCall.Arguments</c> — reescrever a
+    /// árvore exigiria saber o tipo do receptor, e isso só existe aqui. O
+    /// evaluator lê a resolução e monta a chamada com ele na posição 0.
+    /// </summary>
+    public CallReceiver? Receiver { get; init; }
+}
 
 /// <summary>
 /// Os argumentos com que um <c>Instantiate</c> foi resolvido, e os parâmetros a
@@ -76,6 +87,15 @@ public sealed record SpanRepeatResolution(int? Known) : Resolution;
 /// não ganhou nó nenhum.
 /// </summary>
 public sealed record MemberResolution(string SyntheticName, MemberAccessKind Kind) : Resolution;
+
+/// <summary>
+/// O receptor de uma chamada por instância: <c>user</c> em <c>user.hello(x)</c>.
+///
+/// Guarda o **nó**, não um nome: o receptor é uma expressão qualquer
+/// (<c>proximo().hello()</c>), e o evaluator precisa avaliá-lo — exatamente uma
+/// vez (plano 22 §22.4).
+/// </summary>
+public sealed record CallReceiver(CoreExpr Expression, LapisType Type, SourceSpan Span);
 
 /// <summary>
 /// Espelha <c>MemberKind</c> do checker no lado tipado, para o evaluator e o

@@ -229,7 +229,9 @@ public static class SurfaceSExprPrinter
                 break;
 
             case FunctionExpression n:
-                var parameters = string.Join(" ", n.Parameters.Select(p => $"({p.Name} {PrintType(p.Type)})"));
+                var parameters = string.Join(
+                    " ",
+                    n.Parameters.Select(p => p.Type is null ? $"({p.Name})" : $"({p.Name} {PrintType(p.Type)})"));
                 var returnType = n.ReturnType is null ? "Void" : PrintType(n.ReturnType);
                 Open(builder, indent, $"fn{PrintTypeParameters(n.TypeParameters)} ({parameters}) {returnType}");
                 PrintExpression(builder, n.Body, indent + 1);

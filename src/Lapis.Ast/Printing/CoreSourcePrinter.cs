@@ -417,7 +417,14 @@ public static class CoreSourcePrinter
             }
 
             var parameter = lambda.Parameters[i];
-            builder.Append(parameter.Name).Append(": ").Append(SurfaceSExprPrinter.PrintType(parameter.Type));
+            builder.Append(parameter.Name);
+
+            // `self` não leva anotação — é o que o parser lê de volta como a mesma
+            // coisa, e o que faz o round-trip valer para um membro de instância.
+            if (parameter.Type is { } declared)
+            {
+                builder.Append(": ").Append(SurfaceSExprPrinter.PrintType(declared));
+            }
         }
 
         builder.Append(") ");

@@ -53,6 +53,78 @@ public sealed class MemberEvaluationTests : EvaluatorTestBase
             """).ShouldBe("do tipo\nsolto\n");
 }
 
+public sealed class InstanceMemberEvaluationTests : EvaluatorTestBase
+{
+    private const string User = """
+        def User = type { name: Str; age: Int; };
+
+        def User.saudar = fn(self) Str { return self.name; };
+        def User.maisVelho = fn(self, anos: Int) Int { return self.age + anos; };
+        def User.create = fn(nome: Str) User { return .User { name: nome, age: 30 }; };
+
+        def u = User.create("Gabriel");
+
+        """;
+
+    [Fact]
+    public void Instance_Call() => Output(User + "print(u.saudar());").ShouldBe("Gabriel\n");
+
+    [Fact]
+    public void Instance_Call_WithArguments() =>
+        Output(User + "print(u.maisVelho(5));").ShouldBe("35\n");
+
+    /// <summary>
+    /// O receptor é avaliado **exatamente uma vez** (plano 22 §22.4) — o erro
+    /// clássico de desugaring de método é duplicá-lo.
+    /// </summary>
+    [Fact]
+    public void Receiver_IsEvaluatedOnce() =>
+        Output(User + """
+            def proximo = fn() User {
+                print("avaliou");
+                return .User { name: "x", age: 1 };
+            };
+
+            print(proximo().saudar());
+            """).ShouldBe("avaliou\nx\n");
+
+    /// <summary>O receptor vem antes dos argumentos, como tudo o mais.</summary>
+    [Fact]
+    public void Receiver_IsEvaluatedBeforeTheArguments() =>
+        Output(User + """
+            def trace = fn(n: Int) Int {
+                print(n);
+                return n;
+            };
+
+            def receptor = fn() User {
+                print(0);
+                return .User { name: "x", age: 0 };
+            };
+
+            def r = receptor().maisVelho(trace(1));
+            """).ShouldBe("0\n1\n");
+
+    /// <summary>Um membro de instância pode chamar outro membro do mesmo tipo.</summary>
+    [Fact]
+    public void Instance_CanCallAnotherMember() =>
+        Output("""
+            def User = type { name: Str; };
+
+            def User.nome = fn(self) Str { return self.name; };
+
+            def User.gritar = fn(self) Str { return self.nome(); };
+
+            def u = .User { name: "g" };
+
+            print(u.gritar());
+            """).ShouldBe("g\n");
+
+    /// <summary>`self` como nome comum continua sendo um valor comum.</summary>
+    [Fact]
+    public void Self_IsNotReserved() => Output("def self = 7;\nprint(self);").ShouldBe("7\n");
+}
+
 public sealed class FieldAssignmentEvaluationTests : EvaluatorTestBase
 {
     private const string Types = """

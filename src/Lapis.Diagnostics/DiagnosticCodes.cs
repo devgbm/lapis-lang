@@ -146,6 +146,11 @@ public static class DiagnosticCodes
     /// </summary>
     public const string AssignToMember = "LAP0707";
 
+    // LAP071x — membros de instância (plano 22)
+    public const string MemberRequiresInstance = "LAP0710";
+    public const string MemberIsStatic = "LAP0711";
+    public const string SelfOutsideMember = "LAP0712";
+
     // LAP03xx — Execução
     //
     // LAP0301 (divisão por zero) foi aposentado: a divisão inteira por zero passou

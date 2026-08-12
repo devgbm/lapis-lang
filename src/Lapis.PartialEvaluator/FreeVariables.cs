@@ -1,7 +1,8 @@
-using Lapis.Ast;
 using System.Collections.Immutable;
+using Lapis.Ast;
 using Lapis.Ast.Core;
 using Lapis.Ast.Surface;
+using Lapis.Ast.Typed;
 
 namespace Lapis.PartialEvaluator;
 
@@ -11,19 +12,39 @@ namespace Lapis.PartialEvaluator;
 /// </summary>
 public static class FreeVariables
 {
-    public static ImmutableHashSet<string> Of(CoreExpr expression)
+    /// <param name="types">
+    /// Tabela do checker, quando existe. Serve a um caso só: <c>u.saudar()</c> lê
+    /// o <c>Let</c> ligado a <c>User#saudar</c>, e o nome do dono <b>não está na
+    /// árvore</b> — é o tipo de <c>u</c>. Só a resolução sabe.
+    ///
+    /// Sem ela a conta é sintática, e a compensação está em
+    /// <see cref="Occurs"/>: um nome de membro nunca é dado como livre-de-uso.
+    /// </param>
+    public static ImmutableHashSet<string> Of(CoreExpr expression, TypedProgram? types = null)
     {
         ArgumentNullException.ThrowIfNull(expression);
 
         var free = ImmutableHashSet.CreateBuilder<string>(StringComparer.Ordinal);
-        Collect(expression, free);
+        Collect(expression, free, types);
         return free.ToImmutable();
     }
 
-    /// <summary>O nome aparece livre em <paramref name="expression"/>?</summary>
-    public static bool Occurs(string name, CoreExpr expression) => Of(expression).Contains(name);
+    /// <summary>
+    /// O nome aparece livre em <paramref name="expression"/>?
+    ///
+    /// Sem a tabela do checker, um nome de <b>membro</b> responde sempre
+    /// <c>true</c>: a conta sintática não consegue ligar <c>u.saudar</c> a
+    /// <c>User#saudar</c>, e errar para o lado de manter o binding custa uma linha
+    /// no residual — errar para o outro apaga código vivo.
+    /// </summary>
+    public static bool Occurs(string name, CoreExpr expression, TypedProgram? types = null) =>
+        (types is null && MemberNames.Split(name) is not null)
+        || Of(expression, types).Contains(name);
 
-    private static void Collect(CoreExpr node, ImmutableHashSet<string>.Builder free)
+    private static void Collect(
+        CoreExpr node,
+        ImmutableHashSet<string>.Builder free,
+        TypedProgram? types)
     {
         switch (node)
         {
@@ -36,15 +57,15 @@ public static class FreeVariables
             // valor (Q8, e é o que torna a 0.2 não recursiva).
             case CoreLet n:
                 CollectFromType(n.Annotation, free);
-                Collect(n.Value, free);
-                CollectBinding(n.Name, n.Body, free);
+                Collect(n.Value, free, types);
+                CollectBinding(n.Name, n.Body, free, types);
                 break;
 
             // Uma atribuição usa o nome: eliminá-la porque "ninguém lê" seria
             // apagar o efeito.
             case CoreAssign n:
                 free.Add(n.Name);
-                Collect(n.Value, free);
+                Collect(n.Value, free, types);
                 break;
 
             case CoreLambda n:
@@ -56,7 +77,7 @@ public static class FreeVariables
                 CollectFromType(n.ReturnType, free);
 
                 var body = ImmutableHashSet.CreateBuilder<string>(StringComparer.Ordinal);
-                Collect(n.Body, body);
+                Collect(n.Body, body, types);
 
                 foreach (var parameter in n.Parameters)
                 {
@@ -73,7 +94,7 @@ public static class FreeVariables
                 break;
 
             case CoreMatch n:
-                Collect(n.Scrutinee, free);
+                Collect(n.Scrutinee, free, types);
 
                 foreach (var arm in n.Arms)
                 {
@@ -82,7 +103,7 @@ public static class FreeVariables
                     free.UnionWith(EnumsNamedBy(arm.Pattern));
 
                     var armBody = ImmutableHashSet.CreateBuilder<string>(StringComparer.Ordinal);
-                    Collect(arm.Body, armBody);
+                    Collect(arm.Body, armBody, types);
                     armBody.ExceptWith(BoundBy(arm.Pattern));
                     free.UnionWith(armBody);
                 }
@@ -94,25 +115,31 @@ public static class FreeVariables
             // `Name` é só `hello`. Sem contá-lo, o membro vira código morto e o
             // residual cita um membro que não existe mais.
             //
-            // A conta é sintática e **sobre-aproxima** de propósito: `u.name` sobre
-            // uma instância também soma `u#name`, que não é binding de ninguém. Um
-            // nome livre a mais só faz um `Let` sobreviver sem necessidade; um a
-            // menos apaga código vivo.
+            // A resolução do checker diz o nome exato, e é a única fonte que
+            // funciona para chamada por instância: em `u.saudar()` o dono é o
+            // **tipo** de `u`, que a árvore não carrega.
+            //
+            // Sem a tabela, sobra a leitura sintática — certa para `T.m`, e
+            // compensada em `Occurs` para o resto.
             case CoreField n:
-                if (n.Target is CoreVariable owner)
+                if (types?.ResolutionOf<MemberResolution>(n) is { } member)
+                {
+                    free.Add(member.SyntheticName);
+                }
+                else if (n.Target is CoreVariable owner)
                 {
                     free.Add(MemberNames.Of(owner.Name, n.Name));
                 }
 
-                Collect(n.Target, free);
+                Collect(n.Target, free, types);
                 break;
 
             // O elemento de `.[T; inicial; n]` é uma **anotação**: `T` pode ser um
             // tipo do usuário, e apagá-lo por "ninguém usa" quebraria a construção.
             case CoreSpanRepeat n:
                 CollectFromType(n.Element, free);
-                Collect(n.Initializer, free);
-                Collect(n.Size, free);
+                Collect(n.Initializer, free, types);
+                Collect(n.Size, free, types);
                 break;
 
             // A construção referencia o tipo por **string**, não por
@@ -128,7 +155,7 @@ public static class FreeVariables
 
                 foreach (var field in n.Fields)
                 {
-                    Collect(field.Value, free);
+                    Collect(field.Value, free, types);
                 }
 
                 break;
@@ -139,7 +166,7 @@ public static class FreeVariables
             // que não existe mais. Vale igual para o nome de tipo em
             // `Caixa<Cor>` — é o mesmo raciocínio de `CoreConstruct`.
             case CoreInstantiate n:
-                Collect(n.Target, free);
+                Collect(n.Target, free, types);
 
                 foreach (var argument in n.Arguments)
                 {
@@ -151,17 +178,21 @@ public static class FreeVariables
             default:
                 foreach (var child in Children(node))
                 {
-                    Collect(child, free);
+                    Collect(child, free, types);
                 }
 
                 break;
         }
     }
 
-    private static void CollectBinding(string name, CoreExpr body, ImmutableHashSet<string>.Builder free)
+    private static void CollectBinding(
+        string name,
+        CoreExpr body,
+        ImmutableHashSet<string>.Builder free,
+        TypedProgram? types)
     {
         var inner = ImmutableHashSet.CreateBuilder<string>(StringComparer.Ordinal);
-        Collect(body, inner);
+        Collect(body, inner, types);
         inner.Remove(name);
         free.UnionWith(inner);
     }
@@ -229,7 +260,8 @@ public static class FreeVariables
 
     private static void CollectFromArgument(
         CoreGenericArgument argument,
-        ImmutableHashSet<string>.Builder free)
+        ImmutableHashSet<string>.Builder free,
+        TypedProgram? types = null)
     {
         switch (argument)
         {
@@ -242,7 +274,7 @@ public static class FreeVariables
                 break;
 
             case CoreValueArgument a:
-                Collect(a.Value, free);
+                Collect(a.Value, free, types);
                 break;
         }
     }

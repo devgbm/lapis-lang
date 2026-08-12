@@ -836,7 +836,31 @@ public sealed class Evaluator
             return Completion.Normal(EvaluateReflect(reflect, node));
         }
 
-        // O callee é avaliado antes dos argumentos; argumentos da esquerda para a direita.
+        // `user.hello(x)` — o receptor é avaliado **uma vez**, e entra como
+        // argumento 0 (plano 22 §22.2, §22.4).
+        //
+        // É o erro clássico de desugaring de método: reescrever para
+        // `User#hello(user)` duplicaria a expressão do receptor, e
+        // `proximo().hello()` chamaria `proximo()` duas vezes. Aqui ela é avaliada
+        // no lugar em que está escrita, e o valor é passado adiante.
+        var receiver = _program.ResolutionOf<CallResolution>(node)?.Receiver;
+        Value? self = null;
+
+        if (receiver is not null)
+        {
+            var evaluatedReceiver = Evaluate(receiver.Expression, environment);
+
+            if (!evaluatedReceiver.IsNormal)
+            {
+                return evaluatedReceiver;
+            }
+
+            self = evaluatedReceiver.Value;
+        }
+
+        // O callee é avaliado antes dos argumentos; argumentos da esquerda para a
+        // direita. Para um membro, avaliar o callee é ler um nome — o alvo do
+        // `CoreField` não é tocado, que é o que impede a dupla avaliação.
         var callee = Evaluate(node.Callee, environment);
 
         if (!callee.IsNormal)
@@ -844,7 +868,12 @@ public sealed class Evaluator
             return callee;
         }
 
-        var arguments = ImmutableArray.CreateBuilder<Value>(node.Arguments.Length);
+        var arguments = ImmutableArray.CreateBuilder<Value>(node.Arguments.Length + (self is null ? 0 : 1));
+
+        if (self is not null)
+        {
+            arguments.Add(self);
+        }
 
         foreach (var argument in node.Arguments)
         {

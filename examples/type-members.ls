@@ -15,6 +15,8 @@
 //   30
 //   User { name: "Gabriel", age: 30 }
 //   3
+//   Gabriel
+//   35
 //   antes
 //   depois
 //   Rua B
@@ -28,8 +30,7 @@ def User = type {
 // outra constante (Q18) — é um `def` ligado a literal, só que com dono.
 def User.defaultAge = 30;
 
-// E uma função. Sem `self` ainda: toda função ligada por `def T.m` é estática
-// neste milestone; métodos de instância chegam no M14.
+// E uma função **estática**: sem `self`, o membro é do tipo.
 def User.create = fn(nome: Str) User {
     return .User { name: nome, age: User.defaultAge };
 };
@@ -42,6 +43,38 @@ print(User.create("Gabriel"));
 def create = 3;
 
 print(create);
+
+// -------------------------------------------------- membro de instância
+
+// Um primeiro parâmetro chamado `self` e **sem anotação** recebe o tipo dono. A
+// ausência de anotação é o gatilho, e ela é a única exceção à exigência de anotar
+// parâmetro — fora daqui, `fn(self)` continua sendo erro, porque não haveria de
+// onde tirar o tipo.
+//
+// `self` não é palavra reservada: o `def create = 3;` acima poderia se chamar
+// `self` sem problema nenhum.
+def User.saudar = fn(self) Str {
+    return self.name;
+};
+
+def User.maisVelho = fn(self, anos: Int) Int {
+    return self.age + anos;
+};
+
+def gabriel = User.create("Gabriel");
+
+// Na chamada o receptor entra como argumento 0. Não há reescrita da árvore: o
+// checker registra o receptor na resolução, e o evaluator monta a chamada — o que
+// é o que garante o receptor avaliado **uma vez**. Reescrever para
+// `User#saudar(gabriel)` duplicaria a expressão, e `proximo().saudar()` chamaria
+// `proximo()` duas vezes.
+print(gabriel.saudar());
+print(gabriel.maisVelho(5));
+
+// `User.saudar()` seria LAP0710 — exige uma instância. `gabriel.create("x")`
+// seria LAP0711 — é estático. Sem essa separação, `User.saudar` ficaria ambíguo
+// entre "o membro" e "a função não aplicada", e `gabriel.saudar()` e
+// `User.saudar(gabriel)` seriam dois caminhos para a mesma coisa.
 
 // ------------------------------------------------- atribuição a campo
 

@@ -242,7 +242,7 @@ public sealed class PartialEvaluator
             && !node.IsMutable
             && !forcedDynamic
             && Effects.IsPure(residualValue)
-            && !FreeVariables.Occurs(node.Name, residualBody))
+            && !FreeVariables.Occurs(node.Name, residualBody, _types))
         {
             _bindingsEliminated++;
             return body;

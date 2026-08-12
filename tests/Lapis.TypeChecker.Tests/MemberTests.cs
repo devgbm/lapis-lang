@@ -97,6 +97,115 @@ public sealed class MemberDeclarationTests : TypeCheckerTestBase
         TypeOfDef("def Option.vazio = 0;\ndef n = Option.vazio;", "n").ShouldBe(PrimitiveType.Int);
 }
 
+/// <summary>
+/// <c>fn(self, ...)</c> e <c>receptor.m(args)</c> — plano 22.
+///
+/// A separação estático × instância existe para que <c>User.hello</c> e
+/// <c>user.hello()</c> não sejam dois caminhos para a mesma coisa.
+/// </summary>
+public sealed class InstanceMemberTests : TypeCheckerTestBase
+{
+    private const string User = """
+        def User = type { name: Str; age: Int; };
+
+        def User.saudar = fn(self) Str { return self.name; };
+        def User.maisVelho = fn(self, anos: Int) Int { return self.age + anos; };
+        def User.create = fn(nome: Str) User { return .User { name: nome, age: 0 }; };
+
+        def u = User.create("g");
+
+        """;
+
+    [Fact]
+    public void Self_GetsTheOwnerType() =>
+        TypeOfDef(User + "def s = u.saudar();", "s").ShouldBe(PrimitiveType.Str);
+
+    [Fact]
+    public void Instance_Call_WithArguments() =>
+        TypeOfDef(User + "def n = u.maisVelho(5);", "n").ShouldBe(PrimitiveType.Int);
+
+    /// <summary>O receptor entra como argumento 0, então o tipo dele é checado.</summary>
+    [Fact]
+    public void Instance_Call_ChecksTheArgument() =>
+        ShouldFailWith(User + """def n = u.maisVelho("x");""", DiagnosticCodes.ArgumentTypeMismatch);
+
+    /// <summary>E a mensagem de aridade **desconta** o receptor.</summary>
+    [Fact]
+    public void Instance_ArityMessageDiscountsTheReceiver() =>
+        ShouldFailWith(User + "def n = u.maisVelho();", DiagnosticCodes.ArgumentCountMismatch)
+            .Message.ShouldBe("esperados 1 argumentos, fornecidos 0");
+
+    [Fact]
+    public void Instance_OnType_ReportsLap0710() =>
+        ShouldFailWith(User + "def s = User.saudar();", DiagnosticCodes.MemberRequiresInstance);
+
+    [Fact]
+    public void Static_OnInstance_ReportsLap0711() =>
+        ShouldFailWith(User + """def x = u.create("y");""", DiagnosticCodes.MemberIsStatic);
+
+    /// <summary>
+    /// A anotação desliga o gatilho: um <c>self</c> anotado é parâmetro comum, e o
+    /// membro volta a ser estático.
+    /// </summary>
+    [Fact]
+    public void Self_Annotated_IsAPlainParameter() =>
+        ShouldPass("""
+            def User = type { name: Str; };
+            def User.of = fn(self: Str) User { return .User { name: self }; };
+            def u = User.of("g");
+            """);
+
+    [Fact]
+    public void Self_NotFirst_ReportsLap0712() =>
+        ShouldFailWith(
+            "def User = type { n: Int; };\ndef User.m = fn(x: Int, self) Int { return x; };",
+            DiagnosticCodes.SelfOutsideMember);
+
+    [Fact]
+    public void Self_OutsideMember_ReportsLap0712() =>
+        ShouldFailWith("def f = fn(self) Int { return 1; };", DiagnosticCodes.SelfOutsideMember);
+
+    /// <summary>Uma `fn` aninhada no corpo de um membro não é membro.</summary>
+    [Fact]
+    public void Self_InNestedFunction_ReportsLap0712() =>
+        ShouldFailWith(
+            """
+            def User = type { n: Int; };
+            def User.m = fn(self) Int {
+                def interna = fn(self) Int { return 1; };
+                return 1;
+            };
+            """,
+            DiagnosticCodes.SelfOutsideMember);
+
+    /// <summary><c>self</c> não é palavra reservada.</summary>
+    [Fact]
+    public void Self_IsNotReserved() => ShouldPass("def self = 1;\ndef x = self + 1;");
+
+    [Fact]
+    public void Self_AsPlainParameterName_IsFine() =>
+        ShouldPass("def f = fn(self: Int) Int { return self; };");
+
+    /// <summary>O receptor é uma expressão qualquer, não só um nome.</summary>
+    [Fact]
+    public void Receiver_IsAnyExpression() =>
+        ShouldPass(User + "def s = User.create(\"x\").saudar();");
+
+    /// <summary>
+    /// Dono genérico exige dizer quais argumentos `self` carrega — o que as
+    /// extensions genéricas resolvem (plano 23).
+    /// </summary>
+    [Fact]
+    public void Self_OnGenericOwner_ReportsLap0295() =>
+        ShouldFailWith(
+            "def Caixa = type<T> { v: T; };\ndef Caixa.ler = fn(self) Int { return 1; };",
+            DiagnosticCodes.GenericTypeNeedsArguments);
+
+    [Fact]
+    public void UnknownMemberOnInstance_ReportsLap0250() =>
+        ShouldFailWith(User + "def s = u.naoExiste();", DiagnosticCodes.UnknownField);
+}
+
 public sealed class FieldAssignmentTests : TypeCheckerTestBase
 {
     private const string Types = """

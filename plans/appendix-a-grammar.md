@@ -153,7 +153,8 @@ struct.
 ```ebnf
 fn_expr        = "fn" generic_params? "(" param_list? ")" type? block ;
 param_list     = param ( "," param )* ","? ;
-param          = IDENT ":" type ;
+param          = IDENT ":" type
+               | "self" ;                    (* só no 1º de um `def T.m` — plano 22 *)
 
 type_expr      = "type" generic_params? "{" field_decl* "}" ;
 field_decl     = IDENT ":" type ";" ;
@@ -163,6 +164,16 @@ variant        = IDENT ( "(" type ( "," type )* ")" )? ;
 ```
 
 O tipo de retorno de `fn` é opcional; ausente ⇒ `Void` (spec §6).
+
+**`self` sem anotação** é a única exceção à exigência de anotar parâmetro (spec
+§26), e o gatilho é a **ausência de anotação**, não o nome: `fn(self: Str)` é um
+parâmetro comum, e o membro volta a ser estático. O parser aceita a forma em
+qualquer posição; quem decide se ela é legítima é o checker (`LAP0712`), porque só
+ele sabe se a função é o valor de um `def T.m`.
+
+**`self` não é palavra reservada.** `def self = 1;` continua válido, e um
+parâmetro chamado `self` numa função comum é um parâmetro chamado `self` — mesma
+decisão de `label` ser contextual.
 
 ---
 

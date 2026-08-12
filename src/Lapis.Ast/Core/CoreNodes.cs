@@ -112,7 +112,11 @@ public sealed class CoreAssign(
     public ImmutableArray<SourceSpan> PathSpans { get; init; } = [];
 }
 
-public sealed record CoreParameter(string Name, TypeSyntax Type, SourceSpan Span);
+/// <summary>
+/// Parâmetro de uma função. <see cref="Type"/> é <c>null</c> só para <c>self</c>
+/// (plano 22 §22.1) — o tipo dele vem do dono do membro, e não da sintaxe.
+/// </summary>
+public sealed record CoreParameter(string Name, TypeSyntax? Type, SourceSpan Span);
 
 /// <summary>Parâmetro genérico declarado: <c>T</c> ou <c>N: Int</c> (Q1).</summary>
 public sealed record CoreTypeParameter(string Name, TypeSyntax? ConstType, SourceSpan Span)

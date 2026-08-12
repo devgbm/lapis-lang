@@ -317,7 +317,16 @@ public sealed record ErrorExpression : Expression;
 
 // ----------------------------------------------------------------- partes
 
-public sealed record ParameterSyntax(string Name, TypeSyntax Type) : SurfaceNode;
+/// <summary>
+/// <c>x: Int</c> — ou <c>self</c>, sem anotação.
+///
+/// <see cref="Type"/> é anulável por causa de <c>self</c> e de mais nada: é a
+/// única exceção à exigência de anotar parâmetro (spec §26), e o tipo dele vem do
+/// dono do membro (plano 22 §22.1). Fora de um <c>def T.m</c>, um parâmetro sem
+/// anotação continua sendo erro — só que agora é <c>LAP0712</c>, dito pelo
+/// checker, que é quem sabe onde a função está.
+/// </summary>
+public sealed record ParameterSyntax(string Name, TypeSyntax? Type) : SurfaceNode;
 
 public sealed record VariantSyntax(string Name, ImmutableArray<TypeSyntax> Payload) : SurfaceNode;
 

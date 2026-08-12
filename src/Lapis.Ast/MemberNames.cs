@@ -23,6 +23,19 @@ public static class MemberNames
 {
     public const char Separator = '#';
 
+    /// <summary>
+    /// O parâmetro que dispara a regra do membro de instância (plano 22 §22.1).
+    ///
+    /// <b>Não é palavra reservada</b>: <c>def self = 1;</c> continua válido, e um
+    /// parâmetro chamado <c>self</c> numa função comum é um parâmetro chamado
+    /// <c>self</c>. Reservá-la quebraria programa válido sem comprar nada — mesma
+    /// decisão de <c>label</c> ser contextual.
+    ///
+    /// O gatilho é a <b>ausência de anotação</b> na primeira posição de um
+    /// <c>def T.m</c>; o nome sozinho não basta.
+    /// </summary>
+    public const string Self = "self";
+
     public static string Of(string owner, string member) => $"{owner}{Separator}{member}";
 
     /// <summary>

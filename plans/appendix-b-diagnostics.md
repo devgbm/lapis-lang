@@ -371,13 +371,23 @@ que qualquer nome usado antes da declaração.
 qualificado é atribuível", leitura que a decisão do autor corrigiu antes de virar
 código. O número não é reciclado.
 
-### Instância (plano 22 — proposta)
+### Instância (plano 22 — implementado, M14)
 
 | Código | Severidade | Mensagem |
 |---|---|---|
-| `LAP0710` | error | o membro `'{0}'` de `{1}` exige uma instância |
-| `LAP0711` | error | o membro `'{0}'` de `{1}` é estático |
-| `LAP0712` | error | `self` sem anotação só é válido no primeiro parâmetro de um membro |
+| `LAP0710` | error | o membro `'{0}'` de {1} exige uma instância |
+| `LAP0711` | error | o membro `'{0}'` de {1} é estático |
+| `LAP0712` | error | o parâmetro `'{0}'` requer anotação de tipo |
+
+`LAP0710` e `LAP0711` existem para que `User.hello` e `user.hello()` não sejam
+dois caminhos para a mesma coisa. Sem eles, `User.hello` ficaria ambíguo entre "o
+membro" e "a função não aplicada", e a segunda leitura tornaria
+`User.hello(user)` equivalente à chamada por instância.
+
+`LAP0712` reusa a **mensagem** de `LAP0104` — "requer anotação de tipo" — porque
+é o mesmo problema visto de outro lugar: o parâmetro não tem tipo e não há de onde
+tirá-lo. O código é outro porque quem reporta é o checker: só ele sabe se a função
+é o valor de um `def T.m`, e o parser não pode decidir.
 
 ### Extensions genéricas (plano 23)
 

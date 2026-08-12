@@ -1993,11 +1993,19 @@ public sealed class Parser
                 Report(DiagnosticCodes.ExpectedIdentifier, Current.Span, "esperado o nome do parâmetro");
             }
 
-            TypeSyntax type;
+            TypeSyntax? type;
 
             if (_tokens.Match(TokenKind.Colon))
             {
                 type = ParseType();
+            }
+            else if (string.Equals(name, MemberNames.Self, StringComparison.Ordinal))
+            {
+                // `self` sem anotação é a única exceção à spec §26, e é o gatilho
+                // do membro de instância (plano 22 §22.1). Se a posição não for
+                // legítima, quem reclama é o checker (`LAP0712`) — o parser não
+                // sabe se esta função é o valor de um `def T.m`.
+                type = null;
             }
             else
             {

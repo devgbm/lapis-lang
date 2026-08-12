@@ -49,12 +49,13 @@ lapis hello.ls
 | **M11** — `@unless` e `@while` no prelude | ✅ concluído |
 | **M12** — span com o tamanho no tipo | ✅ concluído |
 | **M13** — membros de tipo e atribuição a campo | ✅ concluído |
-| M14–M15 — métodos de instância, extension methods | ⏳ próximo |
+| **M14** — métodos de instância e `self` | ✅ concluído |
+| M15 — extension methods genéricos | ⏳ próximo |
 | M16–M18 — PE: especialização, análise, equivalência | ⬜ |
 
-**1638 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
+**1665 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
 evaluator, partial evaluator e CLI — entre eles uma **suíte de conformidade** de
-193 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
+198 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
 spec é um arquivo, e o nome do teste que falha já é o arquivo a abrir.
 
 A linguagem já roda programas de verdade: funções de primeira classe com
@@ -299,10 +300,10 @@ Só o que um `goto` **explícito** pode ter pulado continua invisível no destin
 que é a única forma de o contrário ser mentira. `examples/control.ls` mostra os
 três casos.
 
-O que falta: **fechar a linguagem** primeiro (M14–M15) — métodos de instância e
-extension methods —, porque o partial evaluator precisa de um caso para cada
-construção, e escrevê-lo contra uma superfície que ainda cresce significa
-reabri-lo a cada milestone. O **span** já entrou (M12): o tamanho no tipo tirou do partial
+O que falta: **fechar a linguagem** primeiro (M15) — extension methods
+genéricos —, porque o partial evaluator precisa de um caso para cada construção,
+e escrevê-lo contra uma superfície que ainda cresce significa reabri-lo a cada
+milestone. O **span** já entrou (M12): o tamanho no tipo tirou do partial
 evaluator o caso trivial de eliminação de bounds check e deixou com ele o
 interessante — provar `i < n` para um `i` derivado de laço. Depois o resto do PE (M16–M18):
 especialização de chamadas e eliminação de bounds check. O roteiro completo está em
