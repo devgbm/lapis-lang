@@ -174,6 +174,16 @@ public static class CoreSExprPrinter
                 Close(builder, indent);
                 break;
 
+            case CoreIs n:
+                var owner = n.OwnerName is null ? string.Empty : n.OwnerName + ".";
+                var binding = n.BindingName is null ? string.Empty : $" ({n.BindingName})";
+                Open(builder, indent, $"{tag}is {owner}{n.VariantName}{binding}");
+                PrintExpression(builder, n.Scrutinee, indent + 1, ids);
+                PrintExpression(builder, n.Then, indent + 1, ids);
+                PrintExpression(builder, n.Else, indent + 1, ids);
+                Close(builder, indent);
+                break;
+
             case CoreTypeDef n:
                 Open(builder, indent, $"{tag}type{PrintTypeParameters(n.TypeParameters)}");
 

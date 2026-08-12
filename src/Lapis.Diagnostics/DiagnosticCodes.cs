@@ -174,10 +174,12 @@ public static class DiagnosticCodes
     // declarando para quais instâncias dele o membro vale.
     public const string MemberOwnerArity = "LAP0722";
 
-    // LAP073x — `is` (plano 25, M16, fecha Q23). `is` desugara para `match`
-    // (zero nós novos na Core), e por isso estes diagnósticos saem do desugar,
-    // não do checker — o mesmo lugar de LAP0202 (redefinição no mesmo bloco),
-    // outra checagem puramente sintática.
+    // LAP073x — `is` (plano 25, M16, fecha Q23).
+    //
+    // A divisão entre eles segue quem sabe responder: LAP0730 é sobre a
+    // **posição** da ligação, que é sintaxe, e sai do desugar; os outros três
+    // dependem do **tipo** do escrutinado — qual enum declara a variante e
+    // quantos valores ela carrega — e saem do checker.
     //
     // LAP0731 fica reservado, não emitido: cobriria "a ligação não atravessa um
     // `goto`" (plano 25 §25.4 original), situação que deixou de existir quando

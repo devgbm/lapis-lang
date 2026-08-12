@@ -110,6 +110,30 @@ public static class FreeVariables
 
                 break;
 
+            case CoreIs n:
+                Collect(n.Scrutinee, free, types);
+
+                // O dono escrito (`e is Option.Some`) cita o enum pelo nome, pela
+                // mesma razão de um padrão de `match`: sem contá-lo, a definição
+                // vira código morto e o residual quebra. Sem dono escrito não há
+                // citação nenhuma — quem resolveu a variante foi o tipo.
+                if (n.OwnerName is not null)
+                {
+                    free.Add(n.OwnerName);
+                }
+
+                var thenBody = ImmutableHashSet.CreateBuilder<string>(StringComparer.Ordinal);
+                Collect(n.Then, thenBody, types);
+
+                if (n.BindingName is not null)
+                {
+                    thenBody.Remove(n.BindingName);
+                }
+
+                free.UnionWith(thenBody);
+                Collect(n.Else, free, types);
+                break;
+
             // `User.hello` lê o `Let` ligado a `User#hello`, e o nome sintético não
             // aparece em lugar nenhum da árvore: o uso é um `CoreField`, cujo
             // `Name` é só `hello`. Sem contá-lo, o membro vira código morto e o
@@ -370,6 +394,12 @@ public static class FreeVariables
 
             case CoreBreak { Value: { } value }:
                 yield return value;
+                break;
+
+            case CoreIs n:
+                yield return n.Scrutinee;
+                yield return n.Then;
+                yield return n.Else;
                 break;
         }
     }

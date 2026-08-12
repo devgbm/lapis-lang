@@ -14,7 +14,7 @@ public abstract class EvaluatorTestBase
     {
         var diagnostics = new DiagnosticBag();
         var file = Parser.Parser.Parse(SourceText.From(source), diagnostics);
-        var core = Desugar.Desugarer.Desugar(file, diagnostics, Cli.Pipeline.KnownVariantsOf(PreludeFixture.Scope));
+        var core = Desugar.Desugarer.Desugar(file, diagnostics);
         var typed = TypeChecker.TypeChecker.Check(core, PreludeFixture.Scope, diagnostics);
 
         diagnostics.HasErrors.ShouldBeFalse(

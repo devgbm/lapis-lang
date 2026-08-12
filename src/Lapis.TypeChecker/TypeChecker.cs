@@ -180,6 +180,7 @@ public sealed class TypeChecker
             CoreField n => CheckField(n, scope),
             CoreEnumDef n => CheckEnumDef(n, scope),
             CoreMatch n => CheckMatch(n, scope),
+            CoreIs n => CheckIs(n, scope),
             CoreTypeDef n => CheckTypeDef(n, scope),
             CoreConstruct n => CheckConstruct(n, scope),
             CoreLoop n => CheckLoop(n, scope),
@@ -2420,6 +2421,169 @@ public sealed class TypeChecker
         }
 
         return coverage.Variants.Add(index);
+    }
+
+    /// <summary>
+    /// <c>e is Variante</c> / <c>e is Variante(x)</c> (plano 25, fecha Q23).
+    ///
+    /// Aqui é onde a variante é <b>resolvida</b>: o desugar só carregou o que
+    /// estava escrito, e quem sabe a qual enum ela pertence é o tipo do
+    /// escrutinado (§25.5). Um dono escrito (<c>e is Option.Some</c>) não
+    /// resolve nada — só é conferido contra o tipo, e é por isso que a forma
+    /// sem qualificação não precisa de regra própria nem tem como ser ambígua.
+    ///
+    /// O tipo do nó é o join dos ramos, como em <see cref="CheckIf"/>: no teste
+    /// puro os dois são literais e o join é <c>Bool</c>.
+    /// </summary>
+    private LapisType CheckIs(CoreIs node, Scope scope)
+    {
+        var scrutinee = CheckExpression(node.Scrutinee, scope);
+        var thenScope = scope.Child();
+
+        if (ResolveIsVariant(node, scrutinee) is { } resolved)
+        {
+            DeclareIsBinding(node, resolved.Definition, resolved.Variant, resolved.Arguments, thenScope);
+        }
+        else if (node.BindingName is not null)
+        {
+            // Sem variante resolvida não há tipo para a carga. Declarar o nome
+            // como ErrorType evita um LAP0201 em cascata por cima do erro real.
+            thenScope.Declare(new BindingInfo(
+                NextBindingId(),
+                node.BindingName,
+                ErrorType.Instance,
+                node.BindingSpan ?? node.Span,
+                BindingKind.Value)
+            {
+                FunctionDepth = _functions.Count,
+            });
+        }
+
+        var thenType = CheckExpression(node.Then, thenScope);
+        var elseType = CheckExpression(node.Else, scope.Child());
+
+        if (scrutinee is NeverType)
+        {
+            return NeverType.Instance;
+        }
+
+        var joined = TypeRelations.Join(thenType, elseType);
+
+        if (joined is null)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.IncompatibleBranches,
+                node.Span,
+                $"ramos de 'is' têm tipos incompatíveis: {thenType.ToDisplayString()} "
+                + $"e {elseType.ToDisplayString()}");
+
+            return ErrorType.Instance;
+        }
+
+        return joined;
+    }
+
+    /// <summary>
+    /// A variante que um <c>is</c> nomeia, resolvida pelo tipo do escrutinado.
+    /// Devolve <c>null</c> quando não há como decidir; o <c>LAP0732</c> já saiu.
+    /// </summary>
+    private (TypeDefinition Definition, VariantInfo Variant, ImmutableArray<GenericArgument> Arguments)?
+        ResolveIsVariant(CoreIs node, LapisType scrutinee)
+    {
+        if (scrutinee is ErrorType or NeverType)
+        {
+            return null;
+        }
+
+        if (scrutinee is not NamedType { Definition.Kind: TypeDefinitionKind.Enum } named)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.UnknownIsVariant,
+                node.VariantSpan,
+                $"'{node.VariantName}' não é variante de {scrutinee.ToDisplayString()}");
+
+            return null;
+        }
+
+        var definition = named.Definition;
+
+        // O dono escrito é conferido, não usado para resolver: quem manda é o
+        // tipo. `r is Option.Ok` sobre um `Result` é erro aqui, e não silêncio.
+        if (node.OwnerName is not null
+            && !string.Equals(node.OwnerName, definition.Name, StringComparison.Ordinal))
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.UnknownIsVariant,
+                node.VariantSpan,
+                $"'{node.OwnerName}.{node.VariantName}' não se aplica a {scrutinee.ToDisplayString()}");
+
+            return null;
+        }
+
+        var index = definition.IndexOfVariant(node.VariantName);
+
+        if (index < 0)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.UnknownIsVariant,
+                node.VariantSpan,
+                $"{definition.Name} não possui a variante '{node.VariantName}'");
+
+            return null;
+        }
+
+        return (definition, definition.Variants[index], named.Arguments);
+    }
+
+    /// <summary>
+    /// Declara a carga no escopo do ramo verdadeiro — o único lugar em que ela
+    /// existe (§25.3). <c>is</c> liga <b>um</b> valor: variante nulária é
+    /// <c>LAP0733</c> e variante de duas ou mais cargas é <c>LAP0734</c>, que
+    /// manda escrever o <c>match</c> — a fronteira deliberada entre as duas
+    /// construções (§25.5).
+    /// </summary>
+    private void DeclareIsBinding(
+        CoreIs node,
+        TypeDefinition definition,
+        VariantInfo variant,
+        ImmutableArray<GenericArgument> arguments,
+        Scope thenScope)
+    {
+        if (node.BindingName is null)
+        {
+            return;
+        }
+
+        if (variant.Payload.Length != 1)
+        {
+            _diagnostics.ReportError(
+                variant.Payload.IsEmpty
+                    ? DiagnosticCodes.IsVariantHasNoPayload
+                    : DiagnosticCodes.IsVariantHasMultiplePayloads,
+                node.BindingSpan ?? node.Span,
+                variant.Payload.IsEmpty
+                    ? $"a variante '{variant.Name}' não carrega valor"
+                    : $"a variante '{variant.Name}' carrega {variant.Payload.Length} valores; "
+                      + "escreva um padrão de 'match'");
+        }
+
+        // Os tipos da carga vêm da declaração e trazem os parâmetros do enum;
+        // substituir pelos argumentos da instância é o que faz `v` ser `Int` em
+        // `o is Some(v)` com `o: Option<Int>` — mesma conta de CheckVariantPattern.
+        var payload = variant.Payload.Length == 1
+            ? TypeSubstitution.Apply(
+                variant.Payload[0], BuildSubstitution(definition.TypeParameters, arguments))
+            : ErrorType.Instance;
+
+        thenScope.Declare(new BindingInfo(
+            NextBindingId(),
+            node.BindingName,
+            payload,
+            node.BindingSpan ?? node.Span,
+            BindingKind.Value)
+        {
+            FunctionDepth = _functions.Count,
+        });
     }
 
     /// <summary>O que os braços já cobriram, para exaustividade e alcançabilidade.</summary>

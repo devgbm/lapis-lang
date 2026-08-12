@@ -74,7 +74,7 @@ public sealed class ConstraintRunner : IConstraintRunner
         var before = _diagnostics.Count;
         var file = AsSourceFile(constraint, bindings);
 
-        var core = Desugar.Desugarer.Desugar(file, _diagnostics, Pipeline.KnownVariantsOf(_prelude));
+        var core = Desugar.Desugarer.Desugar(file, _diagnostics);
 
         if (_diagnostics.Count != before)
         {

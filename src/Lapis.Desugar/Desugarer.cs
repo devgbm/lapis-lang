@@ -21,131 +21,18 @@ public sealed class Desugarer
     private readonly FreshNameGenerator _names = new();
     private readonly DiagnosticBag _diagnostics;
 
-    // Plano 25 §25.5: uma variante sem dono escrito (`e is Some`) precisa que
-    // alguém diga a qual enum ela pertence. Índice por nome de variante, com
-    // todo enum que a declara — o prelúdio (passado de fora, já resolvido) e o
-    // próprio arquivo (recolhido abaixo, por uma varredura tão sintática quanto
-    // ReportDuplicateDefinitions). Mais de uma entrada para o mesmo nome é
-    // ambiguidade genuína, não erro de implementação — ver ResolveIsVariant.
-    private readonly Dictionary<string, List<(string EnumName, int Arity)>> _variantIndex =
-        new(StringComparer.Ordinal);
-
     private Desugarer(DiagnosticBag diagnostics) => _diagnostics = diagnostics;
 
-    /// <summary>Uma variante conhecida, para resolver o dono implícito de um <c>is</c> (plano 25 §25.5).</summary>
-    public readonly record struct KnownVariant(string EnumName, string VariantName, int Arity);
-
-    public static CoreProgram Desugar(
-        SourceFile file, DiagnosticBag diagnostics, IEnumerable<KnownVariant>? knownVariants = null)
+    public static CoreProgram Desugar(SourceFile file, DiagnosticBag diagnostics)
     {
         ArgumentNullException.ThrowIfNull(file);
         ArgumentNullException.ThrowIfNull(diagnostics);
 
         var desugarer = new Desugarer(diagnostics);
-
-        foreach (var known in knownVariants ?? [])
-        {
-            desugarer.AddKnownVariant(known.EnumName, known.VariantName, known.Arity);
-        }
-
-        desugarer.CollectFileVariants(file.Statements);
         desugarer.ReportDuplicateDefinitions(file.Statements);
         var body = desugarer.DesugarStatements(file.Statements, 0, tail: null, file.Span);
 
         return desugarer._factory.Program(body);
-    }
-
-    private void AddKnownVariant(string enumName, string variantName, int arity)
-    {
-        if (!_variantIndex.TryGetValue(variantName, out var candidates))
-        {
-            candidates = [];
-            _variantIndex[variantName] = candidates;
-        }
-
-        // O mesmo (enum, variante) reaparecendo — o arquivo redeclarando algo que
-        // o prelúdio já dá, por exemplo — não é uma segunda dona.
-        if (!candidates.Any(c => c.EnumName == enumName))
-        {
-            candidates.Add((enumName, arity));
-        }
-    }
-
-    /// <summary>
-    /// Varre o arquivo procurando <c>def X = enum { ... }</c>, em qualquer bloco
-    /// alcançável — não só o topo. Só isso: nenhuma outra informação sai daqui,
-    /// e uma variante que esta varredura não encontra não vira suposição, vira
-    /// <c>LAP0732</c> (§25.5) — o mesmo destino de uma que realmente não existe.
-    /// </summary>
-    private void CollectFileVariants(ImmutableArray<Statement> statements)
-    {
-        foreach (var statement in statements)
-        {
-            switch (statement)
-            {
-                case DefStatement { Owner: null, Value: EnumExpression enumExpression } def:
-                    foreach (var variant in enumExpression.Variants)
-                    {
-                        AddKnownVariant(def.Name, variant.Name, variant.Payload.Length);
-                    }
-
-                    break;
-
-                case DefStatement def:
-                    CollectFileVariants(def.Value);
-                    break;
-
-                case ExpressionStatement s:
-                    CollectFileVariants(s.Expression);
-                    break;
-
-                case AssignStatement s:
-                    CollectFileVariants(s.Value);
-                    break;
-            }
-        }
-    }
-
-    private void CollectFileVariants(Expression expression)
-    {
-        switch (expression)
-        {
-            case BlockExpression block:
-                CollectFileVariants(block.Statements);
-
-                if (block.Tail is not null)
-                {
-                    CollectFileVariants(block.Tail);
-                }
-
-                break;
-
-            case IfExpression n:
-                CollectFileVariants(n.Then);
-
-                if (n.Else is not null)
-                {
-                    CollectFileVariants(n.Else);
-                }
-
-                break;
-
-            case LoopExpression n:
-                CollectFileVariants(n.Body);
-                break;
-
-            case FunctionExpression n:
-                CollectFileVariants(n.Body);
-                break;
-
-            case MatchExpression n:
-                foreach (var arm in n.Arms)
-                {
-                    CollectFileVariants(arm.Body);
-                }
-
-                break;
-        }
     }
 
     /// <summary>
@@ -523,34 +410,37 @@ public sealed class Desugarer
     }
 
     /// <summary>
-    /// <c>e is Variante(v)</c> numa posição que liga (plano 25 §25.2): vira
-    /// <c>match</c> com dois braços — a variante, ligando <c>v</c> em
-    /// <paramref name="thenBranch"/>, e o coringa levando a
-    /// <paramref name="elseBranch"/>. É o coração da tradução inteira: a
-    /// ligação e a prova nascem no mesmo braço.
+    /// <c>e is Variante(v)</c> numa posição que liga (plano 25 §25.3): vira um
+    /// <see cref="CoreIs"/> com <paramref name="thenBranch"/> no ramo em que a
+    /// variante casou — que é onde <c>v</c> existe — e
+    /// <paramref name="elseBranch"/> no outro.
+    ///
+    /// Nada é resolvido aqui: qual enum declara a variante, se ela existe e se
+    /// carrega exatamente um valor são perguntas sobre o <b>tipo</b> do
+    /// escrutinado, e quem as responde é o checker (<c>LAP0732</c>–<c>LAP0734</c>).
+    /// O desugar é sintático, e o que ele sabe é só a posição.
     /// </summary>
-    private CoreExpr DesugarIsBinding(IsExpression node, CoreExpr thenBranch, CoreExpr elseBranch, SourceSpan span)
-    {
-        var scrutinee = DesugarExpression(node.Scrutinee);
-        var pattern = BuildIsVariantPattern(node, includeBinding: true);
-
-        return _factory.Match(
+    private CoreExpr DesugarIsBinding(IsExpression node, CoreExpr thenBranch, CoreExpr elseBranch, SourceSpan span) =>
+        _factory.Is(
             span,
-            scrutinee,
-            [
-                new CoreArm(pattern, thenBranch, node.Span),
-                new CoreArm(new CoreWildcardPattern { Span = span }, elseBranch, span),
-            ]);
-    }
+            DesugarExpression(node.Scrutinee),
+            node.OwnerName,
+            node.VariantName,
+            node.BindingName,
+            thenBranch,
+            elseBranch,
+            node.VariantSpan,
+            node.BindingSpan);
 
     /// <summary>
-    /// <c>is</c> em qualquer outra posição (plano 25 §25.2, §25.3): a forma sem
-    /// ligação, que é <c>Bool</c> em qualquer lugar que <c>Bool</c> vai — e a
-    /// forma com ligação fora das duas posições que a admitem, que é
-    /// <c>LAP0730</c>. Nos dois casos o resultado é o mesmo <c>match</c> que
-    /// devolve <c>true</c>/<c>false</c>; no segundo, a ligação é descartada, e
-    /// quem a referenciar adiante ganha <c>LAP0201</c> como qualquer nome que
-    /// não existe — ela nunca chegou a existir na Core.
+    /// <c>is</c> em qualquer outra posição (plano 25 §25.3): a forma sem ligação,
+    /// que é <c>Bool</c> em qualquer lugar que <c>Bool</c> vai — o mesmo
+    /// <see cref="CoreIs"/> com ramos <c>true</c>/<c>false</c>.
+    ///
+    /// Uma ligação escrita aqui é <c>LAP0730</c>: fora das duas posições da
+    /// §25.3 não há o que lhe dar escopo. Ela é descartada, e quem a referenciar
+    /// adiante ganha <c>LAP0201</c> como qualquer nome que não existe — ela nunca
+    /// chegou a existir na Core.
     /// </summary>
     private CoreExpr DesugarIsExpression(IsExpression node)
     {
@@ -562,144 +452,15 @@ public sealed class Desugarer
                 "a ligação de 'is' só vale em condição de 'if' ou à esquerda de '&&'");
         }
 
-        var scrutinee = DesugarExpression(node.Scrutinee);
-        var pattern = BuildIsVariantPattern(node, includeBinding: false);
-
-        return _factory.Match(
+        return _factory.Is(
             node.Span,
-            scrutinee,
-            [
-                new CoreArm(pattern, _factory.Literal(node.Span, ConstBool.True), node.Span),
-                new CoreArm(new CoreWildcardPattern { Span = node.Span }, _factory.Literal(node.Span, ConstBool.False), node.Span),
-            ]);
-    }
-
-    /// <summary>
-    /// Monta o <see cref="CoreVariantPattern"/> de um <c>is</c>: resolve dono e
-    /// aridade (<see cref="ResolveIsVariant"/>) e, se pedido, acrescenta o
-    /// <see cref="CoreBindingPattern"/> da carga — só quando a variante carrega
-    /// exatamente um valor (<c>LAP0733</c>/<c>LAP0734</c> cobrem os outros
-    /// casos). Em qualquer falha, devolve um padrão sem ligação: o diagnóstico
-    /// já saiu, e a árvore continua bem-formada para quem vier depois.
-    /// </summary>
-    private CorePattern BuildIsVariantPattern(IsExpression node, bool includeBinding)
-    {
-        var resolved = ResolveIsVariant(node);
-
-        if (resolved is not { } found)
-        {
-            return new CoreVariantPattern(node.OwnerName ?? "?", node.VariantName, [])
-            {
-                Span = node.Span,
-                VariantSpan = node.VariantSpan,
-            };
-        }
-
-        if (!includeBinding || node.BindingName is null)
-        {
-            // Sem ligação, `is` testa só a etiqueta — a carga, se houver, é
-            // ignorada. Como `match` exige aridade exata (LAP0264), o padrão
-            // leva um coringa por posição de carga: `e is Some` sobre uma
-            // variante de um valor vira o mesmo que `Option.Some(_)`, nunca
-            // `Option.Some()`.
-            return new CoreVariantPattern(
-                found.EnumName,
-                node.VariantName,
-                [.. Enumerable.Repeat((CorePattern)new CoreWildcardPattern { Span = node.Span }, found.Arity)])
-            {
-                Span = node.Span,
-                VariantSpan = node.VariantSpan,
-            };
-        }
-
-        if (found.Arity == 0)
-        {
-            _diagnostics.ReportError(
-                DiagnosticCodes.IsVariantHasNoPayload,
-                node.BindingSpan ?? node.Span,
-                $"a variante '{node.VariantName}' não carrega valor");
-
-            return new CoreVariantPattern(found.EnumName, node.VariantName, [])
-            {
-                Span = node.Span,
-                VariantSpan = node.VariantSpan,
-            };
-        }
-
-        if (found.Arity > 1)
-        {
-            _diagnostics.ReportError(
-                DiagnosticCodes.IsVariantHasMultiplePayloads,
-                node.BindingSpan ?? node.Span,
-                $"a variante '{node.VariantName}' carrega {found.Arity} valores; escreva um padrão de 'match'");
-
-            return new CoreVariantPattern(found.EnumName, node.VariantName, [])
-            {
-                Span = node.Span,
-                VariantSpan = node.VariantSpan,
-            };
-        }
-
-        return new CoreVariantPattern(
-            found.EnumName,
+            DesugarExpression(node.Scrutinee),
+            node.OwnerName,
             node.VariantName,
-            [new CoreBindingPattern(node.BindingName) { Span = node.BindingSpan ?? node.Span }])
-        {
-            Span = node.Span,
-            VariantSpan = node.VariantSpan,
-        };
-    }
-
-    /// <summary>
-    /// O dono e a aridade de uma variante de <c>is</c>: se o dono foi escrito,
-    /// confere que ele existe e a declara (<c>LAP0732</c> senão); se não foi,
-    /// procura entre as conhecidas (<see cref="_variantIndex"/>) uma dona única
-    /// — duas ou mais é ambiguidade genuína, e pede a mesma qualificação
-    /// (§25.5). Devolve <c>null</c> quando não há como decidir; o diagnóstico
-    /// já saiu.
-    /// </summary>
-    private (string EnumName, int Arity)? ResolveIsVariant(IsExpression node)
-    {
-        if (!_variantIndex.TryGetValue(node.VariantName, out var candidates) || candidates.Count == 0)
-        {
-            _diagnostics.ReportError(
-                DiagnosticCodes.UnknownIsVariant,
-                node.VariantSpan,
-                $"'{node.VariantName}' não é variante de nenhum enum conhecido");
-
-            return null;
-        }
-
-        if (node.OwnerName is not null)
-        {
-            foreach (var candidate in candidates)
-            {
-                if (candidate.EnumName == node.OwnerName)
-                {
-                    return candidate;
-                }
-            }
-
-            _diagnostics.ReportError(
-                DiagnosticCodes.UnknownIsVariant,
-                node.VariantSpan,
-                $"'{node.VariantName}' não é variante de {node.OwnerName}");
-
-            return null;
-        }
-
-        if (candidates.Count > 1)
-        {
-            _diagnostics.ReportError(
-                DiagnosticCodes.UnknownIsVariant,
-                node.VariantSpan,
-                $"'{node.VariantName}' é ambíguo entre "
-                + $"{string.Join(", ", candidates.Select(c => c.EnumName))}; qualifique com o nome do enum");
-
-            return null;
-        }
-
-        return candidates[0];
+            bindingName: null,
+            _factory.Literal(node.Span, ConstBool.True),
+            _factory.Literal(node.Span, ConstBool.False),
+            node.VariantSpan);
     }
 
     /// <summary>

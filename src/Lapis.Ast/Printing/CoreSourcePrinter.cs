@@ -306,6 +306,10 @@ public static class CoreSourcePrinter
                 builder.Append('}');
                 break;
 
+            case CoreIs n:
+                PrintIs(builder, n, indent, context);
+                break;
+
             case CoreTypeDef n:
                 PrintTypeDef(builder, n, indent);
                 break;
@@ -416,6 +420,73 @@ public static class CoreSourcePrinter
         PrintSequence(builder, body, indent, topLevel: false);
     }
 
+    /// <summary>
+    /// <see cref="CoreIs"/> tem duas formas de fonte, e a escolha entre elas é o
+    /// que preserva o round-trip (plano 02 §2.8).
+    ///
+    /// Ramos <c>true</c>/<c>false</c> sem ligação são o teste puro, e voltam como
+    /// <c>e is V</c> — imprimi-lo como <c>if e is V { true } else { false }</c>
+    /// reparsearia num <c>If</c> <b>envolvendo</b> um <c>Is</c>, que é outra
+    /// árvore. Qualquer outro par de ramos volta na forma com <c>if</c>, que é a
+    /// única em que a ligação tem onde existir (§25.3).
+    ///
+    /// As duas direções fecham: quem escreve <c>if e is V { true } else { false }</c>
+    /// produz este mesmo nó, e o printer o devolve na forma curta — que reparseia
+    /// para ele de novo. É forma canônica, não perda.
+    /// </summary>
+    private static void PrintIs(StringBuilder builder, CoreIs node, int indent, Precedence context)
+    {
+        if (node.BindingName is null
+            && node.Then is CoreLiteral { Value: ConstBool { Value: true } }
+            && node.Else is CoreLiteral { Value: ConstBool { Value: false } })
+        {
+            var needsParens = context > Precedence.Is;
+
+            if (needsParens)
+            {
+                builder.Append('(');
+            }
+
+            Print(builder, node.Scrutinee, indent, Precedence.Is + 1);
+            builder.Append(" is ");
+            PrintIsPattern(builder, node);
+
+            if (needsParens)
+            {
+                builder.Append(')');
+            }
+
+            return;
+        }
+
+        builder.Append("if ");
+        Print(builder, node.Scrutinee, indent, Precedence.Is + 1);
+        builder.Append(" is ");
+        PrintIsPattern(builder, node);
+        builder.AppendLine(" {");
+        PrintBlockBody(builder, node.Then, indent + 1);
+        Indent(builder, indent);
+        builder.AppendLine("} else {");
+        PrintBlockBody(builder, node.Else, indent + 1);
+        Indent(builder, indent);
+        builder.Append('}');
+    }
+
+    private static void PrintIsPattern(StringBuilder builder, CoreIs node)
+    {
+        if (node.OwnerName is not null)
+        {
+            builder.Append(node.OwnerName).Append('.');
+        }
+
+        builder.Append(node.VariantName);
+
+        if (node.BindingName is not null)
+        {
+            builder.Append('(').Append(node.BindingName).Append(')');
+        }
+    }
+
     private static void PrintBinary(StringBuilder builder, CoreBinary node, int indent, Precedence context)
     {
         var precedence = (Precedence)node.Operator.Precedence();
@@ -445,9 +516,11 @@ public static class CoreSourcePrinter
     {
         Lowest = 0,
 
-        // Acima do maior valor de BinaryOperator.Precedence() (7, Multiply/Divide
-        // — plano 25 §25.7 abriu um degrau para 'is' no meio da tabela), para que
-        // `context > Precedence.Unary` continue certo em qualquer combinação.
+        // O degrau que o plano 25 §25.7 abriu entre `&&` (2) e `==` (4).
+        Is = 3,
+
+        // Acima do maior valor de BinaryOperator.Precedence() (7, Multiply/Divide),
+        // para que `context > Precedence.Unary` continue certo em qualquer combinação.
         Unary = 8,
         Postfix = 9,
     }

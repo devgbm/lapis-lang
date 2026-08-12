@@ -37,6 +37,11 @@ public static class ReturnAnalysis
             CoreIf n => DefinitelyReturns(n.Condition)
                         || (DefinitelyReturns(n.Then) && DefinitelyReturns(n.Else)),
 
+            // `is` ramifica como `if`: o escrutinado está na posição da condição,
+            // e os dois ramos precisam retornar (plano 25).
+            CoreIs n => DefinitelyReturns(n.Scrutinee)
+                        || (DefinitelyReturns(n.Then) && DefinitelyReturns(n.Else)),
+
             // Todos os braços precisam retornar. A exaustividade é assumida porque o
             // checker já a exige (LAP0262): se o `match` não for exaustivo, os dois
             // diagnósticos aparecem, o que descreve corretamente as duas falhas.

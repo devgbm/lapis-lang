@@ -386,10 +386,19 @@ public sealed record CoreLiteralPattern(ConstantValue Value) : CorePattern;
 public sealed record CoreArm(CorePattern Pattern, CoreExpr Body, SourceSpan Span);
 
 /// <summary>
-/// <c>Match</c> permanece como primitiva da Core: desugará-lo exigiria primitivas
-/// <c>enum_tag</c> e <c>enum_payload</c>, aumentando o runtime — contra a spec §58
-/// ("runtime mínimo"). Um plano futuro pode inverter isso sem afetar nada acima
-/// do desugar.
+/// <c>Match</c> segue primitiva da Core — <b>por ora</b>.
+///
+/// O que ele tem e <see cref="CoreIs"/> não tem é a <b>exaustividade</b>
+/// (Q6/<c>LAP0262</c>): <c>match</c> é expressão e precisa produzir valor em toda
+/// execução, e provar que os braços cobrem o enum exige saber o tipo do
+/// escrutinado — coisa que uma macro, rodando antes do checker sobre a Surface,
+/// não sabe. É o único motivo de ele continuar aqui (Q22).
+///
+/// O plano é sair: quando o sistema de macros souber provar exaustividade,
+/// <c>match</c> vira <c>@match</c> no prelude, expandindo para uma cadeia de
+/// <c>if</c>/<c>is</c> — que é exatamente a razão de <see cref="CoreIs"/> ser
+/// primitiva em vez de açúcar sobre este nó. Até lá as duas formas coexistem:
+/// <c>is</c> testa uma variante e não é exaustivo, <c>match</c> cobre todas e é.
 /// </summary>
 public sealed class CoreMatch(
     int nodeId,
@@ -400,6 +409,54 @@ public sealed class CoreMatch(
     public CoreExpr Scrutinee { get; } = scrutinee;
 
     public ImmutableArray<CoreArm> Arms { get; } = arms;
+}
+
+/// <summary>
+/// <c>e is Variante</c> / <c>e is Variante(x)</c> (plano 25, fecha Q23):
+/// testar a variante de um enum e, quando há ligação, desembrulhar a carga.
+///
+/// <b>Por que carrega os dois ramos.</b> Um nó que só produzisse <c>Bool</c>
+/// deixaria a ligação de <c>x</c> num nó <i>irmão</i> do teste, e dar escopo a
+/// ela exigiria análise de dominância — a saída que a Q23 recusou por peso. Com
+/// <see cref="Then"/> e <see cref="Else"/> aqui dentro, a ligação e a prova
+/// nascem juntas (não existe posição em que <c>x</c> esteja em escopo e a
+/// variante seja outra) e o escrutinado é avaliado <b>uma vez</b>.
+///
+/// A forma sem ligação é o mesmo nó com ramos literais:
+/// <c>e is Some</c> ⇒ <c>Is(e, Some, então: true, senão: false)</c>.
+///
+/// <see cref="OwnerName"/> é o enum <b>escrito</b> (<c>e is Option.Some</c>) ou
+/// <c>null</c> quando omitido: quem resolve a variante é o checker, a partir do
+/// tipo do escrutinado (§25.5) — escrito, o dono só é conferido. Os argumentos
+/// genéricos do dono (<c>Result&lt;Int, ?&gt;.Ok</c>) não chegam até aqui: os
+/// tipos da carga vêm da instância real do escrutinado, como em <c>match</c>.
+/// </summary>
+public sealed class CoreIs(
+    int nodeId,
+    SourceSpan span,
+    CoreExpr scrutinee,
+    string? ownerName,
+    string variantName,
+    string? bindingName,
+    CoreExpr then,
+    CoreExpr otherwise) : CoreExpr(nodeId, span)
+{
+    public CoreExpr Scrutinee { get; } = scrutinee;
+
+    public string? OwnerName { get; } = ownerName;
+
+    public string VariantName { get; } = variantName;
+
+    /// <summary>O nome ligado à carga no ramo verdadeiro, ou <c>null</c> no teste puro.</summary>
+    public string? BindingName { get; } = bindingName;
+
+    public CoreExpr Then { get; } = then;
+
+    public CoreExpr Else { get; } = otherwise;
+
+    public SourceSpan VariantSpan { get; init; } = span;
+
+    public SourceSpan? BindingSpan { get; init; }
 }
 
 /// <summary>

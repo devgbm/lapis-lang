@@ -49,6 +49,10 @@ public static class Effects
 
             CoreMatch n => IsPure(n.Scrutinee) && n.Arms.All(a => IsPure(a.Body)),
 
+            // `is` é ramificação, como `If` e `Match`: puro quando o escrutinado
+            // e os dois ramos são (plano 25).
+            CoreIs n => IsPure(n.Scrutinee) && IsPure(n.Then) && IsPure(n.Else),
+
             // Chamada é impura por conservadorismo: o PE não sabe o que há do
             // outro lado, e `print` é justamente uma chamada.
             CoreCall => false,

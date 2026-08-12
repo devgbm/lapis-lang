@@ -106,6 +106,22 @@ public sealed class CoreFactory
     public CoreMatch Match(SourceSpan span, CoreExpr scrutinee, ImmutableArray<CoreArm> arms) =>
         new(Next(), span, scrutinee, arms);
 
+    public CoreIs Is(
+        SourceSpan span,
+        CoreExpr scrutinee,
+        string? ownerName,
+        string variantName,
+        string? bindingName,
+        CoreExpr then,
+        CoreExpr otherwise,
+        SourceSpan? variantSpan = null,
+        SourceSpan? bindingSpan = null) =>
+        new(Next(), span, scrutinee, ownerName, variantName, bindingName, then, otherwise)
+        {
+            VariantSpan = variantSpan ?? span,
+            BindingSpan = bindingSpan,
+        };
+
     public CoreTypeDef TypeDef(
         SourceSpan span,
         ImmutableArray<CoreTypeParameter> typeParameters,

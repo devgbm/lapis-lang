@@ -54,9 +54,9 @@ lapis hello.ls
 | **M16** — `goto`/`label` saem, `loop`/`break`/`continue` entram; `is` fecha Q23 | ✅ concluído |
 | M17–M19 — PE: especialização, análise, equivalência | ⏳ próximo |
 
-**1764 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
+**1778 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
 evaluator, partial evaluator e CLI — entre eles uma **suíte de conformidade** de
-211 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
+212 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
 spec é um arquivo, e o nome do teste que falha já é o arquivo a abrir.
 
 A linguagem já roda programas de verdade: funções de primeira classe com
@@ -314,13 +314,21 @@ def unwrapOr = fn(result: Option<Int>, fallback: Int) Int {
 };
 ```
 
-`is` não é primitiva nova: ele desugara para o mesmo `match` de sempre — zero
-nós novos na Core. A ligação (`Some(value)`) só ganha escopo em duas posições —
-condição de `if` e operando esquerdo de `&&` —, e fora delas `is` continua
-valendo como um `Bool` comum, sem ligar nada. A variante pode vir sem
-qualificação (`Some`, não `Option.Some`): o desugar resolve o dono a partir do
-que está declarado no prelúdio e no próprio arquivo; `match` continua exigindo
-a forma qualificada (Q3).
+`is` **é primitiva da Core**, e não açúcar sobre `match` — a escolha que abre a
+saída do `match` (ver abaixo). A ligação (`Some(value)`) só ganha escopo em duas
+posições — condição de `if` e operando esquerdo de `&&` —, e fora delas `is`
+continua valendo como um `Bool` comum, sem ligar nada. A variante pode vir sem
+qualificação (`Some`, não `Option.Some`): quem resolve o dono é o **tipo do
+escrutinado**, que o checker já conhece; `match` continua exigindo a forma
+qualificada (Q3).
+
+As duas construções coexistem com papéis distintos: **`is` testa uma variante e
+não é exaustivo; `match` cobre todas e é** (Q6). E é essa divisão que dá a
+`match` um caminho de saída: o que o prende ao compilador não é mais "nenhuma
+macro lê carga de variante" — `is` resolveu isso —, é a exaustividade, que uma
+macro não sabe provar porque roda antes do checker e não conhece o tipo do
+escrutinado. Quando souber, `match` vira `@match` no prelude sobre uma cadeia de
+`if`/`is`, e `CoreMatch` sai da Core. A Q22 está encaminhada, não fechada.
 
 O que falta: o resto do **PE** (M17–M19) — especialização de chamadas e
 eliminação de bounds check —, agora sobre uma superfície que já fechou: era a

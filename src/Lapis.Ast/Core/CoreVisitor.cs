@@ -24,6 +24,7 @@ public abstract class CoreVisitor<TResult>
         CoreField n => VisitField(n),
         CoreEnumDef n => VisitEnumDef(n),
         CoreMatch n => VisitMatch(n),
+        CoreIs n => VisitIs(n),
         CoreTypeDef n => VisitTypeDef(n),
         CoreConstruct n => VisitConstruct(n),
         CoreLoop n => VisitLoop(n),
@@ -66,6 +67,8 @@ public abstract class CoreVisitor<TResult>
     protected abstract TResult VisitEnumDef(CoreEnumDef node);
 
     protected abstract TResult VisitMatch(CoreMatch node);
+
+    protected abstract TResult VisitIs(CoreIs node);
 
     protected abstract TResult VisitTypeDef(CoreTypeDef node);
 
@@ -187,6 +190,12 @@ public abstract class CoreWalker
                     Visit(arm.Body);
                 }
 
+                break;
+
+            case CoreIs n:
+                Visit(n.Scrutinee);
+                Visit(n.Then);
+                Visit(n.Else);
                 break;
 
             case CoreTypeDef:

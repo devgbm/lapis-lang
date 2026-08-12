@@ -16,7 +16,7 @@ public abstract class TypeCheckerTestBase
         diagnostics.HasErrors.ShouldBeFalse(
             $"erro de parse: {string.Join(", ", diagnostics.Select(d => $"{d.Code} {d.Message}"))}");
 
-        var core = Desugar.Desugarer.Desugar(file, diagnostics, Cli.Pipeline.KnownVariantsOf(PreludeFixture.Scope));
+        var core = Desugar.Desugarer.Desugar(file, diagnostics);
         var typed = TypeChecker.Check(core, PreludeFixture.Scope, diagnostics);
 
         return (typed, diagnostics.ToSortedArray());

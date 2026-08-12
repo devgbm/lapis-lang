@@ -105,6 +105,12 @@ public sealed class RoundTripTests : DesugarTestBase
     [InlineData("var u = x;\nu.a.b = 1;")]
     [InlineData("var i = 0;\nloop :repete { i = i + 1; if i < 3 { continue :repete; } else { break; } }")]
     [InlineData("def f = fn() Int { var x = 1; x = 2; return x; };")]
+    [InlineData("def O = enum { A, B(Int) };\ndef e = O.A;\ndef r = e is A;")]
+    [InlineData("def O = enum { A, B(Int) };\ndef e = O.A;\ndef r = e is O.A;")]
+    [InlineData("def O = enum { A, B(Int) };\ndef e = O.B(1);\nif e is B(v) { print(v); }")]
+    [InlineData("def O = enum { A, B(Int) };\ndef e = O.B(1);\nif e is B(v) { print(v); } else { print(0); }")]
+    [InlineData("def O = enum { A, B(Int) };\ndef e = O.B(1);\ndef r = e is B(v) && v == 1;")]
+    [InlineData("def O = enum { A, B(Int) };\ndef e = O.A;\ndef r = !(e is A);")]
     public void PrintThenReparse_ProducesTheSameCore(string source)
     {
         var original = Print(source);

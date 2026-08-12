@@ -13,28 +13,27 @@
 > predecessores que motivava a regra. O texto abaixo já reflete isso — a nota
 > serve para quem procura a versão antiga.
 
-> **Nota de implementação (M16).** Duas decisões tomadas ao codificar este
-> plano, que o texto original não previa:
+> **Nota de implementação (M16).** Três pontos do que foi codificado:
 >
-> 1. **`LAP0730`–`LAP0734` saem do desugar, não do checker.** O plano supunha
->    que resolver dono/aridade de uma variante exigisse tipo — e por isso
->    "pertenceriam" ao checker. Na prática, o desugar já faz uma varredura
->    puramente sintática dos `def X = enum { ... }` visíveis (o mesmo espírito
->    de `ReportDuplicateDefinitions`) mais as variantes do prelúdio (passadas
->    de fora, já resolvidas — `Pipeline.KnownVariantsOf`), e resolve dono e
->    aridade **antes** de montar o `CoreMatch`. Duas variantes de nomes iguais
->    em enums diferentes sem dono escrito é `LAP0732` (ambíguo), pelo mesmo
->    motivo que "não existe" é `LAP0732`. O ganho: o checker não precisa saber
->    que um `CoreMatch` veio de `is` — ele vê o `match` de sempre, com
->    `EnumName` já preenchido, e usa exatamente `CheckVariantPattern` sem
->    nenhum caso novo.
+> 1. **`is` é primitiva, não açúcar.** A primeira implementação seguiu o texto
+>    original — `is` desugarava para `CoreMatch`, com o dono resolvido por uma
+>    varredura sintática dos `enum` visíveis mais os do prelúdio. Foi
+>    substituída: aquela forma tornava a Q22 circular (`match` no compilador
+>    porque `is` depende dele; `is` depende dele porque `match` está no
+>    compilador). Com `CoreIs`, a varredura sintática inteira sai — o tipo
+>    resolve —, e `@match` passa a ter sobre o que ser construído.
 > 2. **Os argumentos genéricos do dono não são validados contra o
->    escrutinado.** `Result<Int, ?>.Ok(v)` é aceito pela gramática e não
->    reporta erro — mas, como em `match`, os tipos da carga vêm da instância
->    real do escrutinado, não do que o padrão escreveu. `Is_WithWrongGenericOwner`
->    (a lista de testes abaixo) não tem caso: validar essa concordância exigiria
->    uma checagem que `match` nunca teve, e ficou fora desta rodada. Registrado
->    aqui, não como pendência silenciosa.
+>    escrutinado.** `Result<Int, ?>.Ok(v)` é aceito pela gramática e não chega
+>    à Core — como em `match`, os tipos da carga vêm da instância real do
+>    escrutinado. `Is_WithWrongGenericOwner` (lista de testes abaixo) não tem
+>    caso: validar essa concordância exigiria uma checagem que `match` nunca
+>    teve, e ficou fora desta rodada.
+> 3. **O PE não dobra `is`** — e não por escolha: o especializador nunca chega
+>    a conhecer um `EnumValue`, porque construir variante é chamada e chamada é
+>    impura por conservadorismo. É a mesma parede que `match` encontra, e
+>    derrubá-la é M17–M19. `Is_IsFoldedByPE` (lista abaixo) fica em aberto pelo
+>    mesmo motivo; o que os testes travam é o protocolo da spec §53 (roda
+>    igual, tipa, é ponto fixo).
 
 ---
 
@@ -53,9 +52,11 @@ segurança, sem análise de fluxo e sem exceção de runtime.
 **Entra:** `is` como palavra reservada, teste de variante, ligação da carga,
 escopo da ligação, padrão com dono genérico (`e is Result<Int, ?>.Ok(v)`).
 
-**Fica de fora:** `@match` como macro do prelude (Q22 mantém `match` no
-compilador); padrões aninhados no `is` — `e is Some(Other(x))` fica para depois,
-porque `match` já cobre e a forma composta pede menos.
+**Fica de fora:** `@match` como macro do prelude — `is` dá a primitiva sobre a
+qual construí-lo, mas a exaustividade continua sem resposta e é ela que segura
+`match` no compilador (Q22, §25.2); padrões aninhados no `is` —
+`e is Some(Other(x))` fica para depois, porque `match` já cobre e a forma
+composta pede menos.
 
 ---
 
@@ -75,32 +76,44 @@ E o que faz a garantia ser barata é a mesma coisa que faz `match` funcionar: **
 ligação e a prova nascem juntas**. Não há um passo em que se sabe a variante e
 outro em que se lê a carga.
 
-### 25.2 `is` é açúcar sobre `match` — e é isso que o torna barato
+### 25.2 `is` é **primitiva** da Core — e é isso que abre a saída de `match`
 
-Nenhum nó novo na Core. As duas formas com ligação viram `match`:
+`is` é um nó próprio, `CoreIs`. A alternativa — açúcar sobre `match` — foi
+descartada porque tornava a Q22 circular: `match` ficaria no compilador para
+sempre, já que a única construção capaz de substituí-lo dependeria dele.
+
+```
+CoreIs(scrutinee, owner?, variant, binding?, then, else)
+```
+
+**Por que ele carrega os dois ramos.** Um nó que só produzisse `Bool` deixaria a
+ligação de `v` num nó *irmão* do teste, e dar escopo a ela exigiria análise de
+dominância — a saída que a Q23 recusou por peso. Com `then`/`else` dentro do nó,
+a ligação e a prova nascem juntas (não há posição em que `v` esteja em escopo e
+a variante seja outra) e o escrutinado é avaliado **uma vez**.
+
+A forma sem ligação é o mesmo nó com ramos literais:
 
 ```c
+e is Some              ⇒  Is(e, Some, então: true, senão: false)
 if e is Some(v) { A } else { B }
-// ⇓
-match e { Option.Some(v) => A, _ => B }
-
-e is Some(v) && resto
-// ⇓
-match e { Option.Some(v) => resto, _ => false }
+                       ⇒  Is(e, Some, v, então: A, senão: B)
+e is Some(v) && resto  ⇒  Is(e, Some, v, então: resto, senão: false)
 ```
 
-E a forma sem ligação é um `match` que devolve `Bool`:
+**O que isso muda na divisão de trabalho.** Como o nó chega ao checker, quem
+resolve a variante é o **tipo do escrutinado** (§25.5) — não uma varredura
+sintática de declarações de enum. Um dono escrito (`e is Option.Some`) passa a
+ser apenas conferido, e a forma sem qualificação deixa de ter como ser ambígua.
+`LAP0732`–`LAP0734` são, portanto, diagnósticos do checker; no desugar fica só
+`LAP0730`, que é sobre posição e é sintático.
 
-```c
-e is Some
-// ⇓
-match e { Option.Some => true, _ => false }
-```
-
-O ganho não é só de implementação. Como `is` **é** um `match`, o partial
-evaluator, a análise de retorno e a exaustividade continuam valendo sem uma linha
-nova — e o plano 14 continua com uma forma de controle a entender, que é
-exatamente o que a Q22 protegeu.
+**E `match` fica — por ora.** As duas construções coexistem com papéis
+distintos: `is` testa **uma** variante e não é exaustivo; `match` cobre todas e
+é (Q6/`LAP0262`). O que prende `match` ao compilador é exatamente a
+exaustividade — prová-la exige saber o tipo do escrutinado, e uma macro roda
+antes do checker. Quando o sistema de macros souber prová-la, `match` vira
+`@match` no prelude, expandindo para uma cadeia de `if`/`is`. Ver Q22.
 
 ### 25.3 O escopo da ligação — a parte que precisa de regra
 
@@ -134,10 +147,9 @@ A composição que o autor pediu cai da regra 2:
 ```c
 if bRes is Result<Int, Error>.Ok(value) && value == true { X }
 // ⇓
-match bRes {
-    Result.Ok(value) => if value == true { X } else { },
-    _ => { }
-}
+Is(bRes, Ok, value,
+   então: If(value == true, então: X, senão: ()),
+   senão: ())
 ```
 
 ### 25.4 O problema que motivou esta pergunta, e como ele deixou de existir
@@ -245,12 +257,22 @@ comum, e o caso completo já tem casa.
 
 ## Decisões de design
 
-### Por que `is` fecha a Q23 e não reabre a Q22
+### Por que `is` fecha a Q23 e **encaminha** a Q22
 
 A Q22 decidiu que `if` e `match` ficam no compilador porque `@match` precisaria
-ler carga de variante, e nenhuma macro consegue. `is` **não muda isso**: ele é
-açúcar sobre `match`, e uma macro que o usasse continuaria dependendo do `match`
-da Core.
+ler carga de variante, e nenhuma macro consegue. `is` resolve essa metade: ele é
+primitiva da Core, então uma macro construída sobre ele **não** depende mais do
+`match`.
+
+O que ainda prende `match` ao compilador é a outra metade — a exaustividade. Uma
+macro roda antes do checker e não sabe o tipo do escrutinado, logo não tem como
+provar que os braços cobrem o enum, e `match` é expressão: precisa produzir valor
+sempre. Enquanto isso não se resolver, as duas construções coexistem, com a
+divisão de papéis dita na §25.2.
+
+Fazer `is` ser açúcar sobre `match` — como a primeira versão deste plano previa —
+fecharia a Q22 por construção, e pelo motivo errado: `match` seria insubstituível
+porque seu substituto foi definido em termos dele.
 
 O que `is` compra é o que a Q23 pedia — uma construção da linguagem para o caso de
 **uma** variante, que é o caso em que `match` é cerimônia demais:
@@ -314,10 +336,10 @@ preço é a regra de escopo da §25.3, que precisa ser dita de qualquer jeito.
 - [ ] `is` reservada, com precedência entre `&&` e `==`, sem encadeamento.
 - [ ] `e is P` produzindo `Bool` em qualquer posição de `Bool`.
 - [ ] `e is P(v)` ligando `v`, e **só** nas posições da §25.3.
-- [ ] **Zero nós novos na Core** — `is` desugara para `Match`.
+- [ ] **`CoreIs` na Core** — primitiva, não açúcar sobre `Match` (§25.2).
 - [ ] Variante sem qualificação aceita, com a qualificada continuando válida.
 - [ ] `LAP0730`–`LAP0734`, cada um com caso de conformidade.
-- [ ] Q22 intacta: `if` e `match` seguem no compilador.
+- [ ] `match` segue no compilador e exaustivo; `is` não é exaustivo (Q22 encaminhada).
 
 ---
 

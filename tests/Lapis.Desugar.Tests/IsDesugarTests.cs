@@ -5,133 +5,147 @@ using Lapis.Diagnostics;
 namespace Lapis.Desugar.Tests;
 
 /// <summary>
-/// <c>is</c>: açúcar sobre <c>match</c> (plano 25, M16 — fecha Q23). Zero nós
-/// novos na Core — tudo aqui vira <see cref="CoreMatch"/> com
-/// <see cref="CoreVariantPattern"/>, exatamente como um <c>match</c> escrito à
-/// mão.
+/// <c>is</c> como primitiva da Core (plano 25, M16 — fecha Q23): o desugar
+/// produz <see cref="CoreIs"/>, não <see cref="CoreMatch"/>.
 ///
-/// O dono é declarado no próprio arquivo em vez de vir do prelúdio: o desugar
-/// resolve a forma sem qualificação (§25.5) contra o que está sintaticamente
-/// visível, e <c>DesugarTestBase.Compile</c> não carrega o prelúdio.
+/// O desugar é <b>puramente sintático</b> aqui — ele carrega o que foi escrito e
+/// decide só a <i>posição</i> (§25.3, <c>LAP0730</c>). Quem resolve a variante,
+/// confere o dono e a aridade da carga é o checker, porque essas são perguntas
+/// sobre o tipo do escrutinado — ver <c>Lapis.TypeChecker.Tests.IsTests</c>.
 /// </summary>
 public sealed class IsDesugarTests : DesugarTestBase
 {
     private const string Enum = "def X = enum { A, B(Int) };\n";
 
-    [Fact]
-    public void NoBinding_Unqualified_DesugarsToMatch()
-    {
-        var match = AllNodes(Compile(Enum + "def e = X.A;\ndef r = e is A;")).OfType<CoreMatch>().ShouldHaveSingleItem();
+    private static CoreIs SingleIs(string source) =>
+        AllNodes(Compile(source)).OfType<CoreIs>().ShouldHaveSingleItem();
 
-        match.Arms.Length.ShouldBe(2);
-        var variant = match.Arms[0].Pattern.ShouldBeOfType<CoreVariantPattern>();
-        variant.EnumName.ShouldBe("X");
-        variant.VariantName.ShouldBe("A");
-        match.Arms[1].Pattern.ShouldBeOfType<CoreWildcardPattern>();
+    [Fact]
+    public void NoBinding_DesugarsToCoreIs()
+    {
+        var node = SingleIs(Enum + "def e = X.A;\ndef r = e is A;");
+
+        node.VariantName.ShouldBe("A");
+        node.OwnerName.ShouldBeNull();
+        node.BindingName.ShouldBeNull();
     }
 
     /// <summary>
-    /// Sem ligação, a carga é ignorada — mas o padrão ainda precisa de um
-    /// coringa por posição, porque <c>match</c> exige aridade exata (LAP0264).
-    /// <c>e is B</c> vira o mesmo que <c>X.B(_)</c>, nunca <c>X.B()</c>.
+    /// A forma sem ligação é o mesmo nó com ramos literais — é o que a torna
+    /// <c>Bool</c> em qualquer posição sem regra nova.
     /// </summary>
     [Fact]
-    public void NoBinding_OnPayloadVariant_UsesWildcardForThePayload()
+    public void NoBinding_BranchesAreTrueAndFalse()
     {
-        var match = AllNodes(Compile(Enum + "def e = X.B(1);\ndef r = e is B;")).OfType<CoreMatch>().ShouldHaveSingleItem();
+        var node = SingleIs(Enum + "def e = X.A;\ndef r = e is A;");
 
-        var variant = match.Arms[0].Pattern.ShouldBeOfType<CoreVariantPattern>();
-        variant.Arguments.Length.ShouldBe(1);
-        variant.Arguments[0].ShouldBeOfType<CoreWildcardPattern>();
+        node.Then.ShouldBeOfType<CoreLiteral>().Value.ShouldBe(ConstBool.True);
+        node.Else.ShouldBeOfType<CoreLiteral>().Value.ShouldBe(ConstBool.False);
     }
 
+    /// <summary>Sem ligação, a carga simplesmente não é olhada — não há coringa a preencher.</summary>
     [Fact]
-    public void Qualified_UsesTheWrittenOwner()
-    {
-        var match = AllNodes(Compile(Enum + "def e = X.A;\ndef r = e is X.A;")).OfType<CoreMatch>().ShouldHaveSingleItem();
-
-        match.Arms[0].Pattern.ShouldBeOfType<CoreVariantPattern>().EnumName.ShouldBe("X");
-    }
+    public void NoBinding_OnPayloadVariant_HasNoBinding() =>
+        SingleIs(Enum + "def e = X.B(1);\ndef r = e is B;").BindingName.ShouldBeNull();
 
     [Fact]
-    public void Bind_InIfCondition_ArmBindsTheValue()
+    public void Qualified_KeepsTheWrittenOwner() =>
+        SingleIs(Enum + "def e = X.A;\ndef r = e is X.A;").OwnerName.ShouldBe("X");
+
+    /// <summary>
+    /// Numa posição que liga, os ramos do <c>if</c> viram os ramos do nó — é
+    /// isso que dá escopo a <c>v</c> sem análise de fluxo nenhuma.
+    /// </summary>
+    [Fact]
+    public void Bind_InIfCondition_ThenBranchIsTheIfBody()
     {
-        var match = AllNodes(Compile(Enum + "def e = X.B(1);\nif e is B(v) { print(v); };"))
-            .OfType<CoreMatch>().ShouldHaveSingleItem();
+        var node = SingleIs(Enum + "def e = X.B(1);\nif e is B(v) { print(v); };");
 
-        var variant = match.Arms[0].Pattern.ShouldBeOfType<CoreVariantPattern>();
-        variant.Arguments.ShouldHaveSingleItem().ShouldBeOfType<CoreBindingPattern>().Name.ShouldBe("v");
+        node.BindingName.ShouldBe("v");
 
-        // O corpo do braço é o `then` do `if` — é isso que dá escopo a `v`.
-        var call = match.Arms[0].Body.ShouldBeOfType<CoreLet>().Value.ShouldBeOfType<CoreCall>();
+        var call = node.Then.ShouldBeOfType<CoreLet>().Value.ShouldBeOfType<CoreCall>();
         call.Arguments.ShouldHaveSingleItem().ShouldBeOfType<CoreVariable>().Name.ShouldBe("v");
     }
 
-    /// <summary><c>if</c> sem <c>else</c>: o braço do coringa é <c>()</c>, como todo <c>if</c> sem <c>else</c>.</summary>
+    /// <summary><c>if</c> sem <c>else</c>: o ramo falso é <c>()</c>, como todo <c>if</c> sem <c>else</c>.</summary>
     [Fact]
-    public void Bind_InIfWithoutElse_WildcardArmIsUnit()
-    {
-        var match = AllNodes(Compile(Enum + "def e = X.B(1);\nif e is B(v) { print(v); };"))
-            .OfType<CoreMatch>().ShouldHaveSingleItem();
-
-        match.Arms[1].Body.ShouldBeOfType<CoreLiteral>().Value.ShouldBeOfType<ConstUnit>();
-    }
+    public void Bind_InIfWithoutElse_ElseBranchIsUnit() =>
+        SingleIs(Enum + "def e = X.B(1);\nif e is B(v) { print(v); };")
+            .Else.ShouldBeOfType<CoreLiteral>().Value.ShouldBeOfType<ConstUnit>();
 
     [Fact]
     public void Bind_LeftOfAndAlso_ThreadsIntoTheRightOperand()
     {
-        var match = AllNodes(Compile(Enum + "def e = X.B(1);\ndef r = e is B(v) && v == 1;"))
-            .OfType<CoreMatch>().ShouldHaveSingleItem();
+        var node = SingleIs(Enum + "def e = X.B(1);\ndef r = e is B(v) && v == 1;");
 
-        // O braço da variante é o operando direito desugarado — `v == 1`, com
-        // `v` em escopo —, e o braço do coringa é `false`: a mesma forma que
-        // `&&` sempre produziu, só que agora escolhida por `is`.
-        match.Arms[0].Body.ShouldBeOfType<CoreBinary>().Operator.ShouldBe(BinaryOperator.Equal);
-        match.Arms[1].Body.ShouldBeOfType<CoreLiteral>().Value.ShouldBe(ConstBool.False);
+        // O ramo verdadeiro é o operando direito — com `v` em escopo —, e o
+        // falso é `false`: a mesma forma que `&&` sempre produziu, agora
+        // escolhida por `is`.
+        node.Then.ShouldBeOfType<CoreBinary>().Operator.ShouldBe(BinaryOperator.Equal);
+        node.Else.ShouldBeOfType<CoreLiteral>().Value.ShouldBe(ConstBool.False);
     }
+
+    /// <summary>A composição do §25.3: a ligação atravessa o <c>&amp;&amp;</c> e o <c>if</c>.</summary>
+    [Fact]
+    public void Bind_IfWithAndAlsoCondition_ThreadsAllTheWayIn() =>
+        SingleIs(Enum + "def e = X.B(1);\nif e is B(v) && v == 1 { print(v); };")
+            .Then.ShouldBeOfType<CoreIf>().Then.ShouldBeOfType<CoreLet>();
+
+    /// <summary>Zero nós de <c>match</c>: <c>is</c> não passa mais por lá.</summary>
+    [Fact]
+    public void Is_ProducesNoMatchNode() =>
+        AllNodes(Compile(Enum + "def e = X.B(1);\nif e is B(v) { print(v); };"))
+            .OfType<CoreMatch>().ShouldBeEmpty();
+
+    // -------------------------------------------------- diagnóstico do desugar
 
     /// <summary>
-    /// A composição do §25.3: <c>is</c> seguido de <c>&amp;&amp;</c>, dentro de
-    /// um <c>if</c>. A ligação atravessa as duas camadas.
+    /// O único que sai daqui: posição é sintaxe, e o desugar sabe responder.
     /// </summary>
-    [Fact]
-    public void Bind_IfWithAndAlsoCondition_ThreadsAllTheWayIn()
-    {
-        var match = AllNodes(Compile(Enum + "def e = X.B(1);\nif e is B(v) && v == 1 { print(v); };"))
-            .OfType<CoreMatch>().ShouldHaveSingleItem();
-
-        var innerIf = match.Arms[0].Body.ShouldBeOfType<CoreIf>();
-        innerIf.Then.ShouldBeOfType<CoreLet>();
-    }
-
     [Fact]
     public void OutsideBindingPosition_ReportsLap0730() =>
         CompileCodes(Enum + "def e = X.B(1);\ndef r = e is B(v);")
             .ShouldContain(DiagnosticCodes.IsBindingRequiresIfOrAnd);
 
+    /// <summary>
+    /// E o desugar <b>não</b> tenta resolver variante: um nome que não existe
+    /// atravessa daqui em silêncio e morre no checker (<c>LAP0732</c>).
+    /// </summary>
     [Fact]
-    public void UnknownVariant_ReportsLap0732() =>
-        CompileCodes(Enum + "def e = X.A;\ndef r = e is Nada;").ShouldContain(DiagnosticCodes.UnknownIsVariant);
+    public void UnknownVariant_IsNotTheDesugarsProblem() =>
+        CompileCodes(Enum + "def e = X.A;\ndef r = e is Nada;")
+            .ShouldNotContain(DiagnosticCodes.UnknownIsVariant);
+
+    // -------------------------------------------------- round-trip
+
+    /// <summary>
+    /// O teste puro volta como <c>e is V</c>, e não como o <c>if</c> que ele
+    /// significa — imprimi-lo com <c>if</c> reparsearia numa árvore diferente
+    /// (um <c>If</c> envolvendo um <c>Is</c>).
+    /// </summary>
+    [Fact]
+    public void NoBinding_PrintsAsTheShortForm() =>
+        PrintSource(Enum + "def e = X.A;\ndef r = e is A;").ShouldContain("e is A");
 
     [Fact]
-    public void UnknownOwner_ReportsLap0732() =>
-        CompileCodes(Enum + "def e = X.A;\ndef r = e is Y.A;").ShouldContain(DiagnosticCodes.UnknownIsVariant);
+    public void Bind_PrintsAsTheIfForm() =>
+        PrintSource(Enum + "def e = X.B(1);\nif e is B(v) { print(v); };")
+            .ShouldContain("if e is B(v) {");
 
-    [Fact]
-    public void AmbiguousUnqualifiedVariant_ReportsLap0732() =>
-        CompileCodes("def X = enum { A };\ndef Y = enum { A };\ndef e = X.A;\ndef r = e is A;")
-            .ShouldContain(DiagnosticCodes.UnknownIsVariant);
+    [Theory]
+    [InlineData("def r = e is A;")]
+    [InlineData("def r = e is X.A;")]
+    [InlineData("if e is B(v) { print(v); };")]
+    [InlineData("if e is B(v) { print(v); } else { print(0); }")]
+    [InlineData("def r = e is B(v) && v == 1;")]
+    [InlineData("def r = !(e is A);")]
+    public void Is_RoundTrips(string tail)
+    {
+        var source = Enum + "def e = X.B(1);\n" + tail;
 
-    [Fact]
-    public void NullaryVariantWithBinding_ReportsLap0733() =>
-        CompileCodes(Enum + "def e = X.A;\nif e is A(v) { print(v); };").ShouldContain(DiagnosticCodes.IsVariantHasNoPayload);
+        var original = Print(source);
+        var printed = PrintSource(source);
 
-    [Fact]
-    public void MultiPayloadVariantWithBinding_ReportsLap0734() =>
-        CompileCodes("def X = enum { Pair(Int, Int) };\ndef e = X.Pair(1, 2);\nif e is Pair(v) { print(v); };")
-            .ShouldContain(DiagnosticCodes.IsVariantHasMultiplePayloads);
-
-    [Fact]
-    public void Is_RoundTrips() =>
-        PrintSource(Enum + "def e = X.B(1);\nif e is B(v) { print(v); };").ShouldContain("match");
+        Print(printed).ShouldBe(original, $"código impresso:\n{printed}");
+    }
 }

@@ -158,6 +158,7 @@ public sealed class Evaluator
         CoreField n => EvaluateField(n, environment),
         CoreEnumDef n => EvaluateEnumDef(n),
         CoreMatch n => EvaluateMatch(n, environment),
+        CoreIs n => EvaluateIs(n, environment),
         CoreTypeDef n => EvaluateTypeDef(n),
         CoreConstruct n => EvaluateConstruct(n, environment),
         CoreLoop n => EvaluateLoop(n, environment),
@@ -788,6 +789,38 @@ public sealed class Evaluator
 
         throw new InternalCompilerException(
             "nenhum braço do 'match' casou; o checker deveria ter exigido exaustividade", node.Span);
+    }
+
+    /// <summary>
+    /// <c>e is Variante(x)</c> (plano 25): compara a etiqueta e, quando ela casa,
+    /// avalia o ramo verdadeiro com a carga ligada.
+    ///
+    /// O escrutinado é avaliado <b>uma vez</b> — é o que a forma do nó garante, e
+    /// o motivo de ele carregar os ramos em vez de ser um <c>Bool</c> solto ao
+    /// lado de uma extração.
+    /// </summary>
+    private Completion EvaluateIs(CoreIs node, Environment environment)
+    {
+        var scrutinee = Evaluate(node.Scrutinee, environment);
+
+        if (!scrutinee.IsNormal)
+        {
+            return scrutinee;
+        }
+
+        if (scrutinee.Value is not EnumValue enumValue
+            || !string.Equals(enumValue.Variant.Name, node.VariantName, StringComparison.Ordinal))
+        {
+            return Evaluate(node.Else, environment);
+        }
+
+        // A aridade já foi conferida pelo checker (LAP0733/LAP0734): se há
+        // ligação, há exatamente uma carga.
+        var body = node.BindingName is null
+            ? environment
+            : environment.Extend(node.BindingName, enumValue.Payload[0]);
+
+        return Evaluate(node.Then, body);
     }
 
     private static bool TryMatch(CorePattern pattern, Value value, List<(string, Value)> bindings)

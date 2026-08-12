@@ -6,10 +6,10 @@ namespace Lapis.TypeChecker.Tests;
 /// <summary>
 /// <c>is</c>: testar variante e desembrulhar carga (plano 25, M16 — fecha Q23).
 ///
-/// Zero nós novos na Core (§25.2): <c>is</c> desugara para <c>match</c>, e por
-/// isso a maioria destes testes passa pelo pipeline inteiro em vez de inspecionar
-/// a Core diretamente — é o mesmo <c>match</c> de sempre, só que escrito de
-/// outro jeito.
+/// <c>is</c> é primitiva da Core (<c>CoreIs</c>, §25.2), e é aqui que a variante
+/// é <b>resolvida</b>: o desugar só carregou o que estava escrito, e quem sabe a
+/// qual enum ela pertence é o tipo do escrutinado. Por isso <c>LAP0732</c>–<c>LAP0734</c>
+/// são diagnósticos deste projeto, e não do desugar.
 /// </summary>
 public sealed class IsTests : TypeCheckerTestBase
 {
@@ -106,12 +106,13 @@ public sealed class IsTests : TypeCheckerTestBase
             .ShouldBe(PrimitiveType.Int);
 
     /// <summary>
-    /// A Core do <c>is</c> qualificado é indistinguível da do <c>match</c>
-    /// equivalente (§25.2) — mesma estrutura de <c>CoreMatch</c>, com o mesmo
-    /// nome de enum resolvido nos dois casos.
+    /// <c>is</c> e o <c>match</c> equivalente dão o mesmo tipo. Não é mais a
+    /// mesma <b>árvore</b> — <c>is</c> é primitiva desde o M16 (Q22/Q23) —, e é
+    /// justamente por isso que a equivalência precisa ser afirmada em vez de
+    /// decorrer da construção.
     /// </summary>
     [Fact]
-    public void Is_DesugarsToMatch()
+    public void Is_AgreesWithTheEquivalentMatch()
     {
         var isForm = TypeOfDef(
             "def e = Option<Int>.Some(1);\ndef x = if e is Option.Some(v) { v } else { 0 };", "x");
@@ -121,4 +122,13 @@ public sealed class IsTests : TypeCheckerTestBase
 
         isForm.ShouldBe(matchForm);
     }
+
+    /// <summary>
+    /// <c>is</c> não é exaustivo, e não deve ser: ele testa <b>uma</b> variante e
+    /// o resto cai no ramo falso. É a divisa com <c>match</c> (Q22) — e o que
+    /// permite a <c>match</c> um dia sair do compilador sobre esta primitiva.
+    /// </summary>
+    [Fact]
+    public void Is_IsNotExhaustive_AndThatIsFine() =>
+        ShouldPass("def e = Option<Int>.Some(1);\nif e is Some(v) { print(v); };");
 }

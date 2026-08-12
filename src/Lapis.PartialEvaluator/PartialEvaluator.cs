@@ -129,6 +129,7 @@ public sealed class PartialEvaluator
         CoreSpanRepeat n => SpecializeSpanRepeat(n, environment),
         CoreIndex n => SpecializeIndex(n, environment),
         CoreMatch n => SpecializeMatch(n, environment),
+        CoreIs n => SpecializeIs(n, environment),
         CoreAssign n => SpecializeAssign(n, environment),
         CoreLoop n => SpecializeLoop(n, environment),
         CoreBreak n => SpecializeBreak(n, environment),
@@ -839,6 +840,49 @@ public sealed class PartialEvaluator
         return new PECompletion(kind, new DynamicResult(residual, TypeOf(node)));
     }
 
+    /// <summary>
+    /// <c>e is Variante(x)</c> (plano 25). Ramifica como <see cref="SpecializeIf"/>,
+    /// mas <b>não dobra</b>: os dois ramos são especializados e o teste sobrevive.
+    ///
+    /// Não é conservadorismo escolhido — é que o PE nunca chega a conhecer um
+    /// <c>EnumValue</c> hoje. Construir uma variante é uma chamada, e chamada é
+    /// impura por conservadorismo (<see cref="Effects"/>); e um valor de enum
+    /// tampouco sabe voltar a ser expressão (<c>Residualizer.CanResidualize</c>).
+    /// É a mesma parede que <see cref="SpecializeMatch"/> encontra.
+    ///
+    /// Quando o M17–M19 ensinar o PE a avaliar construção de variante, dobrar o
+    /// <c>is</c> passa a ser possível — e é aqui que entra: escolher o ramo pela
+    /// etiqueta e, com ligação, propagar a carga adiante como valor conhecido.
+    /// Escrevê-lo antes disso seria ramo morto que nenhum teste alcança.
+    /// </summary>
+    private PECompletion SpecializeIs(CoreIs node, StaticEnvironment environment)
+    {
+        var scrutinee = Specialize(node.Scrutinee, environment);
+
+        if (!scrutinee.FlowsThroughStatically)
+        {
+            return scrutinee;
+        }
+
+        var thenBranch = Specialize(node.Then, environment.Child());
+        var elseBranch = Specialize(node.Else, environment.Child());
+
+        var residual = _factory.Is(
+            node.Span,
+            _residualizer.Residualize(scrutinee.Result, node.Scrutinee.Span),
+            node.OwnerName,
+            node.VariantName,
+            node.BindingName,
+            _residualizer.Residualize(thenBranch.Result, node.Then.Span),
+            _residualizer.Residualize(elseBranch.Result, node.Else.Span),
+            node.VariantSpan,
+            node.BindingSpan);
+
+        return new PECompletion(
+            PECompletion.Join(thenBranch.Kind, elseBranch.Kind),
+            new DynamicResult(residual, TypeOf(node)));
+    }
+
     private static bool TrySelect(
         CorePattern pattern,
         Value value,
@@ -1044,6 +1088,7 @@ public sealed class PartialEvaluator
                 CoreLambda lambda => lambda.Parameters.Any(p => p.Name == name)
                                      || lambda.TypeParameters.Any(p => p.Name == name),
                 CoreMatch match => match.Arms.Any(a => BoundNames(a.Pattern).Contains(name)),
+                CoreIs @is => @is.BindingName == name,
                 _ => false,
             };
         }
