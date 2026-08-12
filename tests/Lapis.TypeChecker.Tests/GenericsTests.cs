@@ -30,17 +30,17 @@ public sealed class GenericFunctionTests : TypeCheckerTestBase
         ShouldFailWith(Identity + "def r = identity<Int, Str>(1);", DiagnosticCodes.GenericArityMismatch);
 
     [Fact]
-    public void Generic_Substitution_InArrayParameter()
+    public void Generic_Substitution_InSpanParameter()
     {
         const string Source = """
-            def first = fn<T>(xs: T[], fallback: T) T {
+            def first = fn<T>(xs: [T;?], fallback: T) T {
                 match xs[0] {
-                    Result.Ok(value) => return value,
-                    Result.Err(e) => return fallback
+                    Option.Some(value) => return value,
+                    Option.None => return fallback
                 }
             };
 
-            def r = first<Int>([1, 2, 3], 0);
+            def r = first<Int>(.[1, 2, 3], 0);
             """;
 
         TypeOfDef(Source, "r").ShouldBe(PrimitiveType.Int);
@@ -48,21 +48,22 @@ public sealed class GenericFunctionTests : TypeCheckerTestBase
 
     /// <summary>
     /// A substituição desce por dentro dos argumentos de um tipo nomeado: o
-    /// parâmetro <c>T</c> em <c>Result&lt;T, IndexError&gt;</c> precisa virar
-    /// <c>Int</c>, senão nada casa com o parâmetro instanciado.
+    /// parâmetro <c>T</c> em <c>Option&lt;T&gt;</c> precisa virar <c>Int</c>,
+    /// senão nada casa com o parâmetro instanciado.
     /// </summary>
     [Fact]
     public void Generic_Substitution_InsideNamedTypeArguments()
     {
         const string Source = """
-            def unwrapOr = fn<T>(r: Result<T, IndexError>, fallback: T) T {
-                match r {
-                    Result.Ok(value) => return value,
-                    Result.Err(error) => return fallback
+            def unwrapOr = fn<T>(o: Option<T>, fallback: T) T {
+                match o {
+                    Option.Some(value) => return value,
+                    Option.None => return fallback
                 }
             };
 
-            def r = unwrapOr<Int>([10, 20][1], 0);
+            var xs = .[10, 20];
+            def r = unwrapOr<Int>(xs[1], 0);
             """;
 
         TypeOfDef(Source, "r").ShouldBe(PrimitiveType.Int);
@@ -148,8 +149,8 @@ public sealed class GenericTypeInstantiationTests : TypeCheckerTestBase
     }
 
     [Fact]
-    public void Generic_Enum_Result() =>
-        ShouldPass("def r: Result<Int, IndexError> = [1][0];");
+    public void Generic_Enum_Option() =>
+        ShouldPass("var a = .[1];\ndef r: Option<Int> = a[0];");
 
     /// <summary>
     /// Construir a variante de um enum genérico exige os argumentos: sem inferência
@@ -162,7 +163,7 @@ public sealed class GenericTypeInstantiationTests : TypeCheckerTestBase
     [Fact]
     public void GenericVariant_WithArguments_Typechecks()
     {
-        var type = TypeOfDef("def r = Result<Int, IndexError>.Ok(1);", "r").ShouldBeOfType<NamedType>();
+        var type = TypeOfDef("def r = Result<Int, Str>.Ok(1);", "r").ShouldBeOfType<NamedType>();
 
         type.Definition.Name.ShouldBe("Result");
         type.Arguments.Length.ShouldBe(2);
@@ -171,7 +172,7 @@ public sealed class GenericTypeInstantiationTests : TypeCheckerTestBase
     [Fact]
     public void GenericVariant_PayloadIsSubstituted() =>
         ShouldFailWith(
-            """def r = Result<Int, IndexError>.Ok("s");""", DiagnosticCodes.ArgumentTypeMismatch);
+            """def r = Result<Int, Str>.Ok("s");""", DiagnosticCodes.ArgumentTypeMismatch);
 
     /// <summary>Uma variante nulária de enum genérico também precisa dos argumentos.</summary>
     [Fact]
@@ -202,11 +203,11 @@ public sealed class GenericTypeInstantiationTests : TypeCheckerTestBase
 /// <summary>Const generics — spec §13, Q1.</summary>
 public sealed class ConstGenericTests : TypeCheckerTestBase
 {
-    private const string FixedArray = "def FixedArray = type<T, N: Int> { values: T[]; };\n";
+    private const string FixedArray = "def FixedArray = type<T, N: Int> { values: [T;?]; };\n";
 
     [Fact]
     public void Const_Generic_Ok() =>
-        ShouldPass(FixedArray + "def a: FixedArray<Int, 3> = .FixedArray<Int, 3> { values: [1, 2, 3] };");
+        ShouldPass(FixedArray + "def a: FixedArray<Int, 3> = .FixedArray<Int, 3> { values: .[1, 2, 3] };");
 
     [Fact]
     public void Const_Generic_WrongKind_TypeForConst() =>
@@ -236,14 +237,14 @@ public sealed class ConstGenericTests : TypeCheckerTestBase
     public void Const_Generic_FromDefBoundToLiteral() =>
         ShouldPass(
             "def n = 3;\n" + FixedArray
-            + "def a: FixedArray<Int, n> = .FixedArray<Int, 3> { values: [1, 2, 3] };");
+            + "def a: FixedArray<Int, n> = .FixedArray<Int, 3> { values: .[1, 2, 3] };");
 
     /// <summary>Um `def` que só repassa outro `def` continua constante.</summary>
     [Fact]
     public void Const_Generic_PropagatesThroughDefChain() =>
         ShouldPass(
             "def n = 3;\ndef m = n;\n" + FixedArray
-            + "def a: FixedArray<Int, m> = .FixedArray<Int, 3> { values: [1, 2, 3] };");
+            + "def a: FixedArray<Int, m> = .FixedArray<Int, 3> { values: .[1, 2, 3] };");
 
     /// <summary>Um `def` ligado a uma função literal também é constante.</summary>
     [Fact]
@@ -300,10 +301,10 @@ public sealed class ConstGenericTests : TypeCheckerTestBase
     [Fact]
     public void ConstParameter_CanBeForwardedToAGenericType() =>
         ShouldPass("""
-            def Boxed = type<T, N: Int> { values: T[]; };
+            def Boxed = type<T, N: Int> { values: [T;?]; };
 
             def make = fn<N: Int>(v: Int) Boxed<Int, N> {
-                return .Boxed<Int, N> { values: [v] };
+                return .Boxed<Int, N> { values: .[v] };
             };
 
             def b: Boxed<Int, 4> = make<4>(9);
@@ -317,10 +318,10 @@ public sealed class ConstGenericTests : TypeCheckerTestBase
     public void ConstParameter_IsClosedByInstantiation() =>
         ShouldFailWith(
             """
-            def Boxed = type<T, N: Int> { values: T[]; };
+            def Boxed = type<T, N: Int> { values: [T;?]; };
 
             def make = fn<N: Int>(v: Int) Boxed<Int, N> {
-                return .Boxed<Int, N> { values: [v] };
+                return .Boxed<Int, N> { values: .[v] };
             };
 
             def b: Boxed<Int, 5> = make<4>(9);

@@ -148,7 +148,7 @@ public sealed class Evaluator
         CoreIf n => EvaluateIf(n, environment),
         CoreBinary n => EvaluateBinary(n, environment),
         CoreUnary n => EvaluateUnary(n, environment),
-        CoreArray n => EvaluateArray(n, environment),
+        CoreSpan n => EvaluateArray(n, environment),
         CoreIndex n => EvaluateIndex(n, environment),
         CoreField n => EvaluateField(n, environment),
         CoreEnumDef n => EvaluateEnumDef(n),
@@ -446,7 +446,7 @@ public sealed class Evaluator
         return Completion.Normal(value);
     }
 
-    private Completion EvaluateArray(CoreArray node, Environment environment)
+    private Completion EvaluateArray(CoreSpan node, Environment environment)
     {
         var elements = ImmutableArray.CreateBuilder<Value>(node.Elements.Length);
 
@@ -463,9 +463,9 @@ public sealed class Evaluator
             elements.Add(evaluated.Value);
         }
 
-        var elementType = ((ArrayType)_program.TypeOf(node)).Element;
+        var elementType = ((SpanType)_program.TypeOf(node)).Element;
 
-        return Completion.Normal(new ArrayValue(elements.ToImmutable(), elementType));
+        return Completion.Normal(new SpanValue(elements.ToImmutable(), elementType));
     }
 
     /// <summary>
@@ -492,24 +492,46 @@ public sealed class Evaluator
             return index;
         }
 
-        if (target.Value is not ArrayValue array || index.Value is not IntValue offset)
+        if (target.Value is not SpanValue span || index.Value is not IntValue offset)
         {
             throw new InternalCompilerException(
                 "indexação sobre valores inesperados; o checker deveria ter rejeitado", node.Span);
         }
 
+        var outcome = Primitives.SpanGet(span, offset.Value);
+
+        // O checker provou que o índice está dentro dos limites: o elemento sai
+        // direto, sem envelope (plano 24 §24.5).
+        if (_program.ResolutionOf<TotalIndexResolution>(node) is not null)
+        {
+            return Completion.Normal(outcome.IsInBounds
+                ? outcome.Value!
+                : throw new InternalCompilerException(
+                    "indexação provada total saiu dos limites", node.Span));
+        }
+
         var prelude = _prelude
             ?? throw new InternalCompilerException("indexação sem prelude carregado", node.Span);
 
-        var outcome = Primitives.ArrayGet(array, offset.Value);
-
         return Completion.Normal(outcome.IsInBounds
-            ? prelude.MakeOk(outcome.Value!, array.ElementType)
-            : prelude.MakeIndexError(array.ElementType));
+            ? prelude.MakeSome(outcome.Value!, span.ElementType)
+            : prelude.MakeNone(span.ElementType));
     }
 
     private Completion EvaluateField(CoreField node, Environment environment)
     {
+        // `s.length` — o valor sempre tem tamanho concreto, então a leitura é a
+        // mesma com ou sem o tamanho no tipo. É o que a decisão de Q29 exige da
+        // representação: o span carrega a quantidade junto do dado.
+        if (_program.ResolutionOf<SpanLengthResolution>(node) is not null)
+        {
+            var span = Evaluate(node.Target, environment);
+
+            return span.IsNormal
+                ? Completion.Normal(new IntValue(((SpanValue)span.Value).Elements.Length))
+                : span;
+        }
+
         // Acesso a campo de instância: precisa avaliar o alvo.
         if (_program.ResolutionOf<FieldResolution>(node) is { } field)
         {

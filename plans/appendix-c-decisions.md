@@ -846,8 +846,15 @@ e ela não abre variância: o elemento continua invariante, `[Int;3]` não é
 
 Consequência de runtime, também decidida: um span carrega **tamanho do elemento e
 quantidade** junto do dado, porque é o que permite a `[T;?]` responder `length` sem
-o tipo dizer. No evaluator atual isso já é verdade de graça — `ArrayValue` guarda
+o tipo dizer. No evaluator atual isso já é verdade de graça — `SpanValue` guarda
 `Elements` e `ElementType` —, e a exigência vale para um backend futuro.
+
+> **Implementada no M12.** A relação vive em `TypeRelations.IsAssignableTo`, e
+> **toda** posição que aceita um valor passa por ela — incluindo a atribuição a
+> `var`, que até então comparava com `!=` e por isso rejeitava
+> `var a = .[1]; a = .[1, 2, 3];`. A junção de ramos ganhou o par: dois spans do
+> mesmo elemento e tamanhos diferentes juntam-se em `[T;?]`, o que dá tipo a
+> `if c { .[1] } else { .[1, 2] }` e a `.[.[1], .[2, 3]]`.
 
 ## Q30 — aritmética de tamanho no tipo ⏳ *(adiada com razão)*
 
@@ -875,6 +882,12 @@ E fecha uma assimetria que estava no repositório: `Option` foi para o prelude n
 porque a spec §29 o cita, e ficou **sem um único consumidor** desde então. Agora
 tem o seu — e `IndexError` fica sem nenhum, o que abre a pergunta de aposentá-lo
 (recomendação do plano 24: sim, agora, que é quando a quebra custa menos).
+
+> **Implementada no M12**, com uma metade que a decisão não previa: onde o tamanho
+> **está** no tipo e o índice é constante, não há envelope nenhum. `Option<T>` é o
+> caso de `[T;?]` e de índice dinâmico; `[T;N]` com índice constante devolve `T`
+> direto, e o índice fora dos limites vira `LAP0244` em compilação. `IndexError`
+> saiu do prelude.
 
 ## Q28 — `arr[i] = v` ⏳
 

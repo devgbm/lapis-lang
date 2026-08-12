@@ -359,15 +359,15 @@ public sealed class InvariantTests : DesugarTestBase
     }
 }
 
-public sealed class ArrayAndEnumDesugarTests : DesugarTestBase
+public sealed class SpanAndEnumDesugarTests : DesugarTestBase
 {
     [Fact]
-    public void Array_IsOneToOne()
+    public void Span_IsOneToOne()
     {
-        var program = Compile("def a = [1, 2];");
+        var program = Compile("def a = .[1, 2];");
 
         program.Body.ShouldBeOfType<CoreLet>().Value
-            .ShouldBeOfType<CoreArray>().Elements.Length.ShouldBe(2);
+            .ShouldBeOfType<CoreSpan>().Elements.Length.ShouldBe(2);
     }
 
     /// <summary>

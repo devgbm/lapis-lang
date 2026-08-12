@@ -232,8 +232,8 @@ public static class SurfaceSExprPrinter
                 Close(builder, indent);
                 break;
 
-            case ArrayExpression n:
-                Open(builder, indent, "array");
+            case SpanExpression n:
+                Open(builder, indent, "span");
 
                 foreach (var element in n.Elements)
                 {
@@ -376,10 +376,17 @@ public static class SurfaceSExprPrinter
     {
         NamedTypeSyntax { Arguments.IsDefaultOrEmpty: true } n => n.Name,
         NamedTypeSyntax n => $"{n.Name}{PrintGenericArguments(n.Arguments)}",
-        ArrayTypeSyntax n => PrintType(n.Element) + "[]",
+        SpanTypeSyntax n => $"[{PrintType(n.Element)};{PrintSize(n.Size)}]",
         FunctionTypeSyntax n =>
             $"fn({string.Join(", ", n.Parameters.Select(PrintType))}) {PrintType(n.Return)}",
         _ => "<?>",
+    };
+
+    private static string PrintSize(SpanSizeSyntax size) => size switch
+    {
+        FixedSizeSyntax n => n.Value.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        NamedSizeSyntax n => n.Name,
+        _ => "?",
     };
 
     private static void Open(StringBuilder builder, int indent, string head) =>

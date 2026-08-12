@@ -61,6 +61,8 @@ public static class DiagnosticCodes
 
     public const string HeterogeneousArray = "LAP0240";
     public const string EmptyArrayNeedsAnnotation = "LAP0241";
+    public const string IndexOutOfBounds = "LAP0244";
+    public const string InvalidSpanSize = "LAP0245";
     public const string NotIndexable = "LAP0242";
     public const string IndexMustBeInt = "LAP0243";
 

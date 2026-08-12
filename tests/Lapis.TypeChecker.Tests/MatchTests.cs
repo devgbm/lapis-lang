@@ -97,12 +97,12 @@ public sealed class MatchTypeTests : TypeCheckerTestBase
 
     /// <summary>
     /// Os argumentos de tipo da instância são substituídos na carga: em
-    /// <c>r: Result&lt;Int, IndexError&gt;</c>, o `v` de `Result.Ok(v)` é `Int`.
+    /// <c>r: Result&lt;Int, Str&gt;</c>, o `v` de `Result.Ok(v)` é `Int`.
     /// </summary>
     [Fact]
     public void Match_OnGenericEnum_SubstitutesTypeArguments() =>
         ShouldPass("""
-            def f = fn(r: Result<Int, IndexError>) Int {
+            def f = fn(r: Result<Int, Str>) Int {
                 match r {
                     Result.Ok(v) => return v,
                     Result.Err(e) => return 0
@@ -113,7 +113,7 @@ public sealed class MatchTypeTests : TypeCheckerTestBase
     [Fact]
     public void Match_OnGenericEnum_PayloadTypeIsChecked() =>
         ShouldFailWith("""
-            def f = fn(r: Result<Int, IndexError>) Str {
+            def f = fn(r: Result<Int, Str>) Str {
                 match r {
                     Result.Ok(v) => return v,
                     Result.Err(e) => return "e"
@@ -138,14 +138,19 @@ public sealed class MatchTypeTests : TypeCheckerTestBase
             };
             """);
 
+    /// <summary>
+    /// O escrutinado é o <c>Option</c> de uma indexação sem tamanho conhecido
+    /// (plano 24): o span é <c>var</c> justamente para alargar o tamanho para
+    /// <c>?</c>.
+    /// </summary>
     [Fact]
-    public void Match_ScrutineeOnIndexResult() =>
+    public void Match_ScrutineeOnIndexOption() =>
         ShouldPass("""
-            def numbers = [1, 2, 3];
+            var numbers = .[1, 2, 3];
 
             def x: Int = match numbers[0] {
-                Result.Ok(v) => v,
-                Result.Err(e) => 0
+                Option.Some(v) => v,
+                Option.None => 0
             };
             """);
 
@@ -153,7 +158,7 @@ public sealed class MatchTypeTests : TypeCheckerTestBase
     [Fact]
     public void Match_WithReturnInEveryArm_SatisfiesReturnAnalysis() =>
         ShouldPass("""
-            def unwrapOr = fn(r: Result<Int, IndexError>, fallback: Int) Int {
+            def unwrapOr = fn(r: Result<Int, Str>, fallback: Int) Int {
                 match r {
                     Result.Ok(value) => return value,
                     Result.Err(error) => return fallback

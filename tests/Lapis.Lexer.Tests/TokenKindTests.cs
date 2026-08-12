@@ -48,6 +48,10 @@ public sealed class TokenKindTests : LexerTestBase
     [InlineData(".", TokenKind.Dot)]
     [InlineData("_", TokenKind.Underscore)]
     [InlineData("=>", TokenKind.FatArrow)]
+
+    // O tamanho desconhecido de um span, `[Int;?]` (plano 24). É o único uso de
+    // `?` na linguagem — não há operador ternário nem tipo opcional.
+    [InlineData("?", TokenKind.Question)]
     public void Punctuation_IsRecognized(string source, TokenKind expected) =>
         Single(source).Kind.ShouldBe(expected);
 

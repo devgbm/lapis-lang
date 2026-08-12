@@ -128,7 +128,7 @@ concatenação faz sentido.
 | **M9** ✅ | Compile time | `@post` com deduplicação de rota; `throw` e contexto | 18 |
 | **M10** ✅ | Reflection | `reflect(Color).variants` nas duas fases | 19 |
 | **M11** ✅ | Macros de controle | `@unless` e `@while` no prelude; **nada é retirado** da Core | 20 |
-| **M12** | Span | `[Int;3]`, `.[1,2,3]`, índice literal checado, `length` constante, indexação → `Option` | 24 |
+| **M12** ✅ | Span | `[Int;3]`, `.[1,2,3]`, índice literal checado, `length` constante, indexação → `Option` | 24 |
 | **M13** | Type members | `def User.create`, `User.defaultAge`, `mutavel.campo = e` | 21 |
 | **M14** | Métodos de instância | `user.hello()` ≡ chamar a função com `user` no argumento 0 | 22 |
 | **M15** | Extensions genéricas | `def<T> Result<T>.isOk` — **bloqueado por Q27** | 23 |
@@ -136,11 +136,11 @@ concatenação faz sentido.
 | **M17** | PE análise | range analysis, bounds-check elimination, `lapis pe --trace` | 14, 15 |
 | **M18** | Equivalência | property-based: `eval(P,S) ≡ eval(PE(P,S),S)` | 11, 14 |
 
-**Por que span vem primeiro.** O plano 24 muda a sintaxe de tipo de sequência e o
-`prelude.ls` junto — `TypeInfo` tem quatro campos de span — e troca o retorno da
-indexação de `Result<T, IndexError>` por `Option<T>`. Migrar prelude, exemplos e
-corpus é a maior parte daquele plano, e fazê-la **antes** dos type members evita
-migrar duas vezes.
+**Por que span veio primeiro.** O plano 24 mudou a sintaxe de tipo de sequência e
+o `prelude.ls` junto — `TypeInfo` tem quatro campos de span — e trocou o retorno
+da indexação de `Result<T, IndexError>` por `Option<T>`. Migrar prelude, exemplos
+e corpus foi a maior parte daquele plano, e fazê-la **antes** dos type members
+evitou migrar duas vezes.
 
 **Por que fechar a linguagem antes do partial evaluator** (decisão do autor):
 
@@ -159,7 +159,7 @@ O custo é assumido: os type members chegam sem que o M15 já saiba eliminar a
 chamada, então `user.hello()` custa uma chamada até lá. É preço de sintaxe, não de
 semântica.
 
-**O que ainda falta para "fechar"**, além de M12–M15: **Q23** — a construção para
+**O que ainda falta para "fechar"**, além de M13–M15: **Q23** — a construção para
 ler a carga de uma variante com segurança, que Q22 adiou e sem a qual `@match`
 não pode existir. É o último buraco conhecido da superfície.
 

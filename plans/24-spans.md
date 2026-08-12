@@ -261,10 +261,84 @@ Por enquanto `concat` devolve `[T;?]`.
 
 ## Critérios de conclusão
 
-- [ ] `[T;N]` e `[T;?]` no modelo de tipos, com `.[...]` construindo.
-- [ ] `Int[]` removido — uma sintaxe só para tipo de span.
-- [ ] `[T;N] <: [T;?]`, numa direção só, com elemento invariante.
-- [ ] Índice literal fora dos limites virando `LAP0244` em compilação.
-- [ ] Indexação devolvendo `Option<T>`; `IndexError` aposentado.
-- [ ] `length` constante sobre `[T;N]`, runtime sobre `[T;?]`.
-- [ ] Prelude, exemplos e corpus migrados, **com as mesmas saídas**.
+- [x] `[T;N]` e `[T;?]` no modelo de tipos, com `.[...]` construindo.
+- [x] `Int[]` removido — uma sintaxe só para tipo de span.
+- [x] `[T;N] <: [T;?]`, numa direção só, com elemento invariante.
+- [x] Índice literal fora dos limites virando `LAP0244` em compilação.
+- [x] Indexação devolvendo `Option<T>`; `IndexError` aposentado.
+- [x] `length` constante sobre `[T;N]`, runtime sobre `[T;?]`.
+- [x] Prelude, exemplos e corpus migrados, **com as mesmas saídas**.
+
+---
+
+## O que a implementação mudou no plano
+
+### O tamanho é do binding, não do valor
+
+§24.7 dizia "um `var` sem anotação alarga para `?`", e o alargamento parecia ser
+do tipo do literal. Não é: `.[1, 2, 3]` continua sendo `[Int;3]` onde quer que
+apareça. Quem alarga é a **ligação** — `CheckLet` troca o tipo do binding quando
+ele é mutável, e o literal fica intacto.
+
+A diferença aparece no teste: perguntar o tipo do valor de um `var` devolve
+`[Int;3]`, e só perguntar o tipo de um *uso* devolve `[Int;?]`. É a leitura certa,
+porque é a ligação que pode receber outro tamanho depois.
+
+### Atribuição precisa da relação, não da igualdade
+
+Não estava previsto: `CheckAssign` comparava `valueType != binding.Type` com `!=`,
+e por isso `var a = .[1]; a = .[1, 2, 3];` — o caso que motiva o alargamento
+inteiro — era rejeitado. Passou a usar `TypeRelations.IsAssignableTo`, que é o que
+a Q29 exige e o que as outras posições (argumento, retorno, anotação) já usavam.
+
+### Literal de span junta, não iguala
+
+Também não estava previsto. `.[.[1], .[2, 3]]` — spans de tamanhos diferentes
+dentro de um span — era `LAP0240` porque a checagem exigia elementos idênticos.
+Passou a usar `TypeRelations.Join`: o elemento comum é `[Int;?]`, exatamente como
+em `if c { .[1] } else { .[1, 2] }`. `LAP0240` sobra para o que junção nenhuma
+resolve, como `.[1, "x"]`.
+
+### O PE dobra indexação total e `length`
+
+§24.5 e §24.6 falavam do checker; o especializador ganhou os dois de brinde, e o
+ganho é maior do que parecia. Uma indexação com `TotalIndexResolution` sobre um
+span estático é uma projeção — o elemento sai e a expressão some. `length` sobre
+span estático vira a constante. Nenhum dos dois precisou de análise de limites: a
+prova já estava feita e registrada.
+
+Os dois só dobram com o **valor** em mãos, não só com o tipo: descartar o alvo sem
+saber que ele é estático descartaria junto os efeitos dele.
+
+### `.[]` continua não sendo residualizável
+
+§24.9 previa como ganho que o span vazio voltasse a ser residualizável, "porque o
+tipo diz elemento e tamanho". Está errado: o tipo diz, mas a **sintaxe** não tem
+onde escrevê-lo. Não há anotação de expressão na linguagem, então emitir `.[]` no
+lugar de um uso produziria um residual que não compila (`LAP0241`). A restrição do
+M7 continua exatamente como estava.
+
+### Um bug antigo do PE, achado pelo caso novo
+
+O caso de conformidade de `length` como argumento const genérico não compilava
+depois da especialização, e a causa não era do span: um argumento genérico nu é
+uma **string** no Core (`CoreNameArgument`), não um `CoreVariable`. A propagação
+não passava por ele, mas a eliminação de código morto apagava o `def` mesmo assim
+— e o residual saía citando um nome que não existia mais. `def n = 3;
+print(escala<n>(5));` já quebrava, desde o M7; o corpus só nunca tinha exercitado
+a forma.
+
+Consertado no lugar certo: o especializador troca o nome pelo valor quando ele é
+conhecido, na instanciação e na construção de `type` genérico. Um argumento que
+nomeia um **tipo** atravessa intacto, porque definição de tipo não é valor
+conhecido no ambiente estático. `FreeVariables` também passou a contar nomes em
+argumento genérico e em tamanho de span (`[Int;n]`), que é o outro lado da mesma
+omissão.
+
+### `length` como argumento const genérico exige um `def`
+
+§24.6 dizia que `length` sobre `[T;N]` é "utilizável como argumento const
+genérico". É verdade, com uma vírgula: `escala<a.length>(5)` não parseia. O
+critério da Q5 aceita a leitura genérica quando o argumento termina em `,` ou `>`,
+e `a.length` continua depois do identificador. Um `def n = a.length;` no meio
+resolve, e a limitação não é do span — vale para qualquer expressão nessa posição.

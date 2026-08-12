@@ -27,7 +27,7 @@
 //   55
 //   60
 
-def valores = [10, 20, 30];
+def valores = .[10, 20, 30];
 
 var i = 0;
 var soma = 0;
@@ -48,14 +48,18 @@ goto somando if n <= 10;
 
 print(soma);
 
-// E percorrendo um array. A indexação continua devolvendo `Result`, então o
-// braço de erro existe mesmo quando o laço garante que ele não acontece.
+// E percorrendo um span. O índice é um `var`, então não é constante para o
+// checker: a indexação devolve `Option`, e o braço de `None` existe mesmo quando
+// o laço garante que ele não acontece. Com índice literal, `valores[1]` daria o
+// `Int` direto — ver `examples/spans.ls`.
+//
+// `valores.length` é `3` em compilação, porque o tamanho está no tipo.
 label percorre;
 match valores[k] {
-    Result.Ok(v) => { total = total + v; },
-    Result.Err(e) => { print("fora dos limites"); }
+    Option.Some(v) => { total = total + v; },
+    Option.None => { print("fora dos limites"); }
 }
 k = k + 1;
-goto percorre if k < 3;
+goto percorre if k < valores.length;
 
 print(total);

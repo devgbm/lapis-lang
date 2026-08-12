@@ -88,6 +88,24 @@ desugar — macro é sintaxe, não código, e o resto do pipeline não a conhece
 Redeclarar uma delas no arquivo do usuário **sombreia**, sem diagnóstico, do mesmo
 jeito que `def Result = ...` sombreia o `Result` do prelude.
 
+### 9.1c O que o M12 tirou e o que pôs no lugar
+
+O plano 24 aposentou **`IndexError`**. Ele existia por um consumidor só — a
+indexação —, e a indexação passou a devolver `Option<T>`: `IndexError.OutOfBounds`
+era um enum de uma variante cujo significado é "falhou", e `Result` existe para o
+erro que **diz** alguma coisa. `Option`, que estava no prelude desde o M2 sem um
+único consumidor, passou a ter o seu.
+
+Os campos de reflection que eram `Str[]`/`FieldInfo[]`/`VariantInfo[]` passaram a
+`[Str;?]`/`[FieldInfo;?]`/`[VariantInfo;?]`: a quantidade depende do tipo
+refletido, e não há `N` para escrever.
+
+**`array_length` saiu da tabela de nativos** sem nunca ter sido implementado. O
+lugar dele é `s.length`, resolvido pelo checker sobre qualquer span — constante
+quando o tamanho está no tipo, leitura em execução quando não está. Não podia ser
+nativo pelo critério da §9.2 mesmo: `fn(Any) Int` aceitaria qualquer valor, e o
+que se quer é um membro que só existe sobre span.
+
 ### 9.2 Nativos
 
 Os únicos nomes que **não** dá para escrever em LapisLang, registrados
@@ -96,7 +114,6 @@ diretamente no escopo raiz:
 | Nome | Tipo | Motivo de ser nativo |
 |---|---|---|
 | `print` | `fn(Any) Void` | efeito de I/O. Não é genérico: com Q7 exigindo argumentos explícitos, `fn<T>(T) Void` obrigaria `print<Int>(x)` em todo programa. `Any` é um tipo top interno que nenhuma sintaxe produz |
-| `array_length` | `fn(Any) Int` | acesso à representação (spec §29); mesma razão de `print` para não ser genérico |
 
 Regra de admissão de novos nativos, para manter §58.2: um nome só pode ser nativo
 se for **impossível** defini-lo em `prelude.ls`. Cada nativo novo precisa dessa

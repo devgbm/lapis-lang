@@ -50,6 +50,7 @@ public enum TokenKind
     Underscore,
     FatArrow,
     At,
+    Question,
 
     // operadores
     Plus,
@@ -127,6 +128,7 @@ public static class TokenKindExtensions
         TokenKind.ConstraintKeyword => "'constraint'",
         TokenKind.ThrowKeyword => "'throw'",
         TokenKind.At => "'@'",
+        TokenKind.Question => "'?'",
         TokenKind.OpenParen => "'('",
         TokenKind.CloseParen => "')'",
         TokenKind.OpenBrace => "'{'",

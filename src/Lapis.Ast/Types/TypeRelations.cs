@@ -1,8 +1,11 @@
 namespace Lapis.Ast.Types;
 
 /// <summary>
-/// As duas únicas relações entre tipos da LapisLang 0.2: atribuibilidade
-/// (governada por <c>Never &lt;: T</c>) e junção de ramos (plano 06 §6.6).
+/// As duas únicas relações entre tipos da LapisLang: atribuibilidade e junção de
+/// ramos (plano 06 §6.6).
+///
+/// A subtipagem tem exatamente <b>duas</b> regras, e nenhuma delas é variância:
+/// <c>Never &lt;: T</c> (Q13) e <c>[T;N] &lt;: [T;?]</c> (Q29).
 /// </summary>
 public static class TypeRelations
 {
@@ -25,6 +28,18 @@ public static class TypeRelations
         if (target is AnyType)
         {
             return true;
+        }
+
+        // Q29: um span de tamanho conhecido cabe onde se espera tamanho
+        // desconhecido. `?` não é outro tamanho — é a ausência da informação, e
+        // esquecer o que se sabia é sempre seguro.
+        //
+        // Numa direção só: `[T;?]` num `[T;N]` seria afirmar um tamanho que
+        // ninguém verificou. E o elemento continua **invariante** — `[Int;3]` não
+        // é `[Any;?]`, senão escrever no span quebraria o tipo.
+        if (target is SpanType { Size: UnknownSize } wanted && source is SpanType actual)
+        {
+            return actual.Element == wanted.Element;
         }
 
         return source == target;
@@ -51,6 +66,14 @@ public static class TypeRelations
             return left;
         }
 
+        // Dois spans do mesmo elemento e tamanhos diferentes juntam-se em `?`: é
+        // o menor tipo que descreve os dois, e é o que faz
+        // `if c { .[1] } else { .[1,2] }` ter tipo em vez de erro.
+        if (left is SpanType a && right is SpanType b && a.Element == b.Element && a.Size != b.Size)
+        {
+            return SpanType.Unknown(a.Element);
+        }
+
         return left == right ? left : null;
     }
 
@@ -65,7 +88,7 @@ public static class TypeRelations
     {
         ErrorType => true,
         PrimitiveType p => p.Kind != PrimitiveKind.Void,
-        ArrayType a => IsComparable(a.Element, visiting),
+        SpanType s => IsComparable(s.Element, visiting),
         FunctionType => false,
 
         // Um enum é comparável se todas as cargas forem; um struct, se todos os

@@ -370,11 +370,11 @@ public sealed class ControlFlowIsIntactTests : ConstraintTestBase
     public void CoreMatch_StillExists_WithPayloadDestructuring()
     {
         Output("""
-            def numeros = [10, 20, 30];
+            var numeros = .[10, 20, 30];
 
             match numeros[1] {
-                Result.Ok(valor) => print(valor),
-                Result.Err(erro) => print("erro")
+                Option.Some(valor) => print(valor),
+                Option.None => print("erro")
             }
             """).ShouldBe("20\n");
 

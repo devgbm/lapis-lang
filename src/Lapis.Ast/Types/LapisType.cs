@@ -73,9 +73,60 @@ public sealed record AnyType : LapisType
     public override string ToDisplayString() => "Any";
 }
 
-public sealed record ArrayType(LapisType Element) : LapisType
+/// <summary>
+/// Quantos elementos um <see cref="SpanType"/> carrega.
+///
+/// Faz parte do <b>tipo</b>, e não do valor, porque é isso que torna
+/// <c>s[3]</c> sobre um <c>[Int;3]</c> um erro de tipo — checado pela mesma
+/// maquinaria que rejeita <c>def a: Str = 1;</c> (plano 24).
+/// </summary>
+public abstract record SpanSize
 {
-    public override string ToDisplayString() => $"{Element.ToDisplayString()}[]";
+    public abstract string ToDisplayString();
+
+    public sealed override string ToString() => ToDisplayString();
+}
+
+public sealed record FixedSize(int Value) : SpanSize
+{
+    public override string ToDisplayString() => Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+}
+
+/// <summary>
+/// O tamanho só existe em execução.
+///
+/// <c>?</c> <b>não</b> é um tamanho diferente — é a ausência da informação. Por
+/// isso <c>[T;N]</c> é atribuível a <c>[T;?]</c> (Q29): a conversão é esquecer o
+/// que se sabia, e esquecer é sempre seguro.
+/// </summary>
+public sealed record UnknownSize : SpanSize
+{
+    public static readonly UnknownSize Instance = new();
+
+    public override string ToDisplayString() => "?";
+}
+
+/// <summary>Um parâmetro const genérico como tamanho: <c>fn&lt;N: Int&gt;(s: [Int;N])</c> (Q18).</summary>
+public sealed record ConstSize(string Parameter) : SpanSize
+{
+    public override string ToDisplayString() => Parameter;
+}
+
+/// <summary>
+/// Sequência contígua com o tamanho no tipo: <c>[Int;3]</c>, <c>[Int;?]</c>.
+///
+/// Chama-se <b>span</b>, e não array, porque é a primitiva: <c>Array</c> e
+/// <c>List</c> — crescimento, realocação, capacidade separada de comprimento —
+/// virão como biblioteca construída sobre ela (plano 24 §24.1).
+/// </summary>
+public sealed record SpanType(LapisType Element, SpanSize Size) : LapisType
+{
+    /// <summary>Um span cujo tamanho só se conhece em execução.</summary>
+    public static SpanType Unknown(LapisType element) => new(element, UnknownSize.Instance);
+
+    public static SpanType Of(LapisType element, int size) => new(element, new FixedSize(size));
+
+    public override string ToDisplayString() => $"[{Element.ToDisplayString()};{Size.ToDisplayString()}]";
 }
 
 public sealed record TypeParameterType(string Name) : LapisType

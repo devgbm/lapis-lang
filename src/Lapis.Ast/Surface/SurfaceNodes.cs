@@ -218,7 +218,13 @@ public sealed record InstantiateExpression(
     Expression Target,
     ImmutableArray<GenericArgumentSyntax> Arguments) : Expression;
 
-public sealed record ArrayExpression(ImmutableArray<Expression> Elements) : Expression;
+/// <summary>
+/// <c>.[1, 2, 3]</c> — construção de span.
+///
+/// Leva ponto pela mesma razão que <c>.User { }</c> (Q2): o parser distingue
+/// valor de tipo com um token só, e <c>[</c> fica livre para ser sempre tipo.
+/// </summary>
+public sealed record SpanExpression(ImmutableArray<Expression> Elements) : Expression;
 
 public sealed record IndexExpression(Expression Target, Expression Index) : Expression;
 
@@ -342,6 +348,16 @@ public sealed record NamedTypeSyntax(string Name, ImmutableArray<GenericArgument
     public static NamedTypeSyntax Of(string name, SourceSpan span) => new(name, []) { Span = span };
 }
 
-public sealed record ArrayTypeSyntax(TypeSyntax Element) : TypeSyntax;
+/// <summary><c>[Int;3]</c>, <c>[Int;?]</c>, <c>[Int;N]</c>.</summary>
+public sealed record SpanTypeSyntax(TypeSyntax Element, SpanSizeSyntax Size) : TypeSyntax;
+
+/// <summary>O tamanho como escrito: literal, <c>?</c>, ou o nome de um parâmetro const.</summary>
+public abstract record SpanSizeSyntax : SurfaceNode;
+
+public sealed record FixedSizeSyntax(long Value) : SpanSizeSyntax;
+
+public sealed record UnknownSizeSyntax : SpanSizeSyntax;
+
+public sealed record NamedSizeSyntax(string Name) : SpanSizeSyntax;
 
 public sealed record FunctionTypeSyntax(ImmutableArray<TypeSyntax> Parameters, TypeSyntax Return) : TypeSyntax;

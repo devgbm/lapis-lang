@@ -7,22 +7,24 @@
 // `T` e passa a ser `Int`. É a diferença entre descrever a declaração e descrever
 // uma instância dela, e as duas são leituras legítimas.
 //
-// Repare também que indexar um array de metadados devolve `Result`, como qualquer
-// outro array (spec §21): reflection não escapa das regras da linguagem.
+// Repare também que indexar um span de metadados devolve `Option`, como qualquer
+// outro span de tamanho desconhecido (plano 24): reflection não escapa das regras
+// da linguagem. Os campos do `TypeInfo` são `[T;?]` porque a quantidade depende do
+// tipo refletido, e não há `N` para escrever.
 // expect: output
 // ["T", "E"]
 // ["T"]
 // ["Int"]
 // ---
-def nenhum: Str[] = [];
+def nenhum: [Str;?] = .[];
 
-def payloadDaPrimeiraVariante = fn(info: TypeInfo) Str[] {
+def payloadDaPrimeiraVariante = fn(info: TypeInfo) [Str;?] {
     match info.variants[0] {
-        Result.Ok(variante) => return variante.payloadTypeNames,
-        Result.Err(erro) => return nenhum
+        Option.Some(variante) => return variante.payloadTypeNames,
+        Option.None => return nenhum
     }
 };
 
 print(reflect(Result).typeParameterNames);
 print(payloadDaPrimeiraVariante(reflect(Result)));
-print(payloadDaPrimeiraVariante(reflect(Result<Int, IndexError>)));
+print(payloadDaPrimeiraVariante(reflect(Option<Int>)));

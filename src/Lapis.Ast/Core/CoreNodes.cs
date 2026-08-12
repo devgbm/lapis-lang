@@ -222,7 +222,7 @@ public sealed class CoreUnary(
     public CoreExpr Operand { get; } = operand;
 }
 
-public sealed class CoreArray(
+public sealed class CoreSpan(
     int nodeId,
     SourceSpan span,
     ImmutableArray<CoreExpr> elements) : CoreExpr(nodeId, span)

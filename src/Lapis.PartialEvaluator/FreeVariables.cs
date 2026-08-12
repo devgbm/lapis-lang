@@ -106,6 +106,21 @@ public static class FreeVariables
 
                 break;
 
+            // `escala<n>(5)` **usa** `n`, e o uso não é um `CoreVariable`: um
+            // argumento genérico nu é um `CoreNameArgument`, uma string. Sem
+            // contá-lo, `def n = 3;` vira código morto e o residual cita um nome
+            // que não existe mais. Vale igual para o nome de tipo em
+            // `Caixa<Cor>` — é o mesmo raciocínio de `CoreConstruct`.
+            case CoreInstantiate n:
+                Collect(n.Target, free);
+
+                foreach (var argument in n.Arguments)
+                {
+                    CollectFromArgument(argument, free);
+                }
+
+                break;
+
             default:
                 foreach (var child in Children(node))
                 {
@@ -146,8 +161,16 @@ public static class FreeVariables
 
                 break;
 
-            case ArrayTypeSyntax n:
+            case SpanTypeSyntax n:
                 CollectFromType(n.Element, free);
+
+                // O tamanho pode ser um nome: `[Int;n]` cita o `n`, e é a mesma
+                // razão de contar o argumento genérico nu.
+                if (n.Size is NamedSizeSyntax size)
+                {
+                    free.Add(size.Name);
+                }
+
                 break;
 
             case FunctionTypeSyntax n:
@@ -260,7 +283,7 @@ public static class FreeVariables
                 yield return n.Operand;
                 break;
 
-            case CoreArray n:
+            case CoreSpan n:
                 foreach (var element in n.Elements)
                 {
                     yield return element;

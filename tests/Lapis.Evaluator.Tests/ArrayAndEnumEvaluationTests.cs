@@ -1,68 +1,97 @@
 namespace Lapis.Evaluator.Tests;
 
-public sealed class ArrayEvaluationTests : EvaluatorTestBase
+public sealed class SpanEvaluationTests : EvaluatorTestBase
 {
     [Fact]
-    public void Array_Literal() => Eval("[1, 2, 3]").ShouldBe("[1, 2, 3]");
+    public void Span_Literal() => Eval(".[1, 2, 3]").ShouldBe("[1, 2, 3]");
 
     [Fact]
-    public void Array_OfStrings_PrintsQuoted() => Eval("[\"a\", \"b\"]").ShouldBe("[\"a\", \"b\"]");
+    public void Span_OfStrings_PrintsQuoted() => Eval(".[\"a\", \"b\"]").ShouldBe("[\"a\", \"b\"]");
 
     [Fact]
-    public void Array_Nested() => Eval("[[1], [2, 3]]").ShouldBe("[[1], [2, 3]]");
+    public void Span_Nested() => Eval(".[.[1], .[2, 3]]").ShouldBe("[[1], [2, 3]]");
 
     [Fact]
-    public void Array_ElementsEvaluateLeftToRight() =>
+    public void Span_ElementsEvaluateLeftToRight() =>
         Output("""
             def trace = fn(n: Int) Int {
                 print(n);
                 return n;
             };
 
-            def a = [trace(1), trace(2), trace(3)];
+            def a = .[trace(1), trace(2), trace(3)];
             """).ShouldBe("1\n2\n3\n");
 
     [Fact]
-    public void Array_Equality_IsElementwise()
+    public void Span_Equality_IsElementwise()
     {
-        Eval("[1, 2] == [1, 2]").ShouldBe("true");
-        Eval("[1, 2] == [2, 1]").ShouldBe("false");
+        Eval(".[1, 2] == .[1, 2]").ShouldBe("true");
+        Eval(".[1, 2] == .[2, 1]").ShouldBe("false");
     }
+
+    /// <summary>
+    /// <c>length</c> é o tamanho que o span carrega em execução (plano 24 §24.6).
+    /// Aqui o span é <c>var</c>, então o checker não sabe o tamanho e a leitura
+    /// acontece de fato no valor.
+    /// </summary>
+    [Fact]
+    public void Span_Length_IsReadAtRuntime() =>
+        Output("var a = .[1, 2, 3];\nprint(a.length);").ShouldBe("3\n");
+
+    /// <summary>E com o tamanho no tipo, o mesmo número sai sem tocar no valor.</summary>
+    [Fact]
+    public void Span_Length_OfKnownSize() =>
+        Output("def a = .[1, 2, 3];\nprint(a.length);").ShouldBe("3\n");
+
+    [Fact]
+    public void Span_Length_OfEmpty() =>
+        Output("def a: [Int;0] = .[];\nprint(a.length);").ShouldBe("0\n");
 }
 
 /// <summary>
-/// Os três casos da spec §50, mais as fronteiras. Indexar <b>nunca</b> lança e
-/// nunca aborta (spec §30).
+/// Os três casos da spec §50, mais as fronteiras — revisados pelo plano 24.
+///
+/// Onde o tamanho está no tipo a indexação é total e o elemento sai nu; onde não
+/// está, sai um <c>Option</c>. Nenhum dos dois lança ou aborta (spec §30).
 /// </summary>
 public sealed class IndexEvaluationTests : EvaluatorTestBase
 {
     [Fact]
-    public void Index_First_IsOk() => Eval("[1, 2, 3][0]").ShouldBe("Result.Ok(1)");
+    public void Index_KnownSize_First_IsTotal() => Eval(".[1, 2, 3][0]").ShouldBe("1");
 
     [Fact]
-    public void Index_Last_IsOk() => Eval("[1, 2, 3][2]").ShouldBe("Result.Ok(3)");
+    public void Index_KnownSize_Last_IsTotal() => Eval(".[1, 2, 3][2]").ShouldBe("3");
 
     [Fact]
-    public void Index_PastEnd_IsErr() =>
-        Eval("[1, 2, 3][3]").ShouldBe("Result.Err(IndexError.OutOfBounds)");
+    public void Index_UnknownSize_InBounds_IsSome() =>
+        Output("var a = .[1, 2, 3];\nprint(a[0]);").ShouldBe("Option.Some(1)\n");
 
     [Fact]
-    public void Index_Negative_IsErr() =>
-        Eval("[1, 2, 3][-1]").ShouldBe("Result.Err(IndexError.OutOfBounds)");
+    public void Index_UnknownSize_PastEnd_IsNone() =>
+        Output("var a = .[1, 2, 3];\nprint(a[3]);").ShouldBe("Option.None\n");
 
     [Fact]
-    public void Index_EmptyArray_IsErr() =>
-        Eval("[1][5]").ShouldBe("Result.Err(IndexError.OutOfBounds)");
+    public void Index_UnknownSize_Negative_IsNone() =>
+        Output("var a = .[1, 2, 3];\nprint(a[0 - 1]);").ShouldBe("Option.None\n");
 
     [Fact]
-    public void Index_FarOutOfBounds_IsErr() =>
-        Eval("[1][9223372036854775807]").ShouldBe("Result.Err(IndexError.OutOfBounds)");
+    public void Index_UnknownSize_EmptySpan_IsNone() =>
+        Output("var a: [Int;?] = .[];\nprint(a[0]);").ShouldBe("Option.None\n");
 
     [Fact]
-    public void Index_Nested_WrapsInnerArray() => Eval("[[1, 2]][0]").ShouldBe("Result.Ok([1, 2])");
+    public void Index_UnknownSize_FarOutOfBounds_IsNone() =>
+        Output("var a = .[1];\nprint(a[9223372036854775807]);").ShouldBe("Option.None\n");
 
     [Fact]
-    public void Index_ComputedIndex() => Eval("[10, 20, 30][1 + 1]").ShouldBe("Result.Ok(30)");
+    public void Index_Nested_YieldsInnerSpan() => Eval(".[.[1, 2]][0]").ShouldBe("[1, 2]");
+
+    /// <summary>
+    /// Índice computado não é constante para o checker, então a indexação volta a
+    /// ser parcial mesmo com o tamanho no tipo.
+    /// </summary>
+    [Fact]
+    public void Index_ComputedIndex_IsOption() =>
+        Output("var i = 1;\nprint(.[10, 20, 30][i + 1]);").ShouldBe("Option.Some(30)\n");
 
     [Fact]
     public void Index_TargetBeforeIndex() =>
@@ -72,27 +101,27 @@ public sealed class IndexEvaluationTests : EvaluatorTestBase
                 return n;
             };
 
-            def arrays = [[1]];
-            def r = arrays[trace(0)];
+            var spans = .[.[1]];
+            def r = spans[trace(0)];
             """).ShouldBe("0\n");
 
     /// <summary>
     /// Spec §30: fora de limites é semântica do programa, não erro do evaluator.
-    /// Para qualquer índice, o resultado é sempre um <c>Result</c>.
+    /// Onde o tamanho não está no tipo, qualquer índice produz um <c>Option</c>.
     /// </summary>
     [Theory]
-    [InlineData("-9223372036854775807")]
-    [InlineData("-1")]
+    [InlineData("0 - 9223372036854775807")]
+    [InlineData("0 - 1")]
     [InlineData("0")]
     [InlineData("2")]
     [InlineData("3")]
     [InlineData("1000")]
     public void Index_NeverThrows(string index)
     {
-        var outcome = Run($"print([1, 2, 3][{index}]);");
+        var outcome = Run($"var a = .[1, 2, 3];\nprint(a[{index}]);");
 
         outcome.Status.ShouldBe(ExecutionStatus.Completed);
-        outcome.Output.ShouldStartWith("Result.");
+        outcome.Output.ShouldStartWith("Option.");
     }
 }
 
@@ -134,8 +163,8 @@ public sealed class EnumEvaluationTests : EvaluatorTestBase
             """).ShouldBe("true\nfalse\n");
 
     [Fact]
-    public void IndexError_FromPrelude() =>
-        Output("print(IndexError.OutOfBounds);").ShouldBe("IndexError.OutOfBounds\n");
+    public void Option_FromPrelude() =>
+        Output("print(Option<Int>.None);").ShouldBe("Option.None\n");
 
     /// <summary>Q3: enums são impressos qualificados, como devem ser escritos.</summary>
     [Fact]
@@ -145,31 +174,39 @@ public sealed class EnumEvaluationTests : EvaluatorTestBase
 
 public sealed class SpecSection50Tests : EvaluatorTestBase
 {
-    /// <summary>Os três casos literais da spec §50, num só programa.</summary>
+    /// <summary>
+    /// Os três casos literais da spec §50, num só programa. O span é <c>var</c>:
+    /// é o caso em que o tamanho não está no tipo, que é do que a §50 fala.
+    /// </summary>
     [Fact]
     public void ThreeCasesFromSpec() =>
         Output("""
-            print([1,2,3][0]);
-            print([1,2,3][2]);
-            print([1,2,3][3]);
+            var a = .[1,2,3];
+
+            print(a[0]);
+            print(a[2]);
+            print(a[3]);
             """).ShouldBe("""
-            Result.Ok(1)
-            Result.Ok(3)
-            Result.Err(IndexError.OutOfBounds)
+            Option.Some(1)
+            Option.Some(3)
+            Option.None
 
             """.ReplaceLineEndings("\n"));
 
-    /// <summary>Spec §42: o caso que o partial evaluator vai otimizar no M8.</summary>
+    /// <summary>
+    /// Spec §42: o caso que o partial evaluator otimiza. Com o tamanho no tipo, o
+    /// checker já resolveu a indexação e o valor sai nu.
+    /// </summary>
     [Fact]
     public void Section42_Example() =>
         Output("""
-            def values = [10, 20, 30];
+            def values = .[10, 20, 30];
             def x = values[1];
 
             print(x);
-            """).ShouldBe("Result.Ok(20)\n");
+            """).ShouldBe("20\n");
 
-    /// <summary>Spec §5: programa completo com array e indexação.</summary>
+    /// <summary>Spec §5: programa completo com span e indexação.</summary>
     [Fact]
     public void Section5_Example() =>
         Output("""
@@ -177,10 +214,10 @@ public sealed class SpecSection50Tests : EvaluatorTestBase
                 return a + b;
             };
 
-            def numbers = [1, 2, 3];
+            def numbers = .[1, 2, 3];
 
             def result = numbers[1];
 
             print(result);
-            """).ShouldBe("Result.Ok(2)\n");
+            """).ShouldBe("2\n");
 }

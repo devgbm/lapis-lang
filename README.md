@@ -47,40 +47,51 @@ lapis hello.ls
 | **M9** — `constraint`, `throw` e contexto de compilação | ✅ concluído |
 | **M10** — reflection nas duas fases | ✅ concluído |
 | **M11** — `@unless` e `@while` no prelude | ✅ concluído |
-| M12–M15 — span com tamanho no tipo, type members, extension methods | ⏳ próximo |
+| **M12** — span com o tamanho no tipo | ✅ concluído |
+| M13–M15 — type members, extension methods | ⏳ próximo |
 | M16–M18 — PE: especialização, análise, equivalência | ⬜ |
 
-**1486 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
+**1537 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
 evaluator, partial evaluator e CLI — entre eles uma **suíte de conformidade** de
-171 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
+180 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
 spec é um arquivo, e o nome do teste que falha já é o arquivo a abrir.
 
 A linguagem já roda programas de verdade: funções de primeira classe com
 closures, `return` explícito com verificação de "retorna em todos os caminhos",
-arrays com indexação segura, enums, `match` exaustivo, tipos definidos pelo
+spans com indexação checada em compilação, enums, `match` exaustivo, tipos definidos pelo
 usuário, generics (inclusive const generics), `goto`/`label`, mutação com `var`,
 macros higiênicas com validação em tempo de compilação, reflection, e um prelude
 escrito na própria linguagem — laços inclusive.
 
 ```c
-def numbers = [10, 20, 30];
+def numbers = .[10, 20, 30];    // [Int;3] — o tamanho está no tipo
 
-def unwrapOr = fn<T>(r: Result<T, IndexError>, fallback: T) T {
-    match r {
-        Result.Ok(value) => return value,
-        Result.Err(error) => return fallback
+print(numbers[1]);              // 20 — total, os limites foram provados
+print(numbers.length);          // 3  — constante de compilação
+// print(numbers[3]);           // LAP0244: erro de compilação, não falha em execução
+
+var mutaveis = .[10, 20, 30];   // [Int;?] — um `var` pode receber outro tamanho
+
+def unwrapOr = fn<T>(o: Option<T>, fallback: T) T {
+    match o {
+        Option.Some(value) => return value,
+        Option.None => return fallback
     }
 };
 
-print(unwrapOr<Int>(numbers[1], 0));    // 20
-print(unwrapOr<Int>(numbers[9], 0));    // 0
+print(unwrapOr<Int>(mutaveis[1], 0));    // 20
+print(unwrapOr<Int>(mutaveis[9], 0));    // 0
 ```
 
-Indexar **sempre** devolve `Result` (spec §21): a falha aparece no tipo, e o
-acesso fora de limites nunca lança. `match` deve ser exaustivo, porque é uma
-expressão e precisa produzir um valor em toda execução. E argumentos genéricos
-são **sempre explícitos** — não há inferência na 0.2 (decisão Q7), o que mantém o
-type checker previsível e deixa a porta aberta para inferência depois.
+Um **span** é uma sequência com o tamanho no tipo, e é a diferença entre as duas
+metades desse exemplo. Onde o tamanho é conhecido e o índice é constante, indexar
+é **total**: o compilador verifica os limites e devolve o elemento, sem envelope
+nenhum. Onde o tamanho se perde, a checagem sobra para a execução e o resultado é
+um `Option<T>` — a falha aparece no tipo, e o acesso fora de limites nunca lança.
+`match` deve ser exaustivo, porque é uma expressão e precisa produzir um valor em
+toda execução. E argumentos genéricos são **sempre explícitos** — não há
+inferência na 0.2 (decisão Q7), o que mantém o type checker previsível e deixa a
+porta aberta para inferência depois.
 
 Const generics são o caso interessante para a pesquisa: `N` é conhecido no ponto
 da instanciação mesmo quando o resto só existe em execução. Um argumento const
@@ -279,11 +290,12 @@ Só o que um `goto` **explícito** pode ter pulado continua invisível no destin
 que é a única forma de o contrário ser mentira. `examples/control.ls` mostra os
 três casos.
 
-O que falta: **fechar a linguagem** primeiro (M12–M15) — **span**, a sequência com
-o tamanho no tipo (`[Int;3]`, construída com `.[1,2,3]`, indexando para `Option`),
-mais type members e extension methods —, porque o partial evaluator
-precisa de um caso para cada construção, e escrevê-lo contra uma superfície que
-ainda cresce significa reabri-lo a cada milestone. Depois o resto do PE (M16–M18):
+O que falta: **fechar a linguagem** primeiro (M13–M15) — type members e extension
+methods —, porque o partial evaluator precisa de um caso para cada construção, e
+escrevê-lo contra uma superfície que ainda cresce significa reabri-lo a cada
+milestone. O **span** já entrou (M12): o tamanho no tipo tirou do partial
+evaluator o caso trivial de eliminação de bounds check e deixou com ele o
+interessante — provar `i < n` para um `i` derivado de laço. Depois o resto do PE (M16–M18):
 especialização de chamadas e eliminação de bounds check. O roteiro completo está em
 [`plans/`](plans/README.md).
 

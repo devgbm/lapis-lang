@@ -368,7 +368,7 @@ public sealed class Desugarer
 
         CallExpression e => JumpsTo(e.Callee, names) || e.Arguments.Any(a => JumpsTo(a, names)),
         InstantiateExpression e => JumpsTo(e.Target, names),
-        ArrayExpression e => e.Elements.Any(x => JumpsTo(x, names)),
+        SpanExpression e => e.Elements.Any(x => JumpsTo(x, names)),
         IndexExpression e => JumpsTo(e.Target, names) || JumpsTo(e.Index, names),
         MemberExpression e => JumpsTo(e.Target, names),
         ConstructExpression e => e.Fields.Any(f => JumpsTo(f.Value, names)),
@@ -498,7 +498,7 @@ public sealed class Desugarer
                     DesugarExpression(n.Target),
                     DesugarGenericArguments(n.Arguments));
 
-            case ArrayExpression n:
+            case SpanExpression n:
                 return _factory.Array(n.Span, [.. n.Elements.Select(DesugarExpression)]);
 
             // A checagem de limites é semântica do nó Index (spec §41), não uma

@@ -335,7 +335,7 @@ public sealed class MacroExpander
             case InstantiateExpression n:
                 return n with { Target = RewriteExpression(n.Target, depth) };
 
-            case ArrayExpression n:
+            case SpanExpression n:
                 return n with { Elements = [.. n.Elements.Select(e => RewriteExpression(e, depth))] };
 
             case IndexExpression n:

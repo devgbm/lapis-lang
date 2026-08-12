@@ -10,16 +10,16 @@ def Result = enum<T, E> {
     Err(E)
 };
 
-def IndexError = enum {
-    OutOfBounds
-};
-
 // Falha de `contextGet` (spec de macros §8.3). Chave ausente é falha esperada, e
 // a spec §30 é categórica: falha esperada aparece no tipo, não em aborto.
 def ContextError = enum {
     Missing
 };
 
+// O retorno de uma indexação que pode falhar (Q31). Era
+// `Result<T, IndexError>` até o M12: `IndexError.OutOfBounds` nunca carregou
+// informação — um enum de uma variante cujo significado é "falhou" —, e `Result`
+// existe para o erro que **diz** alguma coisa.
 def Option = enum<T> {
     Some(T),
     None
@@ -43,7 +43,7 @@ def FieldInfo = type {
 def VariantInfo = type {
     name: Str;
     arity: Int;
-    payloadTypeNames: Str[];
+    payloadTypeNames: [Str;?];
 };
 
 // `typeName` é `Str`, e não um `TypeInfo` aninhado: tipos podem ser recursivos, e
@@ -55,9 +55,9 @@ def VariantInfo = type {
 def TypeInfo = type {
     name: Str;
     kind: TypeKind;
-    typeParameterNames: Str[];
-    fields: FieldInfo[];
-    variants: VariantInfo[];
+    typeParameterNames: [Str;?];
+    fields: [FieldInfo;?];
+    variants: [VariantInfo;?];
 };
 
 // ---------------------------------------------------------------- controle

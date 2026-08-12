@@ -995,9 +995,6 @@ public sealed class Parser
             case TokenKind.IfKeyword:
                 return ParseIf();
 
-            case TokenKind.OpenBracket:
-                return ParseArrayLiteral();
-
             case TokenKind.EnumKeyword:
                 return ParseEnum();
 
@@ -1054,9 +1051,10 @@ public sealed class Parser
         return inner;
     }
 
-    private Expression ParseArrayLiteral()
+    private Expression ParseSpanLiteral()
     {
         var start = Current.Span.Start;
+        _tokens.Advance(); // '.'
         _tokens.Advance(); // '['
 
         var elements = ImmutableArray.CreateBuilder<Expression>();
@@ -1079,10 +1077,10 @@ public sealed class Parser
 
         if (!_tokens.Match(TokenKind.CloseBracket))
         {
-            Report(DiagnosticCodes.ExpectedCloseBracket, Current.Span, "esperado ']' para fechar o array");
+            Report(DiagnosticCodes.ExpectedCloseBracket, Current.Span, "esperado ']' para fechar o span");
         }
 
-        return new ArrayExpression(elements.ToImmutable()) { Span = SpanFrom(start) };
+        return new SpanExpression(elements.ToImmutable()) { Span = SpanFrom(start) };
     }
 
     /// <summary>
@@ -1197,8 +1195,20 @@ public sealed class Parser
     /// O ponto inicial é o que torna esta produção reconhecível com um único token
     /// de lookahead, dispensando qualquer restrição contextual em <c>if</c>/<c>match</c>.
     /// </summary>
+    /// <summary>
+    /// O que vem depois do ponto decide: <c>.User { }</c> constrói um
+    /// <c>type</c>, <c>.[1, 2, 3]</c> constrói um span (plano 24).
+    ///
+    /// O ponto passa a significar, uniformemente, "isto é um valor sendo
+    /// construído" — e é o que libera <c>[</c> para ser sempre tipo.
+    /// </summary>
     private Expression ParseConstruct()
     {
+        if (_tokens.Peek(1).Kind == TokenKind.OpenBracket)
+        {
+            return ParseSpanLiteral();
+        }
+
         var start = Current.Span.Start;
         _tokens.Advance(); // '.'
 
@@ -1927,24 +1937,84 @@ public sealed class Parser
 
     // --------------------------------------------------------------- tipos
 
-    internal TypeSyntax ParseType()
+    internal TypeSyntax ParseType() => ParseTypePrimary();
+
+    /// <summary>
+    /// <c>[Int;3]</c>, <c>[Int;?]</c>, <c>[Int;N]</c> — o tamanho vive no tipo
+    /// (plano 24).
+    ///
+    /// A forma pós-fixa <c>Int[]</c> saiu: manter as duas exigiria escolher qual
+    /// delas carrega o tamanho, e dois jeitos de escrever o mesmo tipo é o que
+    /// este projeto evita. Com ela fora, <c>[</c> é sempre tipo e <c>.[</c> é
+    /// sempre valor.
+    /// </summary>
+    private TypeSyntax ParseSpanType()
     {
-        var type = ParseTypePrimary();
+        var start = Current.Span.Start;
+        _tokens.Advance(); // '['
 
-        while (Current.Kind == TokenKind.OpenBracket)
+        var element = ParseType();
+
+        if (!_tokens.Match(TokenKind.Semicolon))
         {
-            var start = type.Span.Start;
-            _tokens.Advance();
+            Report(DiagnosticCodes.ExpectedSemicolon, Current.Span, "esperado ';' no tipo de span");
 
-            if (!_tokens.Match(TokenKind.CloseBracket))
+            return new SpanTypeSyntax(element, new UnknownSizeSyntax { Span = Current.Span })
             {
-                Report(DiagnosticCodes.ExpectedCloseBracket, Current.Span, "esperado ']' no tipo de array");
-            }
-
-            type = new ArrayTypeSyntax(type) { Span = SpanFrom(start) };
+                Span = SpanFrom(start),
+            };
         }
 
-        return type;
+        var size = ParseSpanSize();
+
+        if (!_tokens.Match(TokenKind.CloseBracket))
+        {
+            Report(DiagnosticCodes.ExpectedCloseBracket, Current.Span, "esperado ']' no tipo de span");
+        }
+
+        return new SpanTypeSyntax(element, size) { Span = SpanFrom(start) };
+    }
+
+    private SpanSizeSyntax ParseSpanSize()
+    {
+        var token = Current;
+
+        switch (token.Kind)
+        {
+            case TokenKind.Question:
+                _tokens.Advance();
+                return new UnknownSizeSyntax { Span = token.Span };
+
+            case TokenKind.IntegerLiteral:
+                _tokens.Advance();
+
+                if (token.IntegerValue < 0)
+                {
+                    Report(
+                        DiagnosticCodes.InvalidSpanSize,
+                        token.Span,
+                        "o tamanho de um span deve ser um Int não negativo");
+                }
+
+                return new FixedSizeSyntax(token.IntegerValue) { Span = token.Span };
+
+            // Um parâmetro const genérico como tamanho: `fn<N: Int>(s: [Int;N])`.
+            case TokenKind.Identifier:
+                _tokens.Advance();
+                return new NamedSizeSyntax(token.Text) { Span = token.Span };
+
+            default:
+                Report(
+                    DiagnosticCodes.InvalidSpanSize,
+                    token.Span,
+                    $"esperado o tamanho do span, encontrado {token.Kind.Describe()}");
+
+                // Consome o token ofensivo para que o `]` ainda case: sem isto um
+                // tamanho inválido vira uma cascata de três diagnósticos.
+                _tokens.Advance();
+
+                return new UnknownSizeSyntax { Span = token.Span };
+        }
     }
 
     private TypeSyntax ParseTypePrimary()
@@ -1953,6 +2023,9 @@ public sealed class Parser
 
         switch (token.Kind)
         {
+            case TokenKind.OpenBracket:
+                return ParseSpanType();
+
             case TokenKind.Identifier:
                 return ParseNamedType();
 

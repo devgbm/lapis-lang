@@ -347,6 +347,9 @@ public sealed class Lexer
             ';' => (TokenKind.Semicolon, 1),
             '.' => (TokenKind.Dot, 1),
             '@' => (TokenKind.At, 1),
+
+            // Só aparece como tamanho de span: `[Int;?]` (plano 24).
+            '?' => (TokenKind.Question, 1),
             '+' => (TokenKind.Plus, 1),
             '-' => (TokenKind.Minus, 1),
             '*' => (TokenKind.Star, 1),

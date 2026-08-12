@@ -41,6 +41,23 @@ public sealed record VariantResolution(
 /// <summary>O índice do campo selecionado por um acesso sobre uma instância de <c>type</c>.</summary>
 public sealed record FieldResolution(int FieldIndex) : Resolution;
 
+/// <summary>
+/// <c>s.length</c>. <see cref="Known"/> é o tamanho quando ele está no tipo
+/// (<c>[T;N]</c>) — e aí a leitura é uma <b>constante</b>, utilizável como
+/// argumento const genérico. Em <c>[T;?]</c> é <c>null</c>, e o valor sai da
+/// memória em execução.
+/// </summary>
+public sealed record SpanLengthResolution(int? Known) : Resolution;
+
+/// <summary>
+/// A indexação é <b>total</b>: tamanho e índice eram conhecidos, e o checker já
+/// provou que ele está dentro dos limites (plano 24 §24.5).
+///
+/// O evaluator lê o elemento direto, sem envelope — é o que faz
+/// <c>.[1,2,3][1]</c> valer <c>2</c> e não <c>Option.Some(2)</c>.
+/// </summary>
+public sealed record TotalIndexResolution(int Index) : Resolution;
+
 /// <summary>A definição criada por um <c>type</c> ou <c>enum</c>.</summary>
 public sealed record TypeDefinitionResolution(TypeDefinition Definition) : Resolution;
 

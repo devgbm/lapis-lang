@@ -102,28 +102,34 @@ evaluator teria de modelar antes de especializar qualquer coisa com closure.
 | `LAP0230` | error | condição de `if` deve ser `Bool`, encontrado `{0}` |
 | `LAP0231` | error | ramos de `if` têm tipos incompatíveis: `{0}` e `{1}` |
 
-### Arrays e indexação
+### Spans e indexação
 
 | Código | Severidade | Mensagem |
 |---|---|---|
-| `LAP0240` | error | elementos de array devem ter o mesmo tipo: `{0}` e `{1}` |
-| `LAP0241` | error | array vazio requer anotação de tipo |
+| `LAP0240` | error | elementos de span devem ter o mesmo tipo: `{0}` e `{1}` |
+| `LAP0241` | error | span vazio requer anotação de tipo |
 | `LAP0242` | error | `{0}` não é indexável |
 | `LAP0243` | error | índice deve ser `Int`, encontrado `{0}` |
-| `LAP0244` | error | índice {0} fora dos limites de `[{1};{2}]` *(plano 24)* |
-| `LAP0245` | error | o tamanho de um span deve ser um `Int` não negativo *(plano 24)* |
+| `LAP0244` | error | índice {0} fora dos limites de `{1}` |
+| `LAP0245` | error | o tamanho de um span deve ser um `Int` não negativo |
 
-`LAP0244` só existe porque o tamanho passa a viver no tipo (plano 24): com
-`[Int;3]`, `s[3]` é erro **de tipo**, checado pela mesma maquinaria que rejeita
+`LAP0244` só existe porque o tamanho vive no tipo (plano 24): com `[Int;3]`,
+`s[3]` é erro **de tipo**, checado pela mesma maquinaria que rejeita
 `def a: Str = 1;`. Índice dinâmico ou span `[T;?]` devolvem `Option<T>` — provar
 `i < n` para um `i` derivado de laço é trabalho do partial evaluator (plano 14),
-não do checker.
+não do checker. A nota do diagnóstico aponta o alvo e diz quantos elementos ele
+tem.
 
-**A indexação deixa de devolver `Result<T, IndexError>`** e passa a devolver
-`Option<T>` (Q31): `IndexError.OutOfBounds` era um enum de uma variante cujo
-significado é "falhou", e `Result` existe para o erro que diz alguma coisa. As
-mensagens desta seção passam a falar de **span**, não de array — `Array` e `List`
-ficam reservados para a biblioteca.
+**A indexação não devolve `Result<T, IndexError>`** e sim `Option<T>` (Q31):
+`IndexError.OutOfBounds` era um enum de uma variante cujo significado é "falhou",
+e `Result` existe para o erro que diz alguma coisa. `IndexError` saiu do prelude
+junto. As mensagens desta seção falam de **span**, não de array — `Array` e
+`List` ficam reservados para a biblioteca.
+
+`LAP0240` usa a **junção** dos tipos, não a igualdade: `.[.[1], .[2, 3]]` é um
+span de spans de tamanhos diferentes, e o elemento comum é `[Int;?]` — a mesma
+regra que dá tipo a `if c { .[1] } else { .[1, 2] }`. O diagnóstico sobra para o
+que junção nenhuma resolve, como `.[1, "x"]`.
 
 `LAP0241` continua valendo: `.[]` diz o tamanho, não o tipo do elemento.
 

@@ -19,7 +19,7 @@
 //   30
 //   fim
 
-def valores = [10, 20, 30];
+def valores = .[10, 20, 30];
 
 // Saída antecipada: dois `goto` no topo evitam o aninhamento que a mesma
 // verificação exigiria com `if`.
@@ -28,8 +28,8 @@ def buscar = fn(indice: Int) Int {
     goto invalido if indice > 2;
 
     match valores[indice] {
-        Result.Ok(v) => return v,
-        Result.Err(e) => return -1
+        Option.Some(v) => return v,
+        Option.None => return -1
     }
 
     label invalido;

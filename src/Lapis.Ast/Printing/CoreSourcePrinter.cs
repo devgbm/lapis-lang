@@ -249,8 +249,9 @@ public static class CoreSourcePrinter
 
                 break;
 
-            case CoreArray n:
-                builder.Append('[');
+            case CoreSpan n:
+                // `.[` — construção leva ponto, como `.User { }` (plano 24).
+                builder.Append(".[");
 
                 for (var i = 0; i < n.Elements.Length; i++)
                 {

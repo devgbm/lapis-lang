@@ -42,7 +42,7 @@ public sealed class GenericParameterParseTests : ParserTestBase
 
     [Fact]
     public void GenericType_ConstParameter() =>
-        ShouldPrintAs("type<T, N: Int> { values: T[]; };", "(type<T, N: Int> (field values T[]))");
+        ShouldPrintAs("type<T, N: Int> { values: [T;?]; };", "(type<T, N: Int> (field values [T;?]))");
 
     [Fact]
     public void GenericEnum_Declaration() =>
@@ -82,8 +82,8 @@ public sealed class GenericArgumentParseTests : ParserTestBase
     [Fact]
     public void GenericVariant_Access() =>
         ShouldPrintAs(
-            "Result<Int, IndexError>.Ok(1);",
-            "(call (member Ok (instantiate <Int, IndexError> (name Result))) (int 1))");
+            "Result<Int, Str>.Ok(1);",
+            "(call (member Ok (instantiate <Int, Str> (name Result))) (int 1))");
 
     /// <summary>
     /// Spec §13: argumentos genéricos misturando string, inteiro, booleano, tipo e
@@ -135,7 +135,7 @@ public sealed class GenericArgumentParseTests : ParserTestBase
     [Fact]
     public void GenericType_InAnnotation()
     {
-        var annotation = Parse("def x: Result<Int, IndexError> = y;")
+        var annotation = Parse("def x: Result<Int, Str> = y;")
             .Statements.ShouldHaveSingleItem().ShouldBeOfType<DefStatement>()
             .Annotation.ShouldBeOfType<NamedTypeSyntax>();
 

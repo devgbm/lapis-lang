@@ -103,7 +103,7 @@ primary        = INT | FLOAT | STRING | "true" | "false"
                | "(" expression ")"
                | IDENT
                | block
-               | array_literal
+               | span_literal
                | construct_expr                         (* ver A.8 *)
                | fn_expr
                | type_expr
@@ -111,14 +111,11 @@ primary        = INT | FLOAT | STRING | "true" | "false"
                | if_expr
                | match_expr ;
 
-array_literal  = "[" ( expression ( "," expression )* ","? )? "]" ;
+span_literal   = "." "[" ( expression ( "," expression )* ","? )? "]" ;
 
-(* Muda no plano 24: a construção passa a levar ponto, como `.User { }` (Q2).
-
-   array_literal = "." "[" ( expression ( "," expression )* ","? )? "]" ;
-
-   `[` inicia um tipo, `.[` inicia um valor — a desambiguação é de um token, e é a
-   mesma regra que já vale para construção de `type`. *)
+(* O ponto é o mesmo de `.User { }` (Q2): `[` inicia um **tipo**, `.[` inicia um
+   **valor**. A desambiguação é de um token, e é o que permite ao tamanho viver no
+   tipo (A.6) sem colidir com a construção. *)
 
 if_expr        = "if" expression block ( "else" ( block | if_expr ) )? ;
 
@@ -154,27 +151,22 @@ O tipo de retorno de `fn` é opcional; ausente ⇒ `Void` (spec §6).
 ## A.6 Tipos
 
 ```ebnf
-type           = type_postfix ;
-type_postfix   = type_primary ( "[" "]" )* ;
-type_primary   = IDENT generic_args?
+type           = type_primary ;
+type_primary   = "[" type ";" span_size "]"      (* [Int;3]  [Int;?] *)
+               | IDENT generic_args?
                | "fn" "(" ( type ( "," type )* )? ")" type
                | "(" type ")" ;
+
+span_size      = INT | "?" | IDENT ;             (* literal, desconhecido, const generic *)
 ```
 
-> **Muda no plano 24.** O tamanho passa a viver no tipo, e a forma pós-fixa sai:
->
-> ```ebnf
-> type_primary   = "[" type ";" array_size "]"     (* [Int;3]  [Int;?] *)
->                | IDENT generic_args?
->                | "fn" "(" ( type ( "," type )* )? ")" type
->                | "(" type ")" ;
->
-> array_size     = INT | "?" | IDENT ;             (* literal, desconhecido, const generic *)
-> ```
->
-> `Int[]` deixa de existir: manter as duas formas exigiria escolher qual delas
-> carrega o tamanho, e dois jeitos de escrever o mesmo tipo é o que este projeto
-> evita. E `[` deixa de ser ambíguo — **`[` é tipo, `.[` é valor** (A.5).
+`Int[]` não existe: manter as duas formas exigiria escolher qual delas carrega o
+tamanho, e dois jeitos de escrever o mesmo tipo é o que este projeto evita. Não
+há mais forma pós-fixa de tipo, então `type` e `type_primary` coincidem — e `[`
+deixa de ser ambíguo: **`[` é tipo, `.[` é valor** (A.5).
+
+`span_size` com `IDENT` é o parâmetro const genérico: `[T;N]` dentro de um
+`fn<N: Int>` fala do `N` da assinatura.
 
 `Int`, `Float`, `Bool`, `Str`, `Void` são `IDENT` resolvidos pelo checker — não
 são palavras-chave. Isso permite ao usuário sombreá-los, com as consequências
@@ -210,7 +202,7 @@ parâmetros). A gramática acima adota parâmetros nomeados na declaração e va
 no uso:
 
 ```c
-def FixedArray = type<T, N: Int> { values: T[]; };   // declaração
+def FixedArray = type<T, N: Int> { values: [T;N]; };  // declaração
 def a: FixedArray<Int, 3> = ...;                     // uso
 ```
 
@@ -422,8 +414,8 @@ porque ali só pode ser isso.
 `@unless` e `@while` são construídos.
 
 
-`Int`, `Float`, `Bool`, `Str`, `Void`, `Result`, `IndexError`, `ContextError`,
-`Option`, `print`, `array_length` **não** são reservadas — são bindings do prelude
+`Int`, `Float`, `Bool`, `Str`, `Void`, `Result`, `ContextError`,
+`Option`, `print` **não** são reservadas — são bindings do prelude
 ou nomes resolvidos pelo checker.
 
 `contextHas`, `contextGet`, `contextPut` e `contextKeys` também não: são nativas, e
@@ -436,8 +428,14 @@ do usuário vence — sombrear é permitido em toda parte, e quem escreve a pró
 função `reflect` quis a sua. Ela não pode ser um binding comum porque o argumento
 tem de ser um **tipo**, e "um tipo" não é expressável na gramática de tipos: não há
 como escrever a assinatura de `reflect` em LapisLang. É o mesmo estatuto da
-indexação, que produz `Result<T, IndexError>` sem existir assinatura escrita para
-ela (spec §21).
+indexação, cujo tipo de resultado depende de o tamanho estar ou não no tipo do
+alvo — `T` num caso, `Option<T>` no outro (plano 24) — sem existir assinatura
+escrita para ela.
+
+`length` segue a mesma lógica pelo outro lado: não é campo nem método, é um
+membro que o checker resolve sobre qualquer span. Um `type` do usuário com um
+campo chamado `length` continua funcionando; a resolução de span só se aplica a
+spans.
 
 `TypeInfo`, `FieldInfo`, `VariantInfo` e `TypeKind` são bindings do prelude, como
 `Result`.

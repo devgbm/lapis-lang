@@ -1,12 +1,12 @@
-// spec §5 — programa completo com array e indexação.
+// spec §5 — programa completo com span e indexação.
 // expect: output
-// Result.Ok(2)
+// 2
 // ---
 def add = fn(a: Int, b: Int) Int {
     return a + b;
 };
 
-def numbers = [1, 2, 3];
+def numbers = .[1, 2, 3];
 
 def result = numbers[1];
 

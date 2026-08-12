@@ -113,8 +113,8 @@ public static class CoreSExprPrinter
                 Close(builder, indent);
                 break;
 
-            case CoreArray n:
-                Open(builder, indent, $"{tag}array");
+            case CoreSpan n:
+                Open(builder, indent, $"{tag}span");
 
                 foreach (var element in n.Elements)
                 {

@@ -25,8 +25,8 @@ macro exige_variantes
 
     constraint {
         if match reflect(nome).variants[0] {
-            Result.Ok(primeira) => false,
-            Result.Err(erro) => true
+            Option.Some(primeira) => false,
+            Option.None => true
         } {
             throw "esperado um enum com pelo menos uma variante";
         }

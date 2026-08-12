@@ -90,7 +90,7 @@ public sealed class EffectTests : PETestBase
     [InlineData("x * y - 3")]
     [InlineData("!(a == b)")]
     [InlineData("-x")]
-    [InlineData("[1, 2, 3]")]
+    [InlineData(".[1, 2, 3]")]
     [InlineData("a[0]")]
     public void Arithmetic_IsNeverImpure(string expression) =>
         Effects.IsPure(Parse(expression)).ShouldBeTrue();

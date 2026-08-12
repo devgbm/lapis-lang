@@ -1,20 +1,24 @@
-// Result e pattern matching (spec §16, §22).
+// Option e pattern matching (spec §16, §22).
 //
-// Variantes de enum exigem qualificação completa: `Result.Ok`, não `Ok`
+// Variantes de enum exigem qualificação completa: `Option.Some`, não `Some`
 // (decisão Q3 em plans/appendix-c-decisions.md).
+//
+// O escrutinado é a indexação de um span de tamanho desconhecido — o `var` é o
+// que apaga o tamanho do tipo. Fosse um `def`, o compilador já teria provado os
+// limites e não haveria envelope nenhum para desembrulhar; ver `spans.ls`.
 //
 // Saída esperada:
 //   20
 //   0
 
-def unwrapOr = fn(result: Result<Int, IndexError>, fallback: Int) Int {
+def unwrapOr = fn(result: Option<Int>, fallback: Int) Int {
     match result {
-        Result.Ok(value) => return value,
-        Result.Err(error) => return fallback
+        Option.Some(value) => return value,
+        Option.None => return fallback
     }
 };
 
-def values = [10, 20, 30];
+var values = .[10, 20, 30];
 
 print(unwrapOr(values[1], 0));
 print(unwrapOr(values[9], 0));

@@ -115,7 +115,7 @@ public sealed class PartialEvaluator
         CoreThrow n => SpecializeThrow(n, environment),
         CoreLambda n => SpecializeLambda(n, environment),
         CoreCall n => SpecializeCall(n, environment),
-        CoreArray n => SpecializeArray(n, environment),
+        CoreSpan n => SpecializeArray(n, environment),
         CoreIndex n => SpecializeIndex(n, environment),
         CoreMatch n => SpecializeMatch(n, environment),
         CoreAssign n => SpecializeAssign(n, environment),
@@ -497,7 +497,7 @@ public sealed class PartialEvaluator
 
     // ------------------------------------------------------ dados compostos
 
-    private PECompletion SpecializeArray(CoreArray node, StaticEnvironment environment)
+    private PECompletion SpecializeArray(CoreSpan node, StaticEnvironment environment)
     {
         var results = ImmutableArray.CreateBuilder<PEResult>(node.Elements.Length);
 
@@ -518,11 +518,11 @@ public sealed class PartialEvaluator
         if (_options.ConstantFolding && elements.All(r => r is StaticResult))
         {
             var values = elements.Cast<StaticResult>().Select(r => r.Value).ToImmutableArray();
-            var elementType = TypeOf(node) is ArrayType array
+            var elementType = TypeOf(node) is SpanType array
                 ? array.Element
                 : values.FirstOrDefault()?.Type ?? AnyType.Instance;
 
-            return PECompletion.Normal(Reduce(new ArrayValue(values, elementType), node));
+            return PECompletion.Normal(Reduce(new SpanValue(values, elementType), node));
         }
 
         return PECompletion.Normal(new DynamicResult(
@@ -533,11 +533,17 @@ public sealed class PartialEvaluator
     }
 
     /// <summary>
-    /// Indexar não dobra nesta fatia: o resultado é um <c>Result</c>, e um enum
-    /// construído não volta a ser expressão sem citar o nome do enum — que pode
-    /// estar sombreado no ponto de emissão. É o plano 14 que trata disso, junto com
-    /// a eliminação de bounds check, onde a construção do <c>Result</c> deixa de
-    /// ser detalhe e passa a ser o ponto.
+    /// Indexação <b>total</b> dobra; parcial, não.
+    ///
+    /// Com o tamanho no tipo e o índice constante, o checker já provou os limites
+    /// (plano 24 §24.5) e deixou uma <see cref="TotalIndexResolution"/>: o
+    /// elemento sai nu, e o PE só precisa lê-lo do span estático.
+    ///
+    /// Sem essa prova o resultado é um <c>Option</c>, e um enum construído não
+    /// volta a ser expressão sem citar o nome do enum — que pode estar sombreado no
+    /// ponto de emissão. É o plano 14 que trata disso, junto com a eliminação de
+    /// bounds check, onde a construção do envelope deixa de ser detalhe e passa a
+    /// ser o ponto.
     /// </summary>
     private PECompletion SpecializeIndex(CoreIndex node, StaticEnvironment environment)
     {
@@ -555,6 +561,13 @@ public sealed class PartialEvaluator
             return index;
         }
 
+        if (_options.ConstantFolding
+            && _types?.ResolutionOf<TotalIndexResolution>(node) is { } total
+            && ValueOf(target.Result) is SpanValue span)
+        {
+            return PECompletion.Normal(Reduce(span.Elements[total.Index], node));
+        }
+
         return PECompletion.Normal(new DynamicResult(
             _factory.Index(
                 node.Span,
@@ -570,6 +583,16 @@ public sealed class PartialEvaluator
         if (!target.FlowsThroughStatically)
         {
             return target;
+        }
+
+        // `s.length` sobre um span conhecido é uma constante. Só dobra com o valor
+        // em mãos: o tamanho no tipo bastaria para o número, mas descartar o alvo
+        // sem saber que ele é estático descartaria junto os efeitos dele.
+        if (_options.ConstantFolding
+            && _types?.ResolutionOf<SpanLengthResolution>(node) is not null
+            && ValueOf(target.Result) is SpanValue span)
+        {
+            return PECompletion.Normal(Reduce(new IntValue(span.Elements.Length), node));
         }
 
         // O alvo pode ser conhecido sem ser escrevível — um struct de reflection é
@@ -604,8 +627,50 @@ public sealed class PartialEvaluator
             _factory.Instantiate(
                 node.Span,
                 _residualizer.Residualize(target.Result, node.Target.Span),
-                node.Arguments),
+                SpecializeArguments(node.Arguments, node.Span, environment)),
             TypeOf(node)));
+    }
+
+    /// <summary>
+    /// Argumentos genéricos nus (<c>escala&lt;n&gt;</c>) precisam acompanhar a
+    /// propagação.
+    ///
+    /// Um <c>CoreNameArgument</c> é uma <b>string</b>, não um <c>CoreVariable</c>:
+    /// a substituição que troca `n` pelo valor não passa por ele, e o `Let` que
+    /// declarava `n` some por ninguém mais lê-lo. O residual ficaria citando um
+    /// nome que não existe. Trocar o nome pelo valor resolve os dois lados — e
+    /// especializa a instanciação de quebra.
+    ///
+    /// Um nome de <b>tipo</b> atravessa intacto: definição de tipo não é valor
+    /// conhecido no ambiente estático, então nunca cai neste caminho.
+    /// </summary>
+    private ImmutableArray<CoreGenericArgument> SpecializeArguments(
+        ImmutableArray<CoreGenericArgument> arguments,
+        SourceSpan span,
+        StaticEnvironment environment)
+    {
+        var rewritten = ImmutableArray.CreateBuilder<CoreGenericArgument>(arguments.Length);
+        var changed = false;
+
+        foreach (var argument in arguments)
+        {
+            if (argument is CoreNameArgument name
+                && environment.TryLookup(name.Name, out var binding)
+                && binding.Value is Known known
+                && Residualizer.CanResidualize(known.Value))
+            {
+                rewritten.Add(new CoreValueArgument(_residualizer.Residualize(known.Value, name.Span))
+                {
+                    Span = name.Span,
+                });
+                changed = true;
+                continue;
+            }
+
+            rewritten.Add(argument);
+        }
+
+        return changed ? rewritten.MoveToImmutable() : arguments;
     }
 
     private PECompletion SpecializeConstruct(CoreConstruct node, StaticEnvironment environment)
@@ -625,7 +690,12 @@ public sealed class PartialEvaluator
         }
 
         return PECompletion.Normal(new DynamicResult(
-            _factory.Construct(node.Span, node.TypeName, node.TypeArguments, fields.MoveToImmutable(), node.TypeNameSpan),
+            _factory.Construct(
+                node.Span,
+                node.TypeName,
+                SpecializeArguments(node.TypeArguments, node.Span, environment),
+                fields.MoveToImmutable(),
+                node.TypeNameSpan),
             TypeOf(node)));
     }
 
