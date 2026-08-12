@@ -29,15 +29,28 @@ public sealed class CoreFactory
         CoreExpr body,
         bool isSynthetic,
         SourceSpan? nameSpan = null,
-        bool isMutable = false) =>
+        bool isMutable = false,
+        SourceSpan? ownerSpan = null) =>
         new(Next(), span, name, annotation, value, body, isSynthetic)
         {
             NameSpan = nameSpan ?? span,
             IsMutable = isMutable,
+            OwnerSpan = ownerSpan,
         };
 
-    public CoreAssign Assign(SourceSpan span, string name, CoreExpr value, SourceSpan nameSpan) =>
-        new(Next(), span, name, value) { NameSpan = nameSpan };
+    public CoreAssign Assign(
+        SourceSpan span,
+        string name,
+        CoreExpr value,
+        SourceSpan nameSpan,
+        ImmutableArray<string> path = default,
+        ImmutableArray<SourceSpan> pathSpans = default) =>
+        new(Next(), span, name, value)
+        {
+            NameSpan = nameSpan,
+            Path = path.IsDefault ? [] : path,
+            PathSpans = pathSpans.IsDefault ? [] : pathSpans,
+        };
 
     public CoreLambda Lambda(
         SourceSpan span,

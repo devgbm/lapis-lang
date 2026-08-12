@@ -17,9 +17,9 @@ statement      = def_statement
                | macro_declaration
                | expr_statement ;
 
-def_statement  = ( "def" | "var" ) IDENT ( ":" type )? "=" expression ";" ;
+def_statement  = ( "def" | "var" ) IDENT ( "." IDENT )? ( ":" type )? "=" expression ";" ;
 
-assign_statement = IDENT "=" expression ";" ;
+assign_statement = IDENT ( "." IDENT )* "=" expression ";" ;
 
 goto_statement = "goto" IDENT ( "if" expression )? ";" ;
 
@@ -46,6 +46,15 @@ def abs = fn(x: Int) Int {
 A regra é a mesma do Rust e não introduz ambiguidade: dentro de um bloco, a
 decisão entre "cauda" e "statement" continua sendo tomada pelo token seguinte
 (`}` ⇒ cauda).
+
+**`def T.m = e;`** declara um membro do tipo `T` (plano 21). A desambiguação é de
+um token: depois do primeiro identificador, `.` significa membro e `:` ou `=`
+significa `def` comum. Um membro é definitivo — `var T.m` é `LAP0705`.
+
+**`x.a.b = e;`** atribui a um campo. O receptor é sempre um **nome**, nunca uma
+expressão qualquer: `f().x = e` mutaria um temporário que ninguém mais vê, e por
+isso `f()` nem entra na produção. A mutabilidade segue o binding, não a forma do
+alvo — num `def` a mesma escrita é `LAP0206`, e não um erro de sintaxe.
 
 ---
 

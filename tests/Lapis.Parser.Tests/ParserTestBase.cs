@@ -49,6 +49,16 @@ public abstract class ParserTestBase
     }
 
     /// <summary>
+    /// Como <see cref="ShouldPrintAs"/>, mas para o statement inteiro — um
+    /// <c>def</c> ou uma atribuição não são expressões (nem devem ser).
+    /// </summary>
+    protected static void ShouldPrintStatementAs(string source, string expected)
+    {
+        var statement = Parse(source).Statements.ShouldHaveSingleItem();
+        Normalize(SurfaceSExprPrinter.Print(statement)).ShouldBe(Normalize(expected));
+    }
+
+    /// <summary>
     /// Colapsa espaço em branco e junta os fechamentos, para que a forma indentada
     /// do printer e a forma compacta escrita no teste comparem iguais.
     /// </summary>

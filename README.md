@@ -48,18 +48,20 @@ lapis hello.ls
 | **M10** — reflection nas duas fases | ✅ concluído |
 | **M11** — `@unless` e `@while` no prelude | ✅ concluído |
 | **M12** — span com o tamanho no tipo | ✅ concluído |
-| M13–M15 — type members, extension methods | ⏳ próximo |
+| **M13** — membros de tipo e atribuição a campo | ✅ concluído |
+| M14–M15 — métodos de instância, extension methods | ⏳ próximo |
 | M16–M18 — PE: especialização, análise, equivalência | ⬜ |
 
-**1579 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
+**1638 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
 evaluator, partial evaluator e CLI — entre eles uma **suíte de conformidade** de
-185 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
+193 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
 spec é um arquivo, e o nome do teste que falha já é o arquivo a abrir.
 
 A linguagem já roda programas de verdade: funções de primeira classe com
 closures, `return` explícito com verificação de "retorna em todos os caminhos",
 spans com indexação checada em compilação, enums, `match` exaustivo, tipos definidos pelo
-usuário, generics (inclusive const generics), `goto`/`label`, mutação com `var`,
+usuário, membros de tipo, generics (inclusive const generics), `goto`/`label`,
+mutação com `var`,
 macros higiênicas com validação em tempo de compilação, reflection, e um prelude
 escrito na própria linguagem — laços inclusive.
 
@@ -297,10 +299,10 @@ Só o que um `goto` **explícito** pode ter pulado continua invisível no destin
 que é a única forma de o contrário ser mentira. `examples/control.ls` mostra os
 três casos.
 
-O que falta: **fechar a linguagem** primeiro (M13–M15) — type members e extension
-methods —, porque o partial evaluator precisa de um caso para cada construção, e
-escrevê-lo contra uma superfície que ainda cresce significa reabri-lo a cada
-milestone. O **span** já entrou (M12): o tamanho no tipo tirou do partial
+O que falta: **fechar a linguagem** primeiro (M14–M15) — métodos de instância e
+extension methods —, porque o partial evaluator precisa de um caso para cada
+construção, e escrevê-lo contra uma superfície que ainda cresce significa
+reabri-lo a cada milestone. O **span** já entrou (M12): o tamanho no tipo tirou do partial
 evaluator o caso trivial de eliminação de bounds check e deixou com ele o
 interessante — provar `i < n` para um `i` derivado de laço. Depois o resto do PE (M16–M18):
 especialização de chamadas e eliminação de bounds check. O roteiro completo está em

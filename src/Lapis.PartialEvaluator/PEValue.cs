@@ -133,7 +133,18 @@ public readonly record struct PECompletion(PECompletionKind Kind, PEResult Resul
 /// dinâmico que virou um <c>Let</c> renomeado, é a variável nova — é o que impede
 /// captura de nome quando o PE renomeia.
 /// </param>
-public sealed record PEBinding(PEValue Value, CoreExpr? ResidualReference = null);
+public sealed record PEBinding(PEValue Value, CoreExpr? ResidualReference = null)
+{
+    /// <summary>
+    /// O binding foi declarado com <c>var</c>.
+    ///
+    /// Um <c>def</c> ligado a um <c>var</c> é um <b>instantâneo</b>; o <c>var</c> é
+    /// um slot. Trocar um pelo outro só vale enquanto o slot não muda, e é isso
+    /// que impede a substituição de referência trivial de atravessar uma
+    /// atribuição.
+    /// </summary>
+    public bool IsMutable { get; init; }
+}
 
 /// <summary>
 /// Ambiente estático: mapa de nomes encadeado, na mesma forma léxica do

@@ -214,10 +214,17 @@ public sealed class PartialEvaluator
 
         // Uma referência trivial e pura pode substituir o nome — mas só se o corpo
         // não redeclarar o nome referenciado, senão a substituição capturaria o
-        // binding errado.
+        // binding errado; e só se o **referenciado** for imutável.
+        //
+        // `def copia = u;` com `u` sendo `var` é um instantâneo, não um apelido:
+        // trocar `copia` por `u` faz uma atribuição posterior a `u` mudar o que
+        // `copia` valia. O caso não aparecia no corpus até `def b = a; a.campo = e;`
+        // (plano 21 §21.3b) trazê-lo, mas o defeito é do M7 e vale para
+        // `def b = a; a = 2;` do mesmo jeito.
         if (!node.IsMutable
             && !forcedDynamic
             && residualValue is CoreVariable reference
+            && !ReferencesMutable(reference, environment)
             && !Rebinds(node.Body, reference.Name))
         {
             _bindingsEliminated++;
@@ -248,7 +255,17 @@ public sealed class PartialEvaluator
     private StaticEnvironment Bind(StaticEnvironment environment, CoreLet node, LapisType type) =>
         environment.Extend(
             node.Name,
-            new PEBinding(new Unknown(type), _factory.Variable(node.NameSpan, node.Name)));
+            new PEBinding(new Unknown(type), _factory.Variable(node.NameSpan, node.Name))
+            {
+                IsMutable = node.IsMutable,
+            });
+
+    /// <summary>
+    /// O nome referenciado é um <c>var</c>? Um nome que o ambiente estático não
+    /// conhece — nativa, binding do prelude — nunca é.
+    /// </summary>
+    private static bool ReferencesMutable(CoreVariable reference, StaticEnvironment environment) =>
+        environment.TryLookup(reference.Name, out var binding) && binding.IsMutable;
 
     private LapisType Dynamic(CoreLet node) => TypeOf(node.Value);
 
@@ -637,6 +654,22 @@ public sealed class PartialEvaluator
 
     private PECompletion SpecializeField(CoreField node, StaticEnvironment environment)
     {
+        // `T.m` não lê o alvo: o membro vive num `Let` sob o nome sintético, e o
+        // "alvo" é o tipo, que não carrega valor (plano 21 §21.6). Especializar
+        // isto é a mesma coisa que especializar uma variável — e é por isso que a
+        // feature não custou nó novo em fase nenhuma.
+        // Quando o valor não é conhecido, o que sobrevive é **este** nó, não uma
+        // referência ao nome sintético: `User#grita` não é lexável, e emiti-lo
+        // produziria um residual que não reparseia. `User.grita` é a forma
+        // escrevível do mesmo acesso.
+        if (_types?.ResolutionOf<MemberResolution>(node) is { } member
+            && environment.TryLookup(member.SyntheticName, out var binding))
+        {
+            return PECompletion.Normal(binding.Value is Known known
+                ? Reduce(known.Value, node)
+                : Keep(node));
+        }
+
         var target = Specialize(node.Target, environment);
 
         if (!target.FlowsThroughStatically)
@@ -873,7 +906,9 @@ public sealed class PartialEvaluator
                 node.Span,
                 node.Name,
                 _residualizer.Residualize(value.Result, node.Value.Span),
-                node.NameSpan),
+                node.NameSpan,
+                node.Path,
+                node.PathSpans),
             PrimitiveType.Void));
     }
 

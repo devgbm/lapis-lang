@@ -129,7 +129,7 @@ concatenação faz sentido.
 | **M10** ✅ | Reflection | `reflect(Color).variants` nas duas fases | 19 |
 | **M11** ✅ | Macros de controle | `@unless` e `@while` no prelude; **nada é retirado** da Core | 20 |
 | **M12** ✅ | Span | `[Int;3]`, `.[1,2,3]`, `.[Int;0;8]`, índice literal checado, `length` constante, indexação → `Option` | 24 |
-| **M13** | Type members | `def User.create`, `User.defaultAge`, `mutavel.campo = e` | 21 |
+| **M13** ✅ | Type members | `def User.create`, `User.defaultAge`, `mutavel.campo = e` | 21 |
 | **M14** | Métodos de instância | `user.hello()` ≡ chamar a função com `user` no argumento 0 | 22 |
 | **M15** | Extensions genéricas | `def<T> Result<T>.isOk` — **bloqueado por Q27** | 23 |
 | **M16** | PE especialização | beta reduction, inlining, especialização de funções | 13 |
@@ -159,7 +159,7 @@ O custo é assumido: os type members chegam sem que o M15 já saiba eliminar a
 chamada, então `user.hello()` custa uma chamada até lá. É preço de sintaxe, não de
 semântica.
 
-**O que ainda falta para "fechar"**, além de M13–M15: **Q23** — a construção para
+**O que ainda falta para "fechar"**, além de M14–M15: **Q23** — a construção para
 ler a carga de uma variante com segurança, que Q22 adiou e sem a qual `@match`
 não pode existir. É o último buraco conhecido da superfície.
 

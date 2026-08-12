@@ -158,17 +158,49 @@ public sealed class Parser
         || expression is MacroInvocation { Arguments: [.., { Kind: TokenKind.CloseBrace }] };
 
     /// <summary>
-    /// <c>IDENT "=" expressão ";"</c>. Não há ambiguidade a resolver: <c>==</c> é
-    /// outro token, e um identificador seguido de <c>=</c> em posição de statement
-    /// não pode ser mais nada.
+    /// <c>IDENT ("." IDENT)* "=" expressão ";"</c>. Não há ambiguidade a resolver:
+    /// <c>==</c> é outro token, e um caminho de identificadores seguido de <c>=</c>
+    /// em posição de statement não pode ser mais nada.
+    ///
+    /// O caminho existe por <c>u.name = "b";</c> (plano 21 §21.3b). Sem ele o
+    /// parser respondia <c>LAP0102</c> — uma reclamação de pontuação para um
+    /// problema semântico, e a primeira coisa que alguém escreve.
     /// </summary>
-    private bool AtAssignment() =>
-        Current.Kind == TokenKind.Identifier && _tokens.Peek(1).Kind == TokenKind.Equals;
+    private bool AtAssignment()
+    {
+        if (Current.Kind != TokenKind.Identifier)
+        {
+            return false;
+        }
+
+        // Anda `IDENT ('.' IDENT)*` sem consumir e pergunta o que vem depois.
+        var ahead = 1;
+
+        while (_tokens.Peek(ahead).Kind == TokenKind.Dot
+            && _tokens.Peek(ahead + 1).Kind == TokenKind.Identifier)
+        {
+            ahead += 2;
+        }
+
+        return _tokens.Peek(ahead).Kind == TokenKind.Equals;
+    }
 
     private Statement ParseAssignStatement()
     {
         var start = Current.Span.Start;
         var nameToken = _tokens.Advance();
+
+        var path = ImmutableArray.CreateBuilder<string>();
+        var pathSpans = ImmutableArray.CreateBuilder<SourceSpan>();
+
+        while (Current.Kind == TokenKind.Dot)
+        {
+            _tokens.Advance(); // '.'
+            var segment = _tokens.Advance();
+            path.Add(segment.Text);
+            pathSpans.Add(segment.Span);
+        }
+
         _tokens.Advance(); // '='
 
         var value = ParseExpression();
@@ -182,6 +214,8 @@ public sealed class Parser
         {
             Span = SpanFrom(start),
             NameSpan = nameToken.Span,
+            Path = path.ToImmutable(),
+            PathSpans = pathSpans.ToImmutable(),
         };
     }
 
@@ -205,6 +239,46 @@ public sealed class Parser
                 DiagnosticCodes.ExpectedIdentifier,
                 Current.Span,
                 $"esperado um identificador após '{(isMutable ? "var" : "def")}'");
+        }
+
+        // `def T.m = ...` — membro de tipo (plano 21). A desambiguação é de um
+        // token: depois do primeiro identificador, `.` significa membro; `=` ou
+        // `:` significa `def` comum.
+        TypeSyntax? owner = null;
+        SourceSpan? ownerSpan = null;
+
+        if (Current.Kind == TokenKind.Dot)
+        {
+            _tokens.Advance(); // '.'
+
+            owner = NamedTypeSyntax.Of(name, nameToken.Span);
+            ownerSpan = nameToken.Span;
+
+            if (Current.Kind == TokenKind.Identifier)
+            {
+                nameToken = Current;
+                name = Current.Text;
+                _tokens.Advance();
+            }
+            else
+            {
+                Report(
+                    DiagnosticCodes.ExpectedIdentifier,
+                    Current.Span,
+                    "esperado o nome do membro após '.'");
+            }
+
+            // Um membro é definitivo. Um membro mutável exigiria decidir onde vive
+            // o slot — pergunta que a Q25 fechou para bindings e que não vale
+            // reabrir aqui.
+            if (isMutable)
+            {
+                Report(
+                    DiagnosticCodes.MemberCannotBeVar,
+                    SpanFrom(start),
+                    "um membro de tipo não pode ser 'var'",
+                    new DiagnosticNote("troque por 'def'; um membro é definitivo"));
+            }
         }
 
         TypeSyntax? annotation = null;
@@ -241,6 +315,8 @@ public sealed class Parser
             Span = SpanFrom(start),
             NameSpan = nameToken.Span,
             IsMutable = isMutable,
+            Owner = owner,
+            OwnerSpan = ownerSpan,
         };
     }
 

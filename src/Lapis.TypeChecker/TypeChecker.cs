@@ -43,6 +43,16 @@ public sealed class TypeChecker
     /// </summary>
     private readonly HashSet<string> _enclosingFunctionLabels = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Membros declarados por <c>def T.m</c>, indexados pela
+    /// <see cref="TypeDefinition"/> e não pelo nome (plano 21 §21.5).
+    ///
+    /// Pela identidade, e não pelo nome, porque sombrear <c>Result</c> no programa
+    /// do usuário não pode redirecionar os membros do <c>Result</c> do prelude —
+    /// mesma razão de <see cref="PreludeScope"/> guardar a definição.
+    /// </summary>
+    private readonly Dictionary<int, Dictionary<string, MemberInfo>> _members = [];
+
     private PreludeScope? _prelude;
 
     /// <summary>
@@ -224,6 +234,13 @@ public sealed class TypeChecker
             // reatribuição passa a ser checada — é o que dá indexação total num
             // binding mutável.
             valueType = SpanType.Unknown(widened.Element);
+        }
+
+        // `def T.m` — o desugar já nomeou; aqui o membro entra na tabela do tipo
+        // dono, que é onde `CheckField` vai procurá-lo (plano 21 §21.5).
+        if (!node.IsSynthetic && MemberNames.Split(node.Name) is { } member)
+        {
+            RegisterMember(member.Owner, member.Member, node, valueType, scope);
         }
 
         // O nome só é visível no corpo — não no próprio valor. É isso que torna a
@@ -924,19 +941,90 @@ public sealed class TypeChecker
             return PrimitiveType.Void;
         }
 
-        // O tipo do `var` é o da declaração e não muda: uma atribuição precisa
-        // caber nele, como um argumento precisa caber no parâmetro. "Caber" é a
-        // relação, não a igualdade — é o que faz `var a = .[1]; a = .[1, 2];`
-        // valer, já que o `var` foi declarado com tamanho `?` (Q29).
-        if (!TypeRelations.IsAssignableTo(valueType, binding.Type))
+        // `u.endereco.rua = e;` — o caminho é percorrido pelos tipos, e o que
+        // precisa caber é o **último** campo (plano 21 §21.3b).
+        var target = binding.Type;
+
+        for (var i = 0; i < node.Path.Length; i++)
+        {
+            if (WalkFieldForAssignment(node, i, target) is not { } next)
+            {
+                return PrimitiveType.Void;
+            }
+
+            target = next;
+        }
+
+        // O tipo do alvo não muda: uma atribuição precisa caber nele, como um
+        // argumento precisa caber no parâmetro. "Caber" é a relação, não a
+        // igualdade — é o que faz `var a = .[1]; a = .[1, 2];` valer, já que o
+        // `var` foi declarado com tamanho `?` (Q29).
+        if (!TypeRelations.IsAssignableTo(valueType, target))
         {
             _diagnostics.ReportError(
                 DiagnosticCodes.TypeMismatch,
                 node.Value.Span,
-                $"esperado {binding.Type.ToDisplayString()}, encontrado {valueType.ToDisplayString()}");
+                $"esperado {target.ToDisplayString()}, encontrado {valueType.ToDisplayString()}");
         }
 
         return PrimitiveType.Void;
+    }
+
+    /// <summary>
+    /// Um segmento do caminho de <c>u.a.b = e;</c>, ou <c>null</c> quando já houve
+    /// diagnóstico.
+    ///
+    /// Um membro na posição de campo recebe <c>LAP0707</c>, e não
+    /// <c>LAP0250</c>: <c>hello</c> <b>existe</b> em <c>User</c>, só não é campo da
+    /// instância, e "campo desconhecido" seria mentira.
+    /// </summary>
+    private LapisType? WalkFieldForAssignment(CoreAssign node, int index, LapisType target)
+    {
+        var name = node.Path[index];
+        var span = index < node.PathSpans.Length ? node.PathSpans[index] : node.NameSpan;
+
+        if (target is ErrorType)
+        {
+            return null;
+        }
+
+        if (target is not NamedType { Definition.Kind: TypeDefinitionKind.Struct } instance)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.UnknownField,
+                span,
+                $"{target.ToDisplayString()} não possui o campo '{name}'");
+
+            return null;
+        }
+
+        var definition = instance.Definition;
+        var fieldIndex = definition.IndexOfField(name);
+
+        if (fieldIndex >= 0)
+        {
+            return TypeSubstitution.Apply(
+                definition.Fields[fieldIndex].Type,
+                BuildSubstitution(definition.TypeParameters, instance.Arguments));
+        }
+
+        if (_members.TryGetValue(definition.Id, out var table) && table.ContainsKey(name))
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.AssignToMember,
+                span,
+                $"'{name}' é um membro de {definition.Name} e não um campo da instância",
+                new DiagnosticNote("membros são definitivos; só campos podem ser reatribuídos"));
+
+            return null;
+        }
+
+        _diagnostics.ReportError(
+            DiagnosticCodes.UnknownField,
+            span,
+            $"{definition.Name} não possui o campo '{name}'");
+
+        return null;
     }
 
     /// <summary>
@@ -1426,7 +1514,13 @@ public sealed class TypeChecker
             return CheckStructField(node, structType);
         }
 
-        if (target is not MetaType meta || meta.Definition.Kind != TypeDefinitionKind.Enum)
+        // `T.m` sobre um tipo que não é enum: só pode ser membro.
+        if (target is MetaType nonEnum && nonEnum.Definition.Kind != TypeDefinitionKind.Enum)
+        {
+            return CheckStaticMember(node, nonEnum.Definition);
+        }
+
+        if (target is not MetaType meta)
         {
             _diagnostics.ReportError(
                 DiagnosticCodes.UnknownField,
@@ -1440,11 +1534,10 @@ public sealed class TypeChecker
 
         if (variantIndex < 0)
         {
-            _diagnostics.ReportError(
-                DiagnosticCodes.UnknownVariant,
-                node.NameSpan,
-                $"{definition.Name} não possui a variante '{node.Name}'");
-            return ErrorType.Instance;
+            // Variante primeiro, membro depois (plano 21 §21.5). A ordem não abre
+            // precedência silenciosa: declarar um membro homônimo de variante é
+            // LAP0703, então as duas leituras nunca coexistem.
+            return CheckStaticMember(node, definition);
         }
 
         // Um enum genérico precisa dos argumentos de tipo aqui, e sem inferência
@@ -1472,6 +1565,94 @@ public sealed class TypeChecker
             ? enumInstance
             : FunctionType.Of(
                 variant.Payload.Select(t => TypeSubstitution.Apply(t, bindings)), enumInstance);
+    }
+
+    /// <summary>
+    /// Registra um membro declarado por <c>def T.m = e;</c> (plano 21 §21.5).
+    ///
+    /// O dono precisa ser um tipo **já declarado** — a ordem do topo é sequencial
+    /// (Q8), então um membro antes do `type` recebe <c>LAP0704</c> pelo mesmo
+    /// motivo que qualquer nome usado antes da declaração.
+    /// </summary>
+    private void RegisterMember(string owner, string name, CoreLet node, LapisType type, Scope scope)
+    {
+        var ownerSpan = node.OwnerSpan ?? node.NameSpan;
+
+        if (!scope.TryLookup(owner, out var binding) || binding.Type is not MetaType meta)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.MemberOwnerMustBeAType,
+                ownerSpan,
+                $"'{owner}' não é um tipo declarado",
+                new DiagnosticNote("o dono de um membro precisa ser um 'type' ou 'enum' já declarado"));
+
+            return;
+        }
+
+        var definition = meta.Definition;
+
+        // Um membro homônimo de variante tornaria `Color.Red` ambíguo, e a
+        // ambiguidade seria resolvida por precedência silenciosa. Melhor recusar.
+        if (definition.IndexOfVariant(name) >= 0)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.MemberShadowsVariant,
+                ownerSpan,
+                $"'{name}' já é variante de '{definition.Name}'");
+
+            return;
+        }
+
+        var table = _members.TryGetValue(definition.Id, out var existing)
+            ? existing
+            : _members[definition.Id] = new Dictionary<string, MemberInfo>(StringComparer.Ordinal);
+
+        // Duas declarações no mesmo bloco já foram pegas pelo desugar (LAP0702);
+        // esta guarda cobre blocos distintos, onde a sintaxe não bastava.
+        if (table.TryGetValue(name, out var previous))
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.DuplicateMember,
+                ownerSpan,
+                $"o membro '{name}' de '{definition.Name}' já foi declarado",
+                new DiagnosticNote("declaração anterior", previous.Span));
+
+            return;
+        }
+
+        // Sem `self` ainda (plano 22): toda função ligada por `def T.m` é estática.
+        var kind = type is FunctionType ? MemberAccessKind.StaticMethod : MemberAccessKind.Value;
+
+        table[name] = new MemberInfo(name, kind, type, node.Name, ownerSpan);
+    }
+
+    /// <summary>
+    /// <c>T.m</c> — a terceira leitura de <c>CheckField</c> sobre um
+    /// <c>MetaType</c>, depois de campo e variante.
+    ///
+    /// O resultado é uma <see cref="MemberResolution"/>, como
+    /// <c>VariantResolution</c> e <c>FieldResolution</c> já são: <b>nenhum nó novo
+    /// na Core</b>, e o evaluator só precisa ler o nome sintético.
+    /// </summary>
+    private LapisType CheckStaticMember(CoreField node, TypeDefinition definition)
+    {
+        if (_members.TryGetValue(definition.Id, out var table)
+            && table.TryGetValue(node.Name, out var member))
+        {
+            _resolutions[node.NodeId] = new MemberResolution(member.SyntheticName, member.Kind);
+            return member.Type;
+        }
+
+        _diagnostics.ReportError(
+            definition.Kind == TypeDefinitionKind.Enum
+                ? DiagnosticCodes.UnknownVariant
+                : DiagnosticCodes.UnknownMember,
+            node.NameSpan,
+            definition.Kind == TypeDefinitionKind.Enum
+                ? $"{definition.Name} não possui a variante '{node.Name}'"
+                : $"o tipo '{definition.Name}' não possui o membro '{node.Name}'");
+
+        return ErrorType.Instance;
     }
 
     private LapisType CheckStructField(CoreField node, NamedType instance)

@@ -1,3 +1,4 @@
+using Lapis.Ast;
 using System.Collections.Immutable;
 using Lapis.Ast.Core;
 using Lapis.Ast.Surface;
@@ -86,6 +87,24 @@ public static class FreeVariables
                     free.UnionWith(armBody);
                 }
 
+                break;
+
+            // `User.hello` lê o `Let` ligado a `User#hello`, e o nome sintético não
+            // aparece em lugar nenhum da árvore: o uso é um `CoreField`, cujo
+            // `Name` é só `hello`. Sem contá-lo, o membro vira código morto e o
+            // residual cita um membro que não existe mais.
+            //
+            // A conta é sintática e **sobre-aproxima** de propósito: `u.name` sobre
+            // uma instância também soma `u#name`, que não é binding de ninguém. Um
+            // nome livre a mais só faz um `Let` sobreviver sem necessidade; um a
+            // menos apaga código vivo.
+            case CoreField n:
+                if (n.Target is CoreVariable owner)
+                {
+                    free.Add(MemberNames.Of(owner.Name, n.Name));
+                }
+
+                Collect(n.Target, free);
                 break;
 
             // O elemento de `.[T; inicial; n]` é uma **anotação**: `T` pode ser um

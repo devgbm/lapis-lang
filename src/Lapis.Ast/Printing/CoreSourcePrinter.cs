@@ -80,7 +80,10 @@ public static class CoreSourcePrinter
             }
             else
             {
-                builder.Append(let.IsMutable ? "var " : "def ").Append(let.Name);
+                // Um nome de membro volta à forma escrevível: `User@hello` não é
+                // lexável, e o residual precisa reparsear (plano 02 §2.8).
+                builder.Append(let.IsMutable ? "var " : "def ")
+                       .Append(MemberNames.ToDisplayString(let.Name));
 
                 if (let.Annotation is not null)
                 {
@@ -164,7 +167,14 @@ public static class CoreSourcePrinter
                 break;
 
             case CoreAssign n:
-                builder.Append(n.Name).Append(" = ");
+                builder.Append(n.Name);
+
+                foreach (var segment in n.Path)
+                {
+                    builder.Append('.').Append(segment);
+                }
+
+                builder.Append(" = ");
                 Print(builder, n.Value, indent, Precedence.Lowest);
                 break;
 

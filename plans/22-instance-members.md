@@ -1,7 +1,7 @@
 # Plano 22 — Métodos de instância e `self`
 
 **Projeto:** `Lapis.TypeChecker`, `Lapis.Evaluator`, `Lapis.Ast`
-**Milestone:** M16
+**Milestone:** M14
 **Spec:** [`lapislang-type-members-0.1.md`](../spec/lapislang-type-members-0.1.md) §3, §5
 **Depende de:** 21 (type members)
 

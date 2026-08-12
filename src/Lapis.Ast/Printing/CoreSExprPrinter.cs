@@ -201,7 +201,12 @@ public static class CoreSExprPrinter
                 break;
 
             case CoreAssign n:
-                Open(builder, indent, $"{tag}assign {n.Name}");
+                Open(
+                    builder,
+                    indent,
+                    n.Path.IsEmpty
+                        ? $"{tag}assign {n.Name}"
+                        : $"{tag}assign {n.Name}.{string.Join(".", n.Path)}");
                 PrintExpression(builder, n.Value, indent + 1, ids);
                 Close(builder, indent);
                 break;

@@ -67,6 +67,27 @@ public sealed record TotalIndexResolution(int Index) : Resolution;
 /// </summary>
 public sealed record SpanRepeatResolution(int? Known) : Resolution;
 
+/// <summary>
+/// <c>T.m</c> resolvido para um membro declarado por <c>def T.m = e;</c>
+/// (plano 21 §21.5).
+///
+/// Como o desugar já emitiu o <c>Let</c> ligado a <paramref name="SyntheticName"/>,
+/// o evaluator só precisa avaliar esse nome — não há caminho especial, e a Core
+/// não ganhou nó nenhum.
+/// </summary>
+public sealed record MemberResolution(string SyntheticName, MemberAccessKind Kind) : Resolution;
+
+/// <summary>
+/// Espelha <c>MemberKind</c> do checker no lado tipado, para o evaluator e o
+/// partial evaluator não dependerem do projeto do checker.
+/// </summary>
+public enum MemberAccessKind
+{
+    Value,
+    StaticMethod,
+    InstanceMethod,
+}
+
 /// <summary>A definição criada por um <c>type</c> ou <c>enum</c>.</summary>
 public sealed record TypeDefinitionResolution(TypeDefinition Definition) : Resolution;
 

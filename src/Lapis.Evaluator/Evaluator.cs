@@ -212,13 +212,75 @@ public sealed class Evaluator
             return value;
         }
 
-        if (!environment.TryAssign(node.Name, value.Value))
+        var assigned = value.Value;
+
+        // `u.endereco.rua = e;` — **atualização funcional**, não mutação no lugar
+        // (plano 21 §21.3b): o struct é reconstruído de dentro para fora e o slot
+        // recebe o valor novo.
+        //
+        // É o que preserva tudo o que a Q25 comprou: todo `Value` continua
+        // imutável, a única coisa mutável continua sendo o slot do ambiente, e não
+        // há aliasing para o partial evaluator modelar. O preço é semântica de
+        // valor, e é observável — `def b = a; a.name = "y";` deixa `b` com o valor
+        // antigo.
+        if (!node.Path.IsEmpty)
+        {
+            if (!environment.TryLookup(node.Name, out var current))
+            {
+                throw new InternalCompilerException(
+                    $"atribuição a '{node.Name}', que não existe no ambiente", node.Span);
+            }
+
+            assigned = Rebuild(current, node.Path, 0, assigned, node.Span);
+        }
+
+        if (!environment.TryAssign(node.Name, assigned))
         {
             throw new InternalCompilerException(
                 $"atribuição a '{node.Name}', que não existe no ambiente");
         }
 
         return Completion.Normal(VoidValue.Instance);
+    }
+
+    /// <summary>
+    /// O valor de <paramref name="target"/> com o campo em
+    /// <c>path[index..]</c> trocado por <paramref name="replacement"/>.
+    ///
+    /// Recursivo porque o caminho pode ser aninhado, e cada nível reconstrói o seu
+    /// próprio struct: nenhum valor existente é alterado.
+    /// </summary>
+    private static Value Rebuild(
+        Value target,
+        ImmutableArray<string> path,
+        int index,
+        Value replacement,
+        SourceSpan span)
+    {
+        if (index >= path.Length)
+        {
+            return replacement;
+        }
+
+        if (target is not StructValue instance)
+        {
+            throw new InternalCompilerException(
+                "atribuição a campo de valor que não é instância de type; "
+                + "o checker deveria ter rejeitado", span);
+        }
+
+        var field = instance.Definition.IndexOfField(path[index]);
+
+        if (field < 0)
+        {
+            throw new InternalCompilerException(
+                $"campo '{path[index]}' não existe em '{instance.Definition.Name}'; "
+                + "o checker deveria ter rejeitado", span);
+        }
+
+        var inner = Rebuild(instance.Fields[field], path, index + 1, replacement, span);
+
+        return instance with { Fields = instance.Fields.SetItem(field, inner) };
     }
 
     private Completion EvaluateLambda(CoreLambda node, Environment environment)
@@ -588,6 +650,21 @@ public sealed class Evaluator
             return span.IsNormal
                 ? Completion.Normal(new IntValue(((SpanValue)span.Value).Elements.Length))
                 : span;
+        }
+
+        // `T.m` — membro de tipo (plano 21 §21.6). O alvo é o **tipo**, e um tipo
+        // não carrega valor nenhum: o membro vive no ambiente sob o nome sintético
+        // que o desugar emitiu, e ler o nome é tudo o que há para fazer.
+        if (_program.ResolutionOf<MemberResolution>(node) is { } member)
+        {
+            if (!environment.TryLookup(member.SyntheticName, out var value))
+            {
+                throw new InternalCompilerException(
+                    $"membro '{MemberNames.ToDisplayString(member.SyntheticName)}' "
+                    + "não existe no ambiente", node.Span);
+            }
+
+            return Completion.Normal(value);
         }
 
         // Acesso a campo de instância: precisa avaliar o alvo.
