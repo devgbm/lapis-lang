@@ -36,6 +36,13 @@ public static class MemberNames
     /// </summary>
     public const string Self = "self";
 
+    /// <param name="owner">
+    /// O dono <b>como escrito</b>, com os argumentos genéricos quando há
+    /// (<c>Result&lt;Int, ?&gt;</c>). O padrão entra no nome porque ele faz parte
+    /// da identidade do membro: <c>def Result&lt;Int, ?&gt;.d</c> e
+    /// <c>def Result&lt;Bool, ?&gt;.d</c> são duas declarações que convivem
+    /// (plano 23 §23.4), e duas precisam de dois nomes na Core.
+    /// </param>
     public static string Of(string owner, string member) => $"{owner}{Separator}{member}";
 
     /// <summary>
@@ -51,6 +58,19 @@ public static class MemberNames
         return at <= 0 || at == name.Length - 1
             ? null
             : (name[..at], name[(at + 1)..]);
+    }
+
+    /// <summary>
+    /// O nome do tipo dono, sem o padrão genérico: o <c>Result</c> de
+    /// <c>Result&lt;Int, ?&gt;</c>.
+    ///
+    /// É o que se procura no escopo — <c>Result&lt;Int, ?&gt;</c> não é um nome
+    /// ligado a nada, e o padrão só existe para distinguir declarações.
+    /// </summary>
+    public static string OwnerName(string owner)
+    {
+        var open = owner.IndexOf('<', StringComparison.Ordinal);
+        return open < 0 ? owner : owner[..open];
     }
 
     /// <summary>Como o nome deve aparecer numa mensagem: <c>User.hello</c>.</summary>

@@ -168,14 +168,46 @@ unidade, e todos os membros de um tipo são visíveis no arquivo inteiro.
 
 ## 8.1 Extensions genéricas e especializadas
 
+**Decisão do autor (Q27).** O alcance de cada declaração é **escrito**, com `?`:
+
 ```c
-def Result<T>.isOk = fn(self) Bool { ... };            // vale para todo Result<T, E>
-def Result<Int>.doubleOrZero = fn(self) Int { ... };   // só para Result<Int, E>
+def Result<?, ?>.isOk    = fn(self) Bool { ... };        // vale para todo Result
+def Result<Int, ?>.dobro = fn(self) Int { ... };         // só para Result<Int, ...>
+def Result.ok = fn<T>(v: T) Result<T, Error> { ... };    // membro genérico
 ```
 
-Casar `Result<Int>` contra `Result<T>` é inferência, e Q7 estabelece que argumento
-genérico é sempre **explícito**. A tensão é real e está registrada como **Q27** —
-esta é a parte da proposta que exige decisão antes de virar código.
+> `<>` do lado esquerdo do `=` fala do **dono**. `<>` do lado direito fala do
+> **membro**.
+
+A versão anterior desta seção escrevia `def Result<T>.isOk`, e aí casar
+`Result<Int, Error>` contra `Result<T, E>` seria inferência — que a Q7 proíbe. A
+decisão não escolhe um lado da tensão: ela a dissolve. `?` **não é um parâmetro**,
+é curinga: não liga nome nenhum, então não há o que unificar.
+
+É o mesmo `?` de `[Int;?]`, com a mesma leitura ("não se diz") e a mesma regra de
+atribuibilidade, numa direção só: `Result<Int, Error>` cabe onde se espera
+`Result<?, ?>`, e não o contrário. Esquecer o que se sabia é seguro; afirmar o que
+não se sabe, não. É a terceira regra de subtipagem da linguagem, e as três têm a
+mesma forma — `Never <: T` (Q13), `[T;N] <: [T;?]` (Q29), `T<A,B> <: T<?,?>` (Q27).
+
+Omitir `<>` inteiro é o padrão **todo curinga**: `def Result.ok` vale para
+qualquer `Result`.
+
+Dois padrões que se cruzam são erro (`LAP0720`), não regra de especificidade —
+especificidade obrigaria o leitor a simular a resolução de cabeça para saber qual
+membro roda.
+
+`?` só vale na posição de dono. `def x: Result<?, ?> = y;` é `LAP0721`: como tipo
+de valor, seria um `Any` estrutural pela porta dos fundos.
+
+**Limitação declarada.** Sem nome, o corpo não consegue escrever o tipo do
+argumento do dono: `fn(self, fallback: ???)` não tem o que pôr no lugar. É o preço
+de `?` ser curinga em vez de binder — e é o que dissolve a Q27. Quem precisa do
+argumento escreve um membro **genérico**, que recebe o receptor explicitamente:
+
+```c
+def Result.unwrapOr = fn<T>(r: Result<T, Error>, fallback: T) T { ... };
+```
 
 ---
 

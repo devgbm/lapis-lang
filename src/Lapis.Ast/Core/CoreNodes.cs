@@ -76,6 +76,17 @@ public sealed class CoreLet(
     /// contradizendo a própria mensagem.
     /// </summary>
     public SourceSpan? OwnerSpan { get; init; }
+
+    /// <summary>
+    /// O dono <b>como escrito</b>, quando o <c>Let</c> veio de <c>def T.m = e;</c>
+    /// — inclusive os argumentos genéricos de <c>def Result&lt;Int, ?&gt;.m</c>
+    /// (plano 23 §23.4).
+    ///
+    /// O nome sintético já carrega o padrão em texto, mas texto não se resolve: o
+    /// checker precisa dos argumentos como sintaxe para transformá-los em
+    /// <c>GenericArgument</c> — e é dele que <c>self</c> tira o tipo.
+    /// </summary>
+    public NamedTypeSyntax? Owner { get; init; }
 }
 
 /// <summary>

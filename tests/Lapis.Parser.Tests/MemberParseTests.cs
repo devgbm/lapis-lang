@@ -41,6 +41,35 @@ public sealed class MemberDeclarationParseTests : ParserTestBase
     public void Member_MissingName_ReportsLap0112() =>
         Codes("def User. = 1;").ShouldContain(DiagnosticCodes.ExpectedIdentifier);
 
+    /// <summary>
+    /// <c>def Result&lt;Int, ?&gt;.m</c> — o padrão do dono (plano 23). O <c>&lt;</c>
+    /// aqui não é ambíguo com o operador: depois do nome de um <c>def</c> só cabem
+    /// <c>:</c>, <c>=</c> ou <c>.</c>, e nenhum deles começa uma comparação.
+    /// </summary>
+    [Fact]
+    public void Member_Declaration_WithOwnerPattern() =>
+        ShouldPrintStatementAs(
+            "def Result<Int, ?>.maiorQue = 1;", "(def Result<Int, ?>.maiorQue (int 1))");
+
+    [Fact]
+    public void Member_Declaration_KeepsTheOwnerArguments()
+    {
+        var owner = SingleDef("def Result<Int, ?>.m = 1;")
+            .Owner.ShouldBeOfType<NamedTypeSyntax>();
+
+        owner.Name.ShouldBe("Result");
+        owner.Arguments.Length.ShouldBe(2);
+        // `Int` sozinho é ambíguo entre tipo e constante — quem desempata é o
+        // checker, pelo parâmetro correspondente.
+        owner.Arguments[0].ShouldBeOfType<NameArgumentSyntax>().Name.ShouldBe("Int");
+        owner.Arguments[1].ShouldBeOfType<WildcardArgumentSyntax>();
+    }
+
+    /// <summary>Argumentos genéricos sem <c>.</c> não são um <c>def</c> — é erro de sintaxe.</summary>
+    [Fact]
+    public void GenericArguments_WithoutMember_ReportsLap0110() =>
+        Codes("def Result<Int, ?> = 1;").ShouldContain(DiagnosticCodes.UnexpectedToken);
+
     private static DefStatement SingleDef(string source) =>
         Parse(source).Statements.ShouldHaveSingleItem().ShouldBeOfType<DefStatement>();
 }

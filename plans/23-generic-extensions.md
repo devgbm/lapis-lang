@@ -106,6 +106,24 @@ private readonly Dictionary<int, Dictionary<string, List<MemberInfo>>> _members;
 curingas). A resolução em `CheckField` filtra os candidatos pelo tipo do receptor
 usando §23.3.
 
+**O nome sintético carrega o padrão.** Se duas declarações disjuntas convivem, as
+duas precisam de dois `Let` na Core, e `Result#d` só dá um nome. O desugar passa a
+nomear a partir do dono **como escrito**: `Result<Int, ?>#d`. Isso é de graça em
+três lugares — `MemberNames.ToDisplayString` continua devolvendo texto escrevível
+(`Result<Int, ?>.d`), o residual do PE reparseia, e a checagem sintática de
+duplicata do desugar continua funcionando com a chave que já usava.
+
+O que **não** vem de graça: quem procura o dono no escopo precisa do nome sem o
+padrão, e é para isso que existe `MemberNames.OwnerName`.
+
+**Dono sem `<>` é o padrão todo curinga.** Não é uma conveniência: é o que faz
+`def Result.ok = fn<T>(...)` da §23.8 continuar valendo sem reescrita. `LAP0722` só
+fala de aridade quando os argumentos foram **escritos**.
+
+**`LAP0702` e `LAP0720` dividem a mesma checagem.** Padrão idêntico é
+redeclaração; padrão que só se cruza é sobreposição. A distinção importa porque a
+primeira é erro de digitação e a segunda é alcance mal escrito.
+
 ### 23.5 Sobreposição é erro, e agora é **visível**
 
 ```c
@@ -156,6 +174,14 @@ declaração escreveu `?`.
 A consequência cai de graça da §23.3: o corpo só consegue fazer com `self` o que
 não depende dos argumentos. `self.value` sobre `Result<?, ?>` não compila, e a
 mensagem é a de campo desconhecido, que é a verdade.
+
+Num **struct** o campo existe, e aí a checagem precisa ser explícita: depois da
+substituição, um parâmetro do tipo que sobreviveu é um que não tinha argumento com
+que trocar, e o campo vira inalcançável com nota dizendo por quê. Deixar o
+parâmetro escapar seria pior — `T` apareceria em diagnósticos num escopo onde `T`
+não existe. Um campo que **não** depende do curinga (`nome: Str` num
+`Rotulado<?>`) continua legível, que é o que torna a limitação da §23.6 estreita
+em vez de total.
 
 ### 23.8 Membro genérico — o lado direito
 
@@ -226,10 +252,11 @@ escolha em `a < b < c`, e por isso mesmo.
 
 ## Critérios de conclusão
 
-- [ ] `?` como argumento genérico de dono, e **só** ali (`LAP0721`).
-- [ ] `T<A,B> <: T<?,?>`, posição a posição, numa direção só.
-- [ ] Tabela de membros por padrão, com resolução pelo tipo do receptor.
-- [ ] Sobreposição virando `LAP0720`, sem regra de especificidade.
-- [ ] `self` sobre dono genérico, sem o `LAP0295` do M14.
-- [ ] Membro genérico (`fn<T>` do lado direito) coberto por teste e exemplo.
-- [ ] Zero alteração de expectativa em qualquer teste anterior.
+- [x] `?` como argumento genérico de dono, e **só** ali (`LAP0721`).
+- [x] `T<A,B> <: T<?,?>`, posição a posição, numa direção só.
+- [x] Tabela de membros por padrão, com resolução pelo tipo do receptor.
+- [x] Sobreposição virando `LAP0720`, sem regra de especificidade.
+- [x] `self` sobre dono genérico, sem o `LAP0295` do M14.
+- [x] Membro genérico (`fn<T>` do lado direito) coberto por teste e exemplo.
+- [x] Zero alteração de expectativa em qualquer teste anterior — só a do
+      `LAP0295`, que era a recusa que esta milestone existe para levantar.

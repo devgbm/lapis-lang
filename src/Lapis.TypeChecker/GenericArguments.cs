@@ -19,12 +19,21 @@ internal sealed record RawGenericArgument(
     LapisType? Type,
     GenericArgument? Constant,
     bool IsRuntimeValue = false,
-    bool IsError = false)
+    bool IsError = false,
+    bool IsWildcard = false)
 {
     public static RawGenericArgument OfType(LapisType type, SourceSpan span) => new(span, type, null);
 
     public static RawGenericArgument OfConstant(GenericArgument constant, SourceSpan span) =>
         new(span, null, constant);
+
+    /// <summary>
+    /// <c>?</c> — só se sustenta na posição de dono de um membro (plano 23 §23.9).
+    /// A leitura é a mesma nas duas posições em que <c>?</c> aparece na linguagem;
+    /// o que muda é que aqui ela não é um tipo, e por isso não vem com um.
+    /// </summary>
+    public static RawGenericArgument Wildcard(SourceSpan span) =>
+        new(span, null, null, IsWildcard: true);
 
     /// <summary>Uma expressão válida, mas cujo valor só existe em tempo de execução.</summary>
     public static RawGenericArgument RuntimeValue(SourceSpan span) => new(span, null, null, IsRuntimeValue: true);
@@ -49,7 +58,8 @@ internal static class GenericArguments
         string owner,
         ImmutableArray<GenericParameter> parameters,
         IReadOnlyList<RawGenericArgument> arguments,
-        SourceSpan span)
+        SourceSpan span,
+        bool allowWildcards = false)
     {
         if (parameters.Length != arguments.Count)
         {
@@ -69,7 +79,7 @@ internal static class GenericArguments
 
         for (var i = 0; i < parameters.Length; i++)
         {
-            resolved.Add(Resolve(diagnostics, parameters[i], arguments[i]));
+            resolved.Add(Resolve(diagnostics, parameters[i], arguments[i], allowWildcards));
         }
 
         return resolved.ToImmutable();
@@ -78,10 +88,29 @@ internal static class GenericArguments
     private static GenericArgument Resolve(
         DiagnosticBag diagnostics,
         GenericParameter parameter,
-        RawGenericArgument argument)
+        RawGenericArgument argument,
+        bool allowWildcards)
     {
         if (argument.IsError)
         {
+            return new TypeArgument(ErrorType.Instance);
+        }
+
+        // O curinga não olha para o parâmetro: ele diz "não se diz o que vai aqui",
+        // e isso vale tanto para uma posição de tipo quanto para uma de const.
+        if (argument.IsWildcard)
+        {
+            if (allowWildcards)
+            {
+                return WildcardArgument.Instance;
+            }
+
+            diagnostics.ReportError(
+                DiagnosticCodes.WildcardOutsideOwner,
+                argument.Span,
+                "'?' só é válido como argumento genérico do dono de um membro",
+                new DiagnosticNote("'?' não é um tipo: não há o que fazer com um valor cujo tipo não se diz"));
+
             return new TypeArgument(ErrorType.Instance);
         }
 

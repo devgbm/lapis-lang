@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using Lapis.Ast;
 using Lapis.Ast.Core;
+using Lapis.Ast.Printing;
 using Lapis.Ast.Surface;
 using Lapis.Diagnostics;
 
@@ -124,7 +125,8 @@ public sealed class Desugarer
                 isSynthetic: false,
                 def.NameSpan,
                 def.IsMutable,
-                def.OwnerSpan),
+                def.OwnerSpan,
+                def.Owner as NamedTypeSyntax),
 
             ExpressionStatement expression => _factory.Let(
                 expression.Span,
@@ -450,12 +452,17 @@ public sealed class Desugarer
     /// O nome com que a declaração vive na Core. Um membro de tipo leva o nome
     /// sintético (plano 21 §21.4); o resto leva o próprio nome.
     ///
+    /// O padrão do dono entra no nome tal como foi escrito, normalizado pelo
+    /// printer (plano 23 §23.4): <c>def Result&lt;Int, ?&gt;.d</c> vira
+    /// <c>Result&lt;Int, ?&gt;#d</c>. Sem ele, as duas declarações disjuntas que a
+    /// §23.5 permite conviver dividiriam um nome só na Core.
+    ///
     /// O desugar não resolve nada aqui — ele só nomeia. Se `Owner` não é um tipo
     /// declarado, quem reclama é o checker, que é quem sabe.
     /// </summary>
     private static string NameOf(DefStatement def) =>
-        def.Owner is NamedTypeSyntax { Arguments.IsEmpty: true } owner
-            ? MemberNames.Of(owner.Name, def.Name)
+        def.Owner is NamedTypeSyntax owner
+            ? MemberNames.Of(SurfaceSExprPrinter.PrintType(owner), def.Name)
             : def.Name;
 
     private CoreExpr DesugarAssign(AssignStatement node) =>

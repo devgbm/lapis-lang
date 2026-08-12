@@ -382,6 +382,7 @@ public static class SurfaceSExprPrinter
     {
         TypeArgumentSyntax a => PrintType(a.Type),
         NameArgumentSyntax a => a.Name,
+        WildcardArgumentSyntax => "?",
         ValueArgumentSyntax { Value: IntLiteral v } => new ConstInt(v.Value).ToDisplayString(),
         ValueArgumentSyntax { Value: FloatLiteral v } => new ConstFloat(v.Value).ToDisplayString(),
         ValueArgumentSyntax { Value: BoolLiteral v } => new ConstBool(v.Value).ToDisplayString(),

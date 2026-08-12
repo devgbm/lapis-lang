@@ -244,15 +244,34 @@ public sealed class Parser
         // `def T.m = ...` — membro de tipo (plano 21). A desambiguação é de um
         // token: depois do primeiro identificador, `.` significa membro; `=` ou
         // `:` significa `def` comum.
+        //
+        // `def Result<Int, ?>.m` acrescenta o padrão do dono (plano 23). O `<`
+        // aqui não é ambíguo com o operador: depois do nome de um `def` só cabem
+        // `:`, `=` ou `.`, e nenhum deles começa uma comparação.
         TypeSyntax? owner = null;
         SourceSpan? ownerSpan = null;
+        var ownerStart = nameToken.Span.Start;
+
+        var ownerArguments = Current.Kind == TokenKind.Less
+            ? ParseGenericArgumentList(typePosition: true)
+            : ImmutableArray<GenericArgumentSyntax>.Empty;
+
+        if (!ownerArguments.IsEmpty && Current.Kind != TokenKind.Dot)
+        {
+            Report(
+                DiagnosticCodes.UnexpectedToken,
+                Current.Span,
+                "esperado '.' após os argumentos genéricos do dono do membro");
+        }
 
         if (Current.Kind == TokenKind.Dot)
         {
+            var ownerNameSpan = SpanFrom(ownerStart);
+
             _tokens.Advance(); // '.'
 
-            owner = NamedTypeSyntax.Of(name, nameToken.Span);
-            ownerSpan = nameToken.Span;
+            owner = new NamedTypeSyntax(name, ownerArguments) { Span = ownerNameSpan };
+            ownerSpan = ownerNameSpan;
 
             if (Current.Kind == TokenKind.Identifier)
             {
@@ -1778,6 +1797,13 @@ public sealed class Parser
 
             case TokenKind.FnKeyword when !typePosition:
                 return ParseFunctionArgument();
+
+            // `?` — curinga do dono de um membro (plano 23). O parser aceita em
+            // qualquer lista; quem restringe à posição de dono é o checker, que é
+            // quem sabe onde a lista está.
+            case TokenKind.Question:
+                _tokens.Advance();
+                return new WildcardArgumentSyntax { Span = token.Span };
 
             // Só um IDENT sozinho é ambíguo: `Foo<Bar>` e `Int[]` são tipos.
             case TokenKind.Identifier when _tokens.Peek(1).Kind is TokenKind.Comma or TokenKind.Greater:

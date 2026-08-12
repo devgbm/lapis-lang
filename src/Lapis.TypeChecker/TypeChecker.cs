@@ -50,8 +50,14 @@ public sealed class TypeChecker
     /// Pela identidade, e não pelo nome, porque sombrear <c>Result</c> no programa
     /// do usuário não pode redirecionar os membros do <c>Result</c> do prelude —
     /// mesma razão de <see cref="PreludeScope"/> guardar a definição.
+    ///
+    /// O valor é uma <b>lista</b> porque o mesmo nome pode ter mais de uma
+    /// declaração, com donos diferentes (plano 23 §23.4): <c>Result&lt;Int, ?&gt;.d</c>
+    /// e <c>Result&lt;Bool, ?&gt;.d</c> convivem, e quem escolhe é o tipo do
+    /// receptor. Padrões que se cruzam são <c>LAP0720</c> na declaração, então a
+    /// lista nunca tem dois candidatos para o mesmo receptor.
     /// </summary>
-    private readonly Dictionary<int, Dictionary<string, MemberInfo>> _members = [];
+    private readonly Dictionary<int, Dictionary<string, List<MemberInfo>>> _members = [];
 
     /// <summary>
     /// O tipo dono da declaração de membro que está sendo checada, enquanto o
@@ -61,7 +67,7 @@ public sealed class TypeChecker
     /// Consumido pela **primeira** lambda que aparecer: uma `fn` aninhada no corpo
     /// de um membro não é membro.
     /// </summary>
-    private TypeDefinition? _pendingSelfOwner;
+    private MemberOwner? _pendingSelfOwner;
 
     private PreludeScope? _prelude;
 
@@ -214,9 +220,13 @@ public sealed class TypeChecker
         var declared = node.Annotation is null ? null : _types.Resolve(node.Annotation, scope);
 
         // `def T.m = fn(self) ...` — o dono precisa estar em mãos **antes** de o
-        // valor ser checado, porque é dele que o `self` tira o tipo.
+        // valor ser checado, porque é dele que o `self` tira o tipo. É também a
+        // única resolução do dono: `RegisterMember` reaproveita o resultado, para
+        // que um dono inválido não vire dois diagnósticos.
+        var owner = OwnerOf(node, scope);
+
         var previousSelfOwner = _pendingSelfOwner;
-        _pendingSelfOwner = OwnerOf(node, scope);
+        _pendingSelfOwner = owner;
 
         LapisType valueType;
 
@@ -263,9 +273,9 @@ public sealed class TypeChecker
 
         // `def T.m` — o desugar já nomeou; aqui o membro entra na tabela do tipo
         // dono, que é onde `CheckField` vai procurá-lo (plano 21 §21.5).
-        if (!node.IsSynthetic && MemberNames.Split(node.Name) is { } member)
+        if (owner is { IsWellFormed: true } && MemberNames.Split(node.Name) is { } member)
         {
-            RegisterMember(member.Owner, member.Member, node, valueType, scope);
+            RegisterMember(owner, member.Member, node, valueType);
         }
 
         // O nome só é visível no corpo — não no próprio valor. É isso que torna a
@@ -364,7 +374,7 @@ public sealed class TypeChecker
     /// da primeira posição de um <c>def T.m</c>, um parâmetro sem anotação é
     /// <c>LAP0712</c>, porque não há de onde tirar o tipo.
     /// </summary>
-    private LapisType ResolveSelf(CoreParameter parameter, int index, TypeDefinition? owner)
+    private LapisType ResolveSelf(CoreParameter parameter, int index, MemberOwner? owner)
     {
         if (owner is null || index != 0 || parameter.Name != MemberNames.Self)
         {
@@ -378,21 +388,28 @@ public sealed class TypeChecker
             return ErrorType.Instance;
         }
 
-        // Dono genérico exigiria dizer quais argumentos `self` carrega, e é o que
-        // as extensions genéricas resolvem (plano 23). Até lá, recusar.
-        if (owner.IsGeneric)
-        {
-            _diagnostics.ReportError(
-                DiagnosticCodes.GenericTypeNeedsArguments,
-                parameter.Span,
-                $"'{owner.Name}' é genérico e ainda não aceita membro de instância",
-                new DiagnosticNote("extensions genéricas chegam no plano 23"));
-
-            return ErrorType.Instance;
-        }
-
-        return new NamedType(owner, []);
+        // Sobre um dono genérico, `self` carrega o **padrão** escrito (plano 23
+        // §23.7): `def Result<Int, ?>.m` dá `self: Result<Int, ?>`. A consequência
+        // cai de graça da regra de atribuibilidade — o corpo só consegue fazer com
+        // `self` o que não depende do argumento curinga, e `self.value` sobre
+        // `Result<?, ?>` é erro de campo, que é a verdade.
+        return new NamedType(owner.Definition, owner.Pattern);
     }
+
+    /// <summary>
+    /// O dono de uma declaração de membro: a definição e o alcance escrito
+    /// (plano 23 §23.4). O padrão é vazio quando o dono não é genérico.
+    /// </summary>
+    /// <param name="IsWellFormed">
+    /// Falso quando o padrão não se sustentou e foi substituído por curingas para
+    /// seguir checando o corpo. O membro <b>não</b> entra na tabela — mas o
+    /// <c>self</c> ainda recebe um tipo, e é isso que evita um <c>LAP0712</c> em
+    /// cascata atrás de cada erro de dono.
+    /// </param>
+    private sealed record MemberOwner(
+        TypeDefinition Definition,
+        ImmutableArray<GenericArgument> Pattern,
+        bool IsWellFormed = true);
 
     private LapisType CheckLambda(CoreLambda node, Scope scope)
     {
@@ -1094,17 +1111,48 @@ public sealed class TypeChecker
     /// instância, e "campo desconhecido" seria mentira.
     /// </summary>
     /// <summary>
-    /// A <see cref="TypeDefinition"/> dona de um <c>Let</c> de membro, quando ela
-    /// existe. Não reporta nada: quem reclama de dono inválido é
-    /// <see cref="RegisterMember"/>, e reportar duas vezes seria cascata.
+    /// O dono de um <c>Let</c> de membro: a definição mais o padrão de alcance
+    /// (plano 23 §23.4). <c>null</c> quando o <c>Let</c> não é membro, ou quando o
+    /// dono não se sustenta — caso em que o diagnóstico já saiu daqui.
+    ///
+    /// O dono precisa ser um tipo **já declarado** — a ordem do topo é sequencial
+    /// (Q8), então um membro antes do <c>type</c> recebe <c>LAP0704</c> pelo mesmo
+    /// motivo que qualquer nome usado antes da declaração.
     /// </summary>
-    private static TypeDefinition? OwnerOf(CoreLet node, Scope scope) =>
-        !node.IsSynthetic
-        && MemberNames.Split(node.Name) is { } member
-        && scope.TryLookup(member.Owner, out var binding)
-        && binding.Type is MetaType meta
-            ? meta.Definition
-            : null;
+    private MemberOwner? OwnerOf(CoreLet node, Scope scope)
+    {
+        if (node.IsSynthetic || MemberNames.Split(node.Name) is not { } member)
+        {
+            return null;
+        }
+
+        var ownerSpan = node.OwnerSpan ?? node.NameSpan;
+        var ownerName = MemberNames.OwnerName(member.Owner);
+
+        if (!scope.TryLookup(ownerName, out var binding) || binding.Type is not MetaType meta)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.MemberOwnerMustBeAType,
+                ownerSpan,
+                $"'{ownerName}' não é um tipo declarado",
+                new DiagnosticNote("o dono de um membro precisa ser um 'type' ou 'enum' já declarado"));
+
+            return null;
+        }
+
+        // O `Owner` sintático só falta quando o `Let` foi fabricado sem passar pelo
+        // desugar de `def T.m`; aí não há padrão a ler, e o dono é o tipo cru.
+        var pattern = node.Owner is { } written
+            ? _types.ResolveOwnerPattern(written, meta.Definition, scope)
+            : [];
+
+        return pattern is { } resolved
+            ? new MemberOwner(meta.Definition, resolved)
+            : new MemberOwner(meta.Definition, AllWildcards(meta.Definition), IsWellFormed: false);
+    }
+
+    private static ImmutableArray<GenericArgument> AllWildcards(TypeDefinition definition) =>
+        [.. definition.TypeParameters.Select(_ => (GenericArgument)WildcardArgument.Instance)];
 
     private LapisType? WalkFieldForAssignment(CoreAssign node, int index, LapisType target)
     {
@@ -1644,19 +1692,19 @@ public sealed class TypeChecker
                 return CheckStructField(node, structType);
             }
 
-            return CheckInstanceMember(node, structType.Definition);
+            return CheckInstanceMember(node, structType);
         }
 
         // Uma instância de enum também recebe membros: `resultado.orDefault()`.
         if (target is NamedType named)
         {
-            return CheckInstanceMember(node, named.Definition);
+            return CheckInstanceMember(node, named);
         }
 
         // `T.m` sobre um tipo que não é enum: só pode ser membro.
         if (target is MetaType nonEnum && nonEnum.Definition.Kind != TypeDefinitionKind.Enum)
         {
-            return CheckStaticMember(node, nonEnum.Definition);
+            return CheckStaticMember(node, nonEnum.Definition, nonEnum.Arguments);
         }
 
         if (target is not MetaType meta)
@@ -1676,7 +1724,7 @@ public sealed class TypeChecker
             // Variante primeiro, membro depois (plano 21 §21.5). A ordem não abre
             // precedência silenciosa: declarar um membro homônimo de variante é
             // LAP0703, então as duas leituras nunca coexistem.
-            return CheckStaticMember(node, definition);
+            return CheckStaticMember(node, definition, meta.Arguments);
         }
 
         // Um enum genérico precisa dos argumentos de tipo aqui, e sem inferência
@@ -1707,28 +1755,13 @@ public sealed class TypeChecker
     }
 
     /// <summary>
-    /// Registra um membro declarado por <c>def T.m = e;</c> (plano 21 §21.5).
-    ///
-    /// O dono precisa ser um tipo **já declarado** — a ordem do topo é sequencial
-    /// (Q8), então um membro antes do `type` recebe <c>LAP0704</c> pelo mesmo
-    /// motivo que qualquer nome usado antes da declaração.
+    /// Registra um membro declarado por <c>def T.m = e;</c> (plano 21 §21.5), sob
+    /// o padrão de dono que <see cref="OwnerOf"/> já resolveu.
     /// </summary>
-    private void RegisterMember(string owner, string name, CoreLet node, LapisType type, Scope scope)
+    private void RegisterMember(MemberOwner owner, string name, CoreLet node, LapisType type)
     {
         var ownerSpan = node.OwnerSpan ?? node.NameSpan;
-
-        if (!scope.TryLookup(owner, out var binding) || binding.Type is not MetaType meta)
-        {
-            _diagnostics.ReportError(
-                DiagnosticCodes.MemberOwnerMustBeAType,
-                ownerSpan,
-                $"'{owner}' não é um tipo declarado",
-                new DiagnosticNote("o dono de um membro precisa ser um 'type' ou 'enum' já declarado"));
-
-            return;
-        }
-
-        var definition = meta.Definition;
+        var definition = owner.Definition;
 
         // Um membro homônimo de variante tornaria `Color.Red` ambíguo, e a
         // ambiguidade seria resolvida por precedência silenciosa. Melhor recusar.
@@ -1744,20 +1777,11 @@ public sealed class TypeChecker
 
         var table = _members.TryGetValue(definition.Id, out var existing)
             ? existing
-            : _members[definition.Id] = new Dictionary<string, MemberInfo>(StringComparer.Ordinal);
+            : _members[definition.Id] = new Dictionary<string, List<MemberInfo>>(StringComparer.Ordinal);
 
-        // Duas declarações no mesmo bloco já foram pegas pelo desugar (LAP0702);
-        // esta guarda cobre blocos distintos, onde a sintaxe não bastava.
-        if (table.TryGetValue(name, out var previous))
-        {
-            _diagnostics.ReportError(
-                DiagnosticCodes.DuplicateMember,
-                ownerSpan,
-                $"o membro '{name}' de '{definition.Name}' já foi declarado",
-                new DiagnosticNote("declaração anterior", previous.Span));
-
-            return;
-        }
+        var candidates = table.TryGetValue(name, out var declared)
+            ? declared
+            : table[name] = [];
 
         // O **nome do primeiro parâmetro** é a assinatura (plano 22 §22.1): uma
         // função cujo primeiro parâmetro é `self` sem anotação é membro de
@@ -1772,7 +1796,69 @@ public sealed class TypeChecker
             _ => MemberAccessKind.Value,
         };
 
-        table[name] = new MemberInfo(name, kind, type, node.Name, ownerSpan);
+        var member = new MemberInfo(name, kind, type, node.Name, ownerSpan, owner.Pattern);
+
+        // Padrão idêntico é redeclaração (LAP0702); padrão que só se cruza é
+        // sobreposição (LAP0720). A distinção importa porque a primeira é um erro
+        // de digitação e a segunda é uma decisão de alcance mal escrita.
+        //
+        // Duas declarações iguais no mesmo bloco já foram pegas pelo desugar; esta
+        // guarda cobre blocos distintos, onde a sintaxe não bastava.
+        foreach (var previous in candidates)
+        {
+            if (previous.OwnerPattern.SequenceEqual(member.OwnerPattern))
+            {
+                _diagnostics.ReportError(
+                    DiagnosticCodes.DuplicateMember,
+                    ownerSpan,
+                    $"o membro '{name}' de "
+                    + $"'{MemberInfo.OwnerToDisplayString(definition, member.OwnerPattern)}' já foi declarado",
+                    new DiagnosticNote("declaração anterior", previous.Span));
+
+                return;
+            }
+
+            if (previous.Overlaps(member))
+            {
+                _diagnostics.ReportError(
+                    DiagnosticCodes.OverlappingMember,
+                    ownerSpan,
+                    $"'{name}' é declarado para "
+                    + $"{MemberInfo.OwnerToDisplayString(definition, previous.OwnerPattern)} e para "
+                    + $"{MemberInfo.OwnerToDisplayString(definition, member.OwnerPattern)}, que se sobrepõem",
+                    new DiagnosticNote("declaração anterior", previous.Span));
+
+                return;
+            }
+        }
+
+        candidates.Add(member);
+    }
+
+    /// <summary>
+    /// O membro de <paramref name="name"/> que vale para um dono com estes
+    /// argumentos, ou <c>null</c> quando nenhuma declaração alcança.
+    ///
+    /// Nunca há dois: padrões que se cruzam são <c>LAP0720</c> na declaração.
+    /// </summary>
+    private MemberInfo? FindMember(
+        TypeDefinition definition, string name, ImmutableArray<GenericArgument> arguments)
+    {
+        if (!_members.TryGetValue(definition.Id, out var table)
+            || !table.TryGetValue(name, out var candidates))
+        {
+            return null;
+        }
+
+        // `Result.ok` sobre um genérico não diz os argumentos, e não há de onde
+        // deduzi-los (Q7). Lido como "qualquer Result", ele alcança exatamente as
+        // declarações que também não dizem — que é o que faz `def Result.ok`
+        // funcionar sem escrever `Result<?, ?>.ok` (§23.8).
+        var wanted = arguments.IsDefaultOrEmpty && definition.IsGeneric
+            ? [.. definition.TypeParameters.Select(_ => (GenericArgument)WildcardArgument.Instance)]
+            : arguments.IsDefault ? ImmutableArray<GenericArgument>.Empty : arguments;
+
+        return candidates.FirstOrDefault(c => c.Accepts(wanted));
     }
 
     private static bool IsInstanceMethod(CoreExpr value) =>
@@ -1786,10 +1872,10 @@ public sealed class TypeChecker
     /// <c>VariantResolution</c> e <c>FieldResolution</c> já são: <b>nenhum nó novo
     /// na Core</b>, e o evaluator só precisa ler o nome sintético.
     /// </summary>
-    private LapisType CheckStaticMember(CoreField node, TypeDefinition definition)
+    private LapisType CheckStaticMember(
+        CoreField node, TypeDefinition definition, ImmutableArray<GenericArgument> arguments)
     {
-        if (_members.TryGetValue(definition.Id, out var table)
-            && table.TryGetValue(node.Name, out var member))
+        if (FindMember(definition, node.Name, arguments) is { } member)
         {
             if (member.Kind == MemberAccessKind.InstanceMethod)
             {
@@ -1825,15 +1911,16 @@ public sealed class TypeChecker
     /// posição 0 — quem tira o receptor de lá é <see cref="CheckCall"/>, que é
     /// onde a chamada acontece.
     /// </summary>
-    private LapisType CheckInstanceMember(CoreField node, TypeDefinition definition)
+    private LapisType CheckInstanceMember(CoreField node, NamedType instance)
     {
-        if (!_members.TryGetValue(definition.Id, out var table)
-            || !table.TryGetValue(node.Name, out var member))
+        var definition = instance.Definition;
+
+        if (FindMember(definition, node.Name, instance.Arguments) is not { } member)
         {
             _diagnostics.ReportError(
                 DiagnosticCodes.UnknownField,
                 node.NameSpan,
-                $"{definition.Name} não possui o campo '{node.Name}'");
+                $"{instance.ToDisplayString()} não possui o campo '{node.Name}'");
 
             return ErrorType.Instance;
         }
@@ -1870,14 +1957,71 @@ public sealed class TypeChecker
             return ErrorType.Instance;
         }
 
-        _resolutions[node.NodeId] = new FieldResolution(index);
-
         // O tipo declarado do campo pode mencionar parâmetros do tipo; os
         // argumentos da instância os substituem.
         var bindings = BuildSubstitution(definition.TypeParameters, instance.Arguments);
+        var type = TypeSubstitution.Apply(definition.Fields[index].Type, bindings);
 
-        return TypeSubstitution.Apply(definition.Fields[index].Type, bindings);
+        // Sobre um dono curinga o campo existe, mas o tipo dele não é escrevível:
+        // `?` não liga nome nenhum, e é esse o preço declarado do plano 23 §23.6.
+        // Deixar o parâmetro escapar seria pior — `T` apareceria em diagnósticos
+        // num escopo onde `T` não existe.
+        if (Wildcards(definition, instance.Arguments) is { Count: > 0 } wildcards
+            && Mentions(type, wildcards))
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.UnknownField,
+                node.NameSpan,
+                $"{instance.ToDisplayString()} não possui o campo '{node.Name}'",
+                new DiagnosticNote(
+                    "o tipo do campo depende de um argumento que a declaração escreveu como '?'"));
+
+            return ErrorType.Instance;
+        }
+
+        _resolutions[node.NodeId] = new FieldResolution(index);
+
+        return type;
     }
+
+    /// <summary>Parâmetros do tipo ligados a <c>?</c> nesta instância.</summary>
+    private static HashSet<string> Wildcards(
+        TypeDefinition definition, ImmutableArray<GenericArgument> arguments)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+
+        for (var i = 0; i < definition.TypeParameters.Length && i < arguments.Length; i++)
+        {
+            if (arguments[i] is WildcardArgument)
+            {
+                names.Add(definition.TypeParameters[i].Name);
+            }
+        }
+
+        return names;
+    }
+
+    /// <summary>
+    /// O tipo ainda menciona algum destes parâmetros? Depois da substituição, um
+    /// parâmetro sobrevivente é um que não tinha argumento com que trocar.
+    /// </summary>
+    private static bool Mentions(LapisType type, HashSet<string> names) => type switch
+    {
+        TypeParameterType p => names.Contains(p.Name),
+        SpanType s => Mentions(s.Element, names)
+            || (s.Size is ConstSize c && names.Contains(c.Parameter)),
+        FunctionType f => f.Parameters.Any(p => Mentions(p, names)) || Mentions(f.Return, names),
+        NamedType n => n.Arguments.Any(a => Mentions(a, names)),
+        MetaType m => m.Arguments.Any(a => Mentions(a, names)),
+        _ => false,
+    };
+
+    private static bool Mentions(GenericArgument argument, HashSet<string> names) => argument switch
+    {
+        TypeArgument a => Mentions(a.Type, names),
+        ConstParameterArgument a => names.Contains(a.Name),
+        _ => false,
+    };
 
     private LapisType CheckTypeDef(CoreTypeDef node, Scope scope)
     {

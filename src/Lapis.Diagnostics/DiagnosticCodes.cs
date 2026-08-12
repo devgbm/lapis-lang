@@ -151,6 +151,22 @@ public static class DiagnosticCodes
     public const string MemberIsStatic = "LAP0711";
     public const string SelfOutsideMember = "LAP0712";
 
+    // Dois membros de mesmo nome cujos padrões de dono se cruzam: existe um tipo
+    // que casa com os dois, e nada diz qual roda. A alternativa — escolher o mais
+    // específico — é uma regra que o leitor teria de simular de cabeça (plano 23
+    // §23.5).
+    public const string OverlappingMember = "LAP0720";
+
+    // `?` fora da posição de dono. Como tipo de valor ele seria um `Any`
+    // estrutural pela porta dos fundos: `def x: Result<?, ?>` prometeria um
+    // `Result` sobre o qual nada se pode fazer, e aceitaria qualquer um.
+    public const string WildcardOutsideOwner = "LAP0721";
+
+    // O padrão do dono tem aridade diferente da do tipo. Separado de LAP0291
+    // porque a posição é outra: aqui não se está usando um genérico, está-se
+    // declarando para quais instâncias dele o membro vale.
+    public const string MemberOwnerArity = "LAP0722";
+
     // LAP03xx — Execução
     //
     // LAP0301 (divisão por zero) foi aposentado: a divisão inteira por zero passou

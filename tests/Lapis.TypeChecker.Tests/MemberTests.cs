@@ -191,16 +191,6 @@ public sealed class InstanceMemberTests : TypeCheckerTestBase
     public void Receiver_IsAnyExpression() =>
         ShouldPass(User + "def s = User.create(\"x\").saudar();");
 
-    /// <summary>
-    /// Dono genérico exige dizer quais argumentos `self` carrega — o que as
-    /// extensions genéricas resolvem (plano 23).
-    /// </summary>
-    [Fact]
-    public void Self_OnGenericOwner_ReportsLap0295() =>
-        ShouldFailWith(
-            "def Caixa = type<T> { v: T; };\ndef Caixa.ler = fn(self) Int { return 1; };",
-            DiagnosticCodes.GenericTypeNeedsArguments);
-
     [Fact]
     public void UnknownMemberOnInstance_ReportsLap0250() =>
         ShouldFailWith(User + "def s = u.naoExiste();", DiagnosticCodes.UnknownField);
@@ -278,4 +268,174 @@ public sealed class FieldAssignmentTests : TypeCheckerTestBase
             def f = fn() Void { u.name = "b"; };
             """,
             DiagnosticCodes.MutableCapturedByFunction);
+}
+
+/// <summary>
+/// <c>def Result&lt;?, ?&gt;.isOk</c> — membros sobre tipos genéricos, plano 23.
+///
+/// <c>?</c> é <b>curinga</b>, não parâmetro: ele não liga nome nenhum, e é isso
+/// que dissolve a Q27 — não há o que unificar, e nada a transportar para o corpo.
+/// O alcance de cada declaração está escrito, não deduzido.
+/// </summary>
+public sealed class GenericMemberTests : TypeCheckerTestBase
+{
+    private const string Caixa = "def Caixa = type<T> { v: T; };\n";
+
+    private const string Par = "def Par = type<A, B> { a: A; b: B; };\n";
+
+    /// <summary>Curinga em todas as posições vale para qualquer instância.</summary>
+    [Fact]
+    public void Wildcard_AppliesToAnyInstance() =>
+        ShouldPass(
+            Caixa
+            + "def Caixa<?>.tem = fn(self) Bool { return true; };\n"
+            + "def b = .Caixa<Int> { v: 1 }.tem();");
+
+    /// <summary>
+    /// O curinga é posicional: <c>Par&lt;Int, ?&gt;</c> alcança
+    /// <c>Par&lt;Int, Str&gt;</c> e não <c>Par&lt;Bool, Str&gt;</c>.
+    /// </summary>
+    [Fact]
+    public void Wildcard_IsPositional()
+    {
+        const string Source =
+            Par
+            + "def Par<Int, ?>.primeiro = fn(self) Int { return self.a; };\n";
+
+        ShouldPass(Source + "def x = .Par<Int, Str> { a: 1, b: \"s\" }.primeiro();");
+
+        ShouldFailWith(
+            Source + "def x = .Par<Bool, Str> { a: true, b: \"s\" }.primeiro();",
+            DiagnosticCodes.UnknownField);
+    }
+
+    /// <summary>Curinga é de posição, nunca de definição: o nome do dono é exato.</summary>
+    [Fact]
+    public void Wildcard_DoesNotCrossDefinitions() =>
+        ShouldFailWith(
+            Caixa
+            + "def Outra = type<T> { v: T; };\n"
+            + "def Caixa<?>.tem = fn(self) Bool { return true; };\n"
+            + "def b = .Outra<Int> { v: 1 }.tem();",
+            DiagnosticCodes.UnknownField);
+
+    /// <summary>
+    /// Dois padrões que se cruzam: existe um <c>Par&lt;Int, Str&gt;</c> que casa
+    /// com os dois, e nada diz qual roda. Erro, e não regra de especificidade.
+    /// </summary>
+    [Fact]
+    public void Overlap_IsAnError() =>
+        ShouldFailWith(
+            Par
+            + "def Par<?, ?>.descrever = fn(self) Str { return \"a\"; };\n"
+            + "def Par<Int, ?>.descrever = fn(self) Str { return \"b\"; };",
+            DiagnosticCodes.OverlappingMember);
+
+    /// <summary>
+    /// Padrão <b>idêntico</b> é redeclaração, e continua sendo LAP0702: a
+    /// distinção importa porque uma é erro de digitação e a outra é alcance mal
+    /// escrito.
+    /// </summary>
+    [Fact]
+    public void SamePattern_IsDuplicate() =>
+        ShouldFailWith(
+            Par
+            + "def Par<Int, ?>.descrever = fn(self) Str { return \"a\"; };\n"
+            + "{ def Par<Int, ?>.descrever = fn(self) Str { return \"b\"; }; }",
+            DiagnosticCodes.DuplicateMember);
+
+    /// <summary>Padrões disjuntos convivem, e o receptor escolhe.</summary>
+    [Fact]
+    public void Disjoint_PatternsCoexist() =>
+        ShouldPass(
+            Par
+            + "def Par<Int, ?>.qual = fn(self) Str { return \"int\"; };\n"
+            + "def Par<Bool, ?>.qual = fn(self) Str { return \"bool\"; };\n"
+            + "def a = .Par<Int, Str> { a: 1, b: \"s\" }.qual();\n"
+            + "def b = .Par<Bool, Str> { a: true, b: \"s\" }.qual();");
+
+    /// <summary>
+    /// <c>?</c> não é um tipo. Permiti-lo como tipo de valor seria um <c>Any</c>
+    /// estrutural pela porta dos fundos.
+    /// </summary>
+    [Fact]
+    public void Wildcard_IsNotAType() =>
+        ShouldFailWith(
+            Caixa + "def f = fn(c: Caixa<?>) Bool { return true; };",
+            DiagnosticCodes.WildcardOutsideOwner);
+
+    [Fact]
+    public void Wildcard_InAnnotation_IsNotAType() =>
+        ShouldFailWith(
+            Caixa + "def c: Caixa<?> = .Caixa<Int> { v: 1 };",
+            DiagnosticCodes.WildcardOutsideOwner);
+
+    [Fact]
+    public void Wildcard_ArityIsChecked() =>
+        ShouldFailWith(
+            Par + "def Par<?>.qual = fn(self) Str { return \"a\"; };",
+            DiagnosticCodes.MemberOwnerArity);
+
+    /// <summary><c>self</c> recebe o dono com o padrão escrito (§23.7).</summary>
+    [Fact]
+    public void Self_OnGenericOwner_CarriesThePattern()
+    {
+        var type = TypeOfDef(
+            Par + "def Par<Int, ?>.eu = fn(self) Int { return self.a; };",
+            "Par<Int, ?>#eu").ShouldBeOfType<FunctionType>();
+
+        var self = type.Parameters[0].ShouldBeOfType<NamedType>();
+
+        self.Definition.Name.ShouldBe("Par");
+        self.Arguments[0].ShouldBe(new TypeArgument(PrimitiveType.Int));
+        self.Arguments[1].ShouldBe(WildcardArgument.Instance);
+    }
+
+    /// <summary>
+    /// O corpo só faz com <c>self</c> o que não depende do argumento curinga: sem
+    /// nome, não há como escrever o tipo de <c>self.v</c>. É a limitação declarada
+    /// da §23.6, e ela aparece como campo inalcançável.
+    /// </summary>
+    [Fact]
+    public void Self_CannotReadArgumentDependentField() =>
+        ShouldFailWith(
+            Caixa + "def Caixa<?>.ler = fn(self) Int { return self.v; };",
+            DiagnosticCodes.UnknownField);
+
+    /// <summary>Um campo que não depende do curinga continua legível.</summary>
+    [Fact]
+    public void Self_ReadsArgumentIndependentField() =>
+        ShouldPass(
+            "def Rotulado = type<T> { nome: Str; v: T; };\n"
+            + "def Rotulado<?>.rotulo = fn(self) Str { return self.nome; };");
+
+    /// <summary>
+    /// Dono sem <c>&lt;&gt;</c> sobre um genérico é o padrão todo curinga — é o
+    /// que faz `def Result.ok = fn&lt;T&gt;(...)` continuar valendo (§23.8).
+    /// </summary>
+    [Fact]
+    public void BareOwner_IsAllWildcards() =>
+        ShouldFailWith(
+            Par
+            + "def Par.descrever = fn(self) Str { return \"a\"; };\n"
+            + "def Par<?, ?>.descrever = fn(self) Str { return \"b\"; };",
+            DiagnosticCodes.DuplicateMember);
+
+    /// <summary>
+    /// O outro lado da regra do autor: <c>&lt;&gt;</c> à direita do <c>=</c> fala
+    /// do <b>membro</b>, e isso já funcionava — a cadeia pós-fixa do M4 cobre
+    /// <c>Result.ok&lt;Int&gt;(10)</c>.
+    /// </summary>
+    [Fact]
+    public void GenericMember_OnTheRight()
+    {
+        var type = TypeOfDef(
+            "def Res = enum<T, E> { Ok(T), Err(E) };\n"
+            + "def Res.ok = fn<T>(v: T) Res<T, Str> { return Res<T, Str>.Ok(v); };\n"
+            + "def r = Res.ok<Int>(10);",
+            "r").ShouldBeOfType<NamedType>();
+
+        type.Definition.Name.ShouldBe("Res");
+        type.Arguments[0].ShouldBe(new TypeArgument(PrimitiveType.Int));
+    }
 }

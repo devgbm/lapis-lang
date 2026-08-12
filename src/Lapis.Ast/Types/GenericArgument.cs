@@ -53,6 +53,30 @@ public sealed record ConstArgument(ConstantValue Value) : GenericArgument
 }
 
 /// <summary>
+/// <c>?</c> — o curinga do dono de um membro (Q27, plano 23):
+/// <c>def Result&lt;?, ?&gt;.isOk</c>.
+///
+/// <b>Não é um parâmetro.</b> Ele não liga nome nenhum, e é isso que dissolve a
+/// tensão com a Q7: não há o que unificar, e não há argumento a transportar para o
+/// corpo do membro. O preço é declarado — sem nome, o corpo não consegue escrever
+/// o tipo do argumento do dono.
+///
+/// É o mesmo <c>?</c> de <c>[Int;?]</c>, com a mesma leitura ("não se diz") e a
+/// mesma regra de atribuibilidade, numa direção só: <c>Result&lt;Int, Error&gt;</c>
+/// cabe em <c>Result&lt;?, ?&gt;</c>, e não o contrário. Esquecer o que se sabia é
+/// seguro; afirmar o que não se sabe, não.
+///
+/// Só existe em posição de <b>dono de membro</b>. Como tipo de valor seria um
+/// <c>Any</c> estrutural pela porta dos fundos, e é <c>LAP0721</c>.
+/// </summary>
+public sealed record WildcardArgument : GenericArgument
+{
+    public static readonly WildcardArgument Instance = new();
+
+    public override string ToDisplayString() => "?";
+}
+
+/// <summary>
 /// Um parâmetro const repassado adiante: <c>N</c> dentro de
 /// <c>fn&lt;N: Int&gt;</c> usado como argumento de outro genérico (Q18).
 ///

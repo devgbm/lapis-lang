@@ -30,12 +30,14 @@ public sealed class CoreFactory
         bool isSynthetic,
         SourceSpan? nameSpan = null,
         bool isMutable = false,
-        SourceSpan? ownerSpan = null) =>
+        SourceSpan? ownerSpan = null,
+        NamedTypeSyntax? owner = null) =>
         new(Next(), span, name, annotation, value, body, isSynthetic)
         {
             NameSpan = nameSpan ?? span,
             IsMutable = isMutable,
             OwnerSpan = ownerSpan,
+            Owner = owner,
         };
 
     public CoreAssign Assign(

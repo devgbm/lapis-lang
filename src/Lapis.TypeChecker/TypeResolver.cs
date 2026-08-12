@@ -170,6 +170,50 @@ public sealed class TypeResolver(DiagnosticBag diagnostics)
     }
 
     /// <summary>
+    /// O padrão do dono de um membro: os argumentos de <c>def Result&lt;Int, ?&gt;.m</c>
+    /// resolvidos, com <see cref="WildcardArgument"/> onde a declaração escreveu
+    /// <c>?</c> (plano 23 §23.4).
+    ///
+    /// Um dono <b>sem</b> <c>&lt;&gt;</c> sobre um tipo genérico é o padrão todo
+    /// curinga — é o que faz <c>def Result.ok = fn&lt;T&gt;(...)</c> continuar
+    /// valendo sem escrever <c>Result&lt;?, ?&gt;.ok</c> (§23.8).
+    ///
+    /// Devolve <c>null</c> quando a aridade não bate; o diagnóstico já saiu.
+    /// </summary>
+    public ImmutableArray<GenericArgument>? ResolveOwnerPattern(
+        NamedTypeSyntax owner,
+        TypeDefinition definition,
+        Scope scope)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        ArgumentNullException.ThrowIfNull(definition);
+
+        var parameters = definition.TypeParameters;
+
+        if (owner.Arguments.IsDefaultOrEmpty)
+        {
+            return [.. parameters.Select(_ => (GenericArgument)WildcardArgument.Instance)];
+        }
+
+        if (owner.Arguments.Length != parameters.Length)
+        {
+            diagnostics.ReportError(
+                DiagnosticCodes.MemberOwnerArity,
+                owner.Span,
+                $"'{definition.Name}' tem {parameters.Length} argumentos genéricos, "
+                + $"e o dono do membro escreve {owner.Arguments.Length}",
+                new DiagnosticNote("use '?' nas posições que a declaração não restringe"));
+
+            return null;
+        }
+
+        var raw = owner.Arguments.Select(a => Read(a, scope)).ToList();
+
+        return GenericArguments.Resolve(
+            diagnostics, definition.Name, parameters, raw, owner.Span, allowWildcards: true);
+    }
+
+    /// <summary>
     /// Lê um argumento genérico em <b>posição de tipo</b>. Aqui um valor const só
     /// pode ser um literal: uma função literal como argumento exige posição de
     /// expressão (Q17), e <c>fn(Int) Int</c> escrito num tipo é um tipo de função.
@@ -188,6 +232,9 @@ public sealed class TypeResolver(DiagnosticBag diagnostics)
 
             case NameArgumentSyntax a:
                 return ReadName(a, scope);
+
+            case WildcardArgumentSyntax:
+                return RawGenericArgument.Wildcard(argument.Span);
 
             default:
                 throw InternalCompilerException.Unreachable(argument, argument.Span);

@@ -42,6 +42,30 @@ public static class TypeRelations
             return actual.Element == wanted.Element;
         }
 
+        // Q27: `T<A,B>` cabe em `T<?,?>`, posição a posição. É a **terceira** regra
+        // de subtipagem, e tem a mesma forma das duas anteriores — esquecer o que
+        // se sabia é seguro, afirmar o que não se sabe não é.
+        //
+        // O curinga é só de posição, nunca de definição: `Result<?, ?>` não aceita
+        // um `Option<Int>`. O nome do dono continua exato.
+        if (target is NamedType { } wantedType
+            && source is NamedType actualType
+            && wantedType.Definition.Id == actualType.Definition.Id
+            && wantedType.Arguments.Any(a => a is WildcardArgument)
+            && wantedType.Arguments.Length == actualType.Arguments.Length)
+        {
+            for (var i = 0; i < wantedType.Arguments.Length; i++)
+            {
+                if (wantedType.Arguments[i] is not WildcardArgument
+                    && wantedType.Arguments[i] != actualType.Arguments[i])
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         return source == target;
     }
 

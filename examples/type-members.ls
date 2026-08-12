@@ -1,4 +1,4 @@
-// Membros de tipo — `def T.m` — e atribuição a campo.
+// Membros de tipo — `def T.m` —, atribuição a campo e membros sobre genéricos.
 //
 //     lapis run examples/type-members.ls
 //     lapis pe  examples/type-members.ls    # os membros conhecidos somem
@@ -20,6 +20,10 @@
 //   antes
 //   depois
 //   Rua B
+//   true
+//   int
+//   bool
+//   7
 
 def User = type {
     name: Str;
@@ -106,3 +110,56 @@ var p = .Pessoa { endereco: .Endereco { rua: "Rua A" } };
 p.endereco.rua = "Rua B";
 
 print(p.endereco.rua);
+
+// ------------------------------------------- membros sobre tipos genéricos
+
+// O alcance de cada declaração é **escrito**, com `?`. `<>` do lado esquerdo do
+// `=` fala do dono; `<>` do lado direito fala do membro.
+//
+// `?` não é um parâmetro: é curinga. Ele não liga nome nenhum, e é isso que
+// dissolve a tensão com a Q7 (argumento genérico nunca é inferido) — casar
+// `Par<Int, Str>` contra `Par<?, ?>` não é unificação, é comparação posição a
+// posição.
+//
+// É o mesmo `?` de `[Int;?]`, com a mesma leitura ("não se diz") e a mesma regra
+// de atribuibilidade, numa direção só: `Par<Int, Str>` cabe onde se espera
+// `Par<?, ?>`, e não o contrário.
+
+def Par = type<A, B> {
+    a: A;
+    b: B;
+};
+
+def Par<?, ?>.cheio = fn(self) Bool {
+    return true;
+};
+
+// Padrões disjuntos convivem, e quem escolhe é o tipo do receptor. Dois padrões
+// que se **cruzam** seriam LAP0720 — erro, e não regra de especificidade:
+// especificidade obrigaria o leitor a simular a resolução de cabeça.
+def Par<Int, ?>.qual = fn(self) Str {
+    return "int";
+};
+
+def Par<Bool, ?>.qual = fn(self) Str {
+    return "bool";
+};
+
+// Sobre `Par<Int, ?>` o campo `a` é legível: o tipo dele não depende do curinga.
+// Já `self.b` aqui não compilaria — sem nome para o argumento, não há como
+// escrever o tipo. É a limitação declarada de `?` ser curinga em vez de binder, e
+// é o preço de dissolver a Q27.
+def Par<Int, ?>.primeiro = fn(self) Int {
+    return self.a;
+};
+
+def pi = .Par<Int, Str> { a: 7, b: "s" };
+def pb = .Par<Bool, Str> { a: true, b: "s" };
+
+print(pi.cheio());
+print(pi.qual());
+print(pb.qual());
+print(pi.primeiro());
+
+// `def x: Par<?, ?> = pi;` seria LAP0721: `?` como tipo de valor seria um `Any`
+// estrutural pela porta dos fundos.

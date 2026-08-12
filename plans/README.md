@@ -132,7 +132,7 @@ concatenação faz sentido.
 | **M12** ✅ | Span | `[Int;3]`, `.[1,2,3]`, `.[Int;0;8]`, índice literal checado, `length` constante, indexação → `Option` | 24 |
 | **M13** ✅ | Type members | `def User.create`, `User.defaultAge`, `mutavel.campo = e` | 21 |
 | **M14** ✅ | Métodos de instância | `user.hello()` ≡ chamar a função com `user` no argumento 0 | 22 |
-| **M15** | Membros sobre genéricos | `def Result<?, ?>.isOk` — Q27 decidida | 23 |
+| **M15** ✅ | Membros sobre genéricos | `def Result<?, ?>.isOk` — Q27 decidida | 23 |
 | **M16** | `is` | `e is Some(v)` — Q23 fechada, sem nó novo na Core | 25 |
 | **M17** | PE especialização | beta reduction, inlining, especialização de funções | 13 |
 | **M18** | PE análise | range analysis, bounds-check elimination, `lapis pe --trace` | 14, 15 |

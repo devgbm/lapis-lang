@@ -50,13 +50,13 @@ lapis hello.ls
 | **M12** — span com o tamanho no tipo | ✅ concluído |
 | **M13** — membros de tipo e atribuição a campo | ✅ concluído |
 | **M14** — métodos de instância e `self` | ✅ concluído |
-| M15 — membros sobre tipos genéricos (`Result<?, ?>`) | ⏳ próximo |
-| M16 — `is`: testar variante e desembrulhar carga | ⬜ |
+| **M15** — membros sobre tipos genéricos (`Result<?, ?>`) | ✅ concluído |
+| M16 — `is`: testar variante e desembrulhar carga | ⏳ próximo |
 | M17–M19 — PE: especialização, análise, equivalência | ⬜ |
 
-**1665 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
+**1682 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
 evaluator, partial evaluator e CLI — entre eles uma **suíte de conformidade** de
-198 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
+202 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
 spec é um arquivo, e o nome do teste que falha já é o arquivo a abrir.
 
 A linguagem já roda programas de verdade: funções de primeira classe com
@@ -301,12 +301,13 @@ Só o que um `goto` **explícito** pode ter pulado continua invisível no destin
 que é a única forma de o contrário ser mentira. `examples/control.ls` mostra os
 três casos.
 
-O que falta: **fechar a linguagem** primeiro (M15–M16) — membros sobre tipos
-genéricos e `is` —, porque o partial evaluator precisa de um caso para cada
-construção, e escrevê-lo contra uma superfície que ainda cresce significa
-reabri-lo a cada milestone. Com esses dois, o último buraco conhecido da
-superfície fecha: `is` é a construção que a Q23 pedia para ler a carga de uma
-variante com segurança. O **span** já entrou (M12): o tamanho no tipo tirou do partial
+O que falta: **fechar a linguagem** primeiro (M16) — o `is` —, porque o partial
+evaluator precisa de um caso para cada construção, e escrevê-lo contra uma
+superfície que ainda cresce significa reabri-lo a cada milestone. Com ele, o
+último buraco conhecido da superfície fecha: `is` é a construção que a Q23 pedia
+para ler a carga de uma variante com segurança. Os membros sobre tipos genéricos
+já entraram (M15): `def Result<?, ?>.isOk` diz o alcance em vez de deduzi-lo, e o
+`?` curinga dissolveu a Q27 em vez de respondê-la. O **span** já entrou (M12): o tamanho no tipo tirou do partial
 evaluator o caso trivial de eliminação de bounds check e deixou com ele o
 interessante — provar `i < n` para um `i` derivado de laço. Depois o resto do PE (M17–M19):
 especialização de chamadas e eliminação de bounds check. O roteiro completo está em

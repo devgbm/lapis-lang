@@ -390,6 +390,14 @@ public sealed record ValueArgumentSyntax(Expression Value) : GenericArgumentSynt
 /// <summary>Um identificador nu, ainda sem decidir se é tipo ou constante.</summary>
 public sealed record NameArgumentSyntax(string Name) : GenericArgumentSyntax;
 
+/// <summary>
+/// <c>?</c> como argumento genérico — o curinga do dono de um membro (plano 23).
+///
+/// O parser aceita em qualquer lista de argumentos; quem restringe à posição de
+/// dono é o checker (<c>LAP0721</c>), porque só ele sabe onde a lista está.
+/// </summary>
+public sealed record WildcardArgumentSyntax : GenericArgumentSyntax;
+
 // ------------------------------------------------------------ tipos (sintaxe)
 
 public abstract record TypeSyntax : SurfaceNode;

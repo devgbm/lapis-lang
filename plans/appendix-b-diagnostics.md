@@ -412,13 +412,13 @@ membro" e "a função não aplicada", e a segunda leitura tornaria
 tirá-lo. O código é outro porque quem reporta é o checker: só ele sabe se a função
 é o valor de um `def T.m`, e o parser não pode decidir.
 
-### Extensions genéricas (plano 23)
+### Membros sobre tipos genéricos (plano 23 — implementado, M15)
 
 | Código | Severidade | Mensagem |
 |---|---|---|
 | `LAP0720` | error | `'{0}'` é declarado para {1} e para {2}, que se sobrepõem |
 | `LAP0721` | error | `'?'` só é válido como argumento genérico do dono de um membro |
-| `LAP0722` | error | o dono do membro tem {0} argumentos genéricos, e `'{1}'` espera {2} |
+| `LAP0722` | error | `'{0}'` tem {1} argumentos genéricos, e o dono do membro escreve {2} |
 
 A decisão da **Q27** trocou `?` curinga por parâmetro nomeado, e `LAP0721` mudou
 de sentido junto: ele não fala mais de "parâmetro que não aparece no dono" — não
@@ -429,6 +429,14 @@ dos fundos.
 `LAP0720` fica mais fácil de defender com a decisão nova: com `?` escrito, os dois
 padrões que se sobrepõem estão **na fonte**, e não são consequência sutil de duas
 declarações parecidas.
+
+`LAP0720` e `LAP0702` dividem a mesma checagem e não se confundem: padrão
+**idêntico** é redeclaração (`LAP0702`, erro de digitação), padrão que só se cruza
+é sobreposição (`LAP0720`, alcance mal escrito).
+
+`LAP0722` só vale quando os argumentos do dono foram **escritos**. Omitir `<>`
+inteiro é o padrão todo curinga — é o que faz `def Result.ok = fn<T>(...)`
+continuar valendo sem escrever `Result<?, ?>.ok`.
 
 ---
 
