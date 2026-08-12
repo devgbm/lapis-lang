@@ -1,14 +1,17 @@
-// spec §22 — `unwrapOr` sobre `Result`, com `return` dentro dos braços.
+// spec §22 — `unwrapOr` sobre `Option`, com `return` dentro dos braços.
+//
+// O span é `var` para que o tamanho fique fora do tipo e a indexação devolva
+// `Option`; com `def` os dois acessos seriam decididos em compilação.
 // expect: output
 // 20
 // 0
 // ---
-def numbers = [10, 20, 30];
+var numbers = .[10, 20, 30];
 
-def unwrapOr = fn(result: Result<Int, IndexError>, fallback: Int) Int {
+def unwrapOr = fn(result: Option<Int>, fallback: Int) Int {
     match result {
-        Result.Ok(value) => return value,
-        Result.Err(error) => return fallback
+        Option.Some(value) => return value,
+        Option.None => return fallback
     }
 };
 

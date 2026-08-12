@@ -134,7 +134,7 @@ public static class Primitives
     /// <c>Result</c>: quem converte este resultado em <c>Result.Ok</c> /
     /// <c>Result.Err</c> é o evaluator, usando as definições do prelude (spec §16).
     /// </summary>
-    public static IndexOutcome ArrayGet(ArrayValue array, long index) =>
+    public static IndexOutcome SpanGet(SpanValue array, long index) =>
         index >= 0 && index < array.Elements.Length
             ? IndexOutcome.InBounds(array.Elements[(int)index])
             : IndexOutcome.OutOfBounds;

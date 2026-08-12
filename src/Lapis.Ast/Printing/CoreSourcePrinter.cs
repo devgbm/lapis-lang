@@ -249,8 +249,9 @@ public static class CoreSourcePrinter
 
                 break;
 
-            case CoreArray n:
-                builder.Append('[');
+            case CoreSpan n:
+                // `.[` — construção leva ponto, como `.User { }` (plano 24).
+                builder.Append(".[");
 
                 for (var i = 0; i < n.Elements.Length; i++)
                 {
@@ -262,6 +263,14 @@ public static class CoreSourcePrinter
                     Print(builder, n.Elements[i], indent, Precedence.Lowest);
                 }
 
+                builder.Append(']');
+                break;
+
+            case CoreSpanRepeat n:
+                builder.Append(".[").Append(SurfaceSExprPrinter.PrintType(n.Element)).Append("; ");
+                Print(builder, n.Initializer, indent, Precedence.Lowest);
+                builder.Append("; ");
+                Print(builder, n.Size, indent, Precedence.Lowest);
                 builder.Append(']');
                 break;
 

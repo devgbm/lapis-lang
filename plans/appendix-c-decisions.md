@@ -754,17 +754,170 @@ closure enxerga um desses.
 - **O tipo do `var` é o da declaração e não muda:** uma atribuição que não cabe é
   `LAP0210`.
 
-### O que ficou de fora, e é a ergonomia a melhorar
+### A restrição de escopo entre joins, e como ela encolheu
 
-Uma declaração feita **depois** de um `label` vive dentro daquele join, e um join
-não enxerga os bindings de outro — é a mesma regra que vale entre o `goto` e o
-`label` (o salto pode ter pulado a declaração). Na prática, todo `var` que um laço
-usa precisa ser declarado **antes do primeiro rótulo** do bloco.
+A formulação original desta seção era: uma declaração feita **depois** de um
+`label` vive dentro daquele join, um join não enxerga os bindings de outro, e
+portanto todo `var` que um laço usa precisa ser declarado **antes do primeiro
+rótulo** do bloco.
 
-Funciona, e o exemplo `examples/loops.ls` mostra a forma. Mas é a restrição que
-**join com parâmetros** (`label L(x: Int);` / `goto L(x + 1);`) resolveria, e ela
-segue valendo como possível evolução: não conflita com `var`, e daria ao partial
-evaluator um grafo de fluxo em forma canônica.
+A primeira metade continua verdadeira; a conclusão, não. Ela vinha de o desugar
+achatar **todos** os rótulos de um bloco num grupo só — e a irmandade só é
+necessária entre rótulos que se referenciam. Rótulos sem salto entre si formam
+grupos **aninhados**, e aí uma declaração escrita entre dois laços os atravessa
+como um `Let` comum.
+
+O que resta da regra é exatamente o que ela sempre quis proteger, sem o excesso:
+
+> O que um `goto` **explícito** pode ter pulado não está em escopo no destino.
+
+Ver `Desugarer.CanSplitBefore` e os dois casos irmãos em
+`tests/conformance/eval/mutation/`.
+
+**Join com parâmetros** (`label L(x: Int);` / `goto L(x + 1);`) segue valendo como
+possível evolução, agora por outro motivo: não é mais para contornar escopo, e sim
+porque daria ao partial evaluator um grafo de fluxo em forma canônica.
+
+---
+
+## Q26 — Onde a resolução de membro acontece ✅
+
+**Decidida ao avaliar a proposta.** A [spec de type
+members](../spec/lapislang-type-members-0.1.md) §24 da versão original pedia uma
+fase própria:
+
+```text
+... → Name Resolution → Type Resolution → Member Resolution → Member Desugaring → ...
+```
+
+Isso exigiria uma **segunda** análise de tipos antes do checker, e a 0.2 é, por
+escolha explícita, uma travessia única dirigida por sintaxe (spec §47, plano 06).
+
+**Decisão: member resolution é type checking.** `user.hello` já é
+`CoreField(user, "hello")` e `user.hello()` já é `CoreCall(CoreField(...), [])`.
+O checker resolve o membro no mesmo `CheckField` onde já resolve campo de struct e
+variante de enum, e registra uma `Resolution` — como `VariantResolution` e
+`ReflectResolution` já fazem.
+
+Consequência que decide o custo da feature: **a Core não ganha nó nenhum e não há
+fase de lowering.**
+
+## Q27 — Extensions genéricas casam receptor contra padrão? ⏳
+
+**Sem decisão. Bloqueia o plano 23.**
+
+`def<T> Result<T>.isOk` aplicado a um `Result<Int, IndexError>` exige casar o tipo
+do receptor contra o padrão do dono e ligar `T`. Isso **é** unificação, e Q7
+estabelece que argumento genérico nunca é inferido.
+
+| Saída | Custo |
+|---|---|
+| A. só extensions especializadas | some a metade útil da feature |
+| **B. unificação restrita ao dono** *(recomendada)* | é inferência, mas fechada: sem bounds, sem recursão, sem falha parcial |
+| C. exigir o argumento na invocação (`result.isOk<Int>()`) | coerente ao pé da letra, e ninguém escreve |
+
+O argumento a favor de **B**: o que Q7 recusa é deduzir o argumento de uma chamada
+a partir dos valores passados. Aqui ele já está **escrito no tipo do receptor** —
+`Result<Int, IndexError>` é o que o checker já sabe —, e o casamento só o
+transporta para o corpo. Não há busca nem escolha.
+
+Junto vem a sobreposição: se `Result<T>.descrever` e `Result<Int>.descrever`
+coexistem, `Result<Int>` tem dois. A recomendação é **erro** (`LAP0720`) em vez de
+uma regra de especificidade — falhar ruidosamente, como a 0.2 já faz com
+`a < b < c`.
+
+## Q29 — `[T;N]` é atribuível a `[T;?]`? ✅
+
+**Decidida pelo autor: sim, numa direção só.**
+
+```c
+def imprime = fn(s: [Int;?]) Void { ... };
+imprime(.[1, 2, 3]);        // `[Int;3]` num parâmetro `[Int;?]`
+```
+
+`?` **não** é um tamanho diferente — é a ausência da informação. Um `[Int;3]` já é
+um span cujo tamanho por acaso se conhece, então a conversão é esquecer o que se
+sabia, e esquecer é sempre seguro. O contrário (`[T;?]` para `[T;N]`) não vale: o
+tamanho poderia ser qualquer um em runtime.
+
+É a **segunda** regra de subtipagem da linguagem (a primeira é `Never <: T`, Q13),
+e ela não abre variância: o elemento continua invariante, `[Int;3]` não é
+`[Any;?]`.
+
+Consequência de runtime, também decidida: um span carrega **tamanho do elemento e
+quantidade** junto do dado, porque é o que permite a `[T;?]` responder `length` sem
+o tipo dizer. No evaluator atual isso já é verdade de graça — `SpanValue` guarda
+`Elements` e `ElementType` —, e a exigência vale para um backend futuro.
+
+> **Implementada no M12.** A relação vive em `TypeRelations.IsAssignableTo`, e
+> **toda** posição que aceita um valor passa por ela — incluindo a atribuição a
+> `var`, que até então comparava com `!=` e por isso rejeitava
+> `var a = .[1]; a = .[1, 2, 3];`. A junção de ramos ganhou o par: dois spans do
+> mesmo elemento e tamanhos diferentes juntam-se em `[T;?]`, o que dá tipo a
+> `if c { .[1] } else { .[1, 2] }` e a `.[.[1], .[2, 3]]`.
+
+## Q30 — aritmética de tamanho no tipo ⏳ *(adiada com razão)*
+
+`s.concat(.[4,5])` sobre `[Int;3]` daria `[Int;5]`, o que exige somar tamanhos **no
+tipo** — primeiro degrau de tipos dependentes.
+
+**Adiada pelo autor**, com uma razão melhor do que "é caro": span é a **base** de
+`Array` e `List`, que virão como biblioteca, e é nelas que concatenação faz sentido
+— com capacidade separada de comprimento e política de crescimento. Resolver
+aritmética de tamanho na primitiva seria pagar por um caso que a biblioteca vai
+reformular.
+
+Por enquanto `concat` devolve `[T;?]`.
+
+## Q31 — indexação devolve `Option`, não `Result` ✅
+
+**Decidida pelo autor.** `s[i]` era `Result<T, IndexError>` (spec §21) e passa a
+ser `Option<T>`.
+
+`IndexError.OutOfBounds` nunca carregou informação: um enum de uma variante só,
+cujo significado é "falhou". `Result` existe para o erro que **diz alguma coisa**;
+onde não há o que dizer, `Option` é o tipo honesto.
+
+E fecha uma assimetria que estava no repositório: `Option` foi para o prelude no M2
+porque a spec §29 o cita, e ficou **sem um único consumidor** desde então. Agora
+tem o seu — e `IndexError` fica sem nenhum, o que abre a pergunta de aposentá-lo
+(recomendação do plano 24: sim, agora, que é quando a quebra custa menos).
+
+> **Implementada no M12**, com uma metade que a decisão não previa: onde o tamanho
+> **está** no tipo e o índice é constante, não há envelope nenhum. `Option<T>` é o
+> caso de `[T;?]` e de índice dinâmico; `[T;N]` com índice constante devolve `T`
+> direto, e o índice fora dos limites vira `LAP0244` em compilação. `IndexError`
+> saiu do prelude.
+
+## Q28 — `arr[i] = v` ⏳
+
+**Sem decisão.** Ela não sai de graça do mesmo mecanismo de `u.campo = e`.
+
+> **Atualização com o plano 24.** Com o tamanho no tipo, o caso `[T;N]` com índice
+> literal deixa de ser dinâmico: `arr[1] = v` sobre `[Int;3]` teria alvo estático,
+> como um campo. O que continua sem resposta é `[T;?]` e índice dinâmico — e a
+> decisão do autor foi que **nenhuma** das duas formas é permitida por enquanto,
+> com a mutação de array indo por API (`push`, `setElement`) e não por sintaxe.
+
+Atribuição a campo funciona porque o caminho é **estático**: o checker sabe qual
+campo, e a falha possível ("não existe") é de compilação. Um índice é dinâmico, e
+a falha é de execução — `arr[10] = v` num array de 3.
+
+As saídas conhecidas não servem:
+
+| Saída | Por que não |
+|---|---|
+| devolver `Result` | atribuição é **statement**; não há onde o `Result` ir parar |
+| abortar | Q9 eliminou os caminhos de aborto de propósito, e a leitura `arr[i]` já é total por devolver `Result` |
+| ignorar em silêncio | perde escrita sem avisar — pior que as duas |
+
+A leitura de array devolve `Result` justamente para não ter caminho de aborto; a
+escrita precisaria da mesma honestidade em uma posição da gramática que não a
+comporta. Uma saída possível é uma forma que **seja** expressão
+(`def novo = arr.comIndice(i, v);` ou similar), que é biblioteca e não sintaxe.
+
+Fica registrada porque a spec de type members §9.2 a encosta, não porque o
+milestone dependa dela.
 
 ---
 

@@ -18,7 +18,8 @@ public abstract class CoreVisitor<TResult>
         CoreIf n => VisitIf(n),
         CoreBinary n => VisitBinary(n),
         CoreUnary n => VisitUnary(n),
-        CoreArray n => VisitArray(n),
+        CoreSpan n => VisitArray(n),
+        CoreSpanRepeat n => VisitSpanRepeat(n),
         CoreIndex n => VisitIndex(n),
         CoreField n => VisitField(n),
         CoreEnumDef n => VisitEnumDef(n),
@@ -54,7 +55,9 @@ public abstract class CoreVisitor<TResult>
 
     protected abstract TResult VisitUnary(CoreUnary node);
 
-    protected abstract TResult VisitArray(CoreArray node);
+    protected abstract TResult VisitArray(CoreSpan node);
+
+    protected abstract TResult VisitSpanRepeat(CoreSpanRepeat node);
 
     protected abstract TResult VisitIndex(CoreIndex node);
 
@@ -151,12 +154,17 @@ public abstract class CoreWalker
                 Visit(n.Operand);
                 break;
 
-            case CoreArray n:
+            case CoreSpan n:
                 foreach (var element in n.Elements)
                 {
                     Visit(element);
                 }
 
+                break;
+
+            case CoreSpanRepeat n:
+                Visit(n.Initializer);
+                Visit(n.Size);
                 break;
 
             case CoreIndex n:

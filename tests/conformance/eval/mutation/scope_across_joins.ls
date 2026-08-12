@@ -1,13 +1,20 @@
-// Um `var` declarado dentro de um join não é visível no join seguinte — a mesma
-// regra que vale entre o `goto` e o `label` (o salto pode ter pulado a
-// declaração), aplicada entre joins do mesmo grupo.
+// Um `var` declarado depois de um rótulo **é** visível no rótulo seguinte,
+// quando nenhum salto explícito atravessa a fronteira entre os dois.
 //
-// Na prática: toda declaração que o laço usa precisa vir antes do primeiro
-// rótulo. É a ergonomia que join com parâmetros resolveria.
-// expect: error LAP0201 at 13:1
-// expect: error LAP0201 at 13:12
+// A única forma de chegar em `b` é caindo do fim do segmento de `a` — e cair
+// executa o `var contador = 0;`. Os rótulos, então, não precisam ser irmãos: `b`
+// abre um grupo **aninhado** no corpo de `a`, e a declaração o envolve como um
+// `Let` comum.
+//
+// Onde a declaração pode ser pulada, a regra antiga continua valendo: ver
+// `scope_across_joins_with_jump.ls`.
+// expect: output
+// 1
+// ---
 label a;
 var contador = 0;
 
 label b;
 contador = contador + 1;
+
+print(contador);

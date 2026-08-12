@@ -102,14 +102,48 @@ evaluator teria de modelar antes de especializar qualquer coisa com closure.
 | `LAP0230` | error | condição de `if` deve ser `Bool`, encontrado `{0}` |
 | `LAP0231` | error | ramos de `if` têm tipos incompatíveis: `{0}` e `{1}` |
 
-### Arrays e indexação
+### Spans e indexação
 
 | Código | Severidade | Mensagem |
 |---|---|---|
-| `LAP0240` | error | elementos de array devem ter o mesmo tipo: `{0}` e `{1}` |
-| `LAP0241` | error | array vazio requer anotação de tipo |
+| `LAP0240` | error | elementos de span devem ter o mesmo tipo: `{0}` e `{1}` |
+| `LAP0241` | error | span vazio requer anotação de tipo |
 | `LAP0242` | error | `{0}` não é indexável |
 | `LAP0243` | error | índice deve ser `Int`, encontrado `{0}` |
+| `LAP0244` | error | índice {0} fora dos limites de `{1}` |
+| `LAP0245` | error | o tamanho de um span deve ser um `Int` não negativo |
+
+`LAP0244` só existe porque o tamanho vive no tipo (plano 24): com `[Int;3]`,
+`s[3]` é erro **de tipo**, checado pela mesma maquinaria que rejeita
+`def a: Str = 1;`. Índice dinâmico ou span `[T;?]` devolvem `Option<T>` — provar
+`i < n` para um `i` derivado de laço é trabalho do partial evaluator (plano 14),
+não do checker. A nota do diagnóstico aponta o alvo e diz quantos elementos ele
+tem.
+
+**A indexação não devolve `Result<T, IndexError>`** e sim `Option<T>` (Q31):
+`IndexError.OutOfBounds` era um enum de uma variante cujo significado é "falhou",
+e `Result` existe para o erro que diz alguma coisa. `IndexError` saiu do prelude
+junto. As mensagens desta seção falam de **span**, não de array — `Array` e
+`List` ficam reservados para a biblioteca.
+
+`LAP0240` usa a **junção** dos tipos, não a igualdade: `.[.[1], .[2, 3]]` é um
+span de spans de tamanhos diferentes, e o elemento comum é `[Int;?]` — a mesma
+regra que dá tipo a `if c { .[1] } else { .[1, 2] }`. O diagnóstico sobra para o
+que junção nenhuma resolve, como `.[1, "x"]`.
+
+`LAP0241` continua valendo: `.[]` diz o tamanho, não o tipo do elemento.
+
+`LAP0245` é do **tipo** `[T;N]`, escrito em posição de anotação — `[Int;true]`. A
+quantidade de `.[T; inicial; n]` **não** passa por ele: negativa produz span
+vazio, e grande demais aborta em execução com `LAP0304`. Os dois são de execução
+de propósito. Se o checker rejeitasse a quantidade constante, o partial evaluator
+poderia transformar um programa que compila num que não compila, só por dobrar
+`0 - 1` em `-1` — e nenhuma transformação dele pode mudar se um programa é bem
+tipado. Span vazio para quantidade negativa é a mesma escolha da divisão inteira
+por zero (Q9): a operação é total.
+
+`LAP0304` mora na família de execução, junto de `LAP0303`, e pelo mesmo motivo: a
+garantia não é "nunca falta memória", é "o programa termina e diz o que houve".
 
 ### Campos, variantes e construção
 
@@ -182,12 +216,19 @@ Não são diagnósticos de compilação: são relatados na saída de execução 
 | ~~`LAP0301`~~ | — | **aposentado** (Q9): a divisão inteira por zero produz o maior `Int`, então a operação é total |
 | `LAP0302` | abort | profundidade de chamada excedida (limite {0}) |
 | `LAP0303` | abort | limite de saltos excedido (limite {0}) |
+| `LAP0304` | abort | span de {0} elementos excede o limite de {1} |
 
 `LAP0303` chegou com o `goto` para trás (M6). Até o M4 todo programa terminava por
 construção — sem recursão (Q8) e sem laços; `goto` para trás acaba com isso, e este
 é o diagnóstico que troca um travamento por uma mensagem. O orçamento é do
 **programa inteiro** (1.000.000 de saltos), não de cada laço: é o que torna "todo
 programa termina ou reporta `LAP0303`" uma propriedade verificável.
+
+`LAP0304` é o mesmo raciocínio aplicado à quantidade de `.[T; inicial; n]` (plano
+24): um span pedido grande demais termina com diagnóstico em vez de travar a
+máquina. O orçamento é de **execução**, e não de compilação — se o checker
+rejeitasse a quantidade constante, o partial evaluator poderia transformar um
+programa que compila num que não compila, só por dobrar a expressão do tamanho.
 
 ---
 
@@ -287,6 +328,53 @@ o programa —, e a tabela respeita a ordem do arquivo (Q8): um tipo declarado
 
 Um número de argumentos errado em `reflect` usa `LAP0221`, o mesmo de qualquer
 chamada: não é um erro diferente por ser intrínseco.
+
+---
+
+## LAP07xx — Type members (proposta)
+
+Introduzidos pela [spec de type members](../spec/lapislang-type-members-0.1.md).
+Planos 21–23. **Nenhum implementado.**
+
+### Declaração e resolução (plano 21)
+
+| Código | Severidade | Mensagem |
+|---|---|---|
+| `LAP0701` | error | o tipo `{0}` não possui o membro `'{1}'` |
+| `LAP0702` | error | o membro `'{0}'` de `{1}` já foi declarado |
+| `LAP0703` | error | `'{0}'` já é variante de `{1}` |
+| `LAP0704` | error | o dono de um membro deve ser um tipo declarado |
+| `LAP0705` | error | um membro não pode ser `var` |
+| `LAP0707` | error | `'{0}'` é um membro de `{1}` e não um campo da instância |
+
+**Atribuição a campo reusa os códigos que já existem.** `mutavel.campo = e` é
+válido quando o binding é `var`; os erros são `LAP0206` (o binding é `def`),
+`LAP0210` (tipo errado) e `LAP0250` (campo inexistente). `LAP0707` é o único novo,
+e existe porque a mensagem certa é específica: `u.hello = ...` falha não porque
+`hello` não exista, mas porque ele é membro do **tipo**, não campo da instância.
+
+`LAP0706` ficou **livre**: chegou a ser alocado para "nada qualificado é
+atribuível", leitura que a decisão do autor corrigiu antes de virar código.
+
+`LAP0703` existe porque `Color.Red` e `Color.membro` ocupam a **mesma** sintaxe:
+sem ele, declarar um membro com nome de variante seria resolvido por precedência
+silenciosa, e quem escreveu o segundo nunca saberia.
+
+### Instância (plano 22)
+
+| Código | Severidade | Mensagem |
+|---|---|---|
+| `LAP0710` | error | o membro `'{0}'` de `{1}` exige uma instância |
+| `LAP0711` | error | o membro `'{0}'` de `{1}` é estático |
+| `LAP0712` | error | `self` sem anotação só é válido no primeiro parâmetro de um membro |
+
+### Extensions genéricas (plano 23)
+
+| Código | Severidade | Mensagem |
+|---|---|---|
+| `LAP0720` | error | `'{0}'` é declarado para `{1}` e para `{2}`, que se sobrepõem |
+| `LAP0721` | error | o parâmetro genérico `'{0}'` não aparece no dono do membro |
+| `LAP0722` | error | o dono do membro tem {0} argumentos genéricos, e `{1}` espera {2} |
 
 ---
 

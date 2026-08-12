@@ -49,14 +49,18 @@ public sealed record VoidValue : Value
 }
 
 /// <summary>
-/// Guarda o tipo do elemento porque um array vazio precisa saber o que carrega —
+/// Guarda o tipo do elemento porque um span vazio precisa saber o que carrega —
 /// para formatação e para o partial evaluator.
+///
+/// Um valor sempre tem tamanho <b>concreto</b>: é o que permite a um <c>[T;?]</c>
+/// responder <c>length</c> sem o tipo dizer (Q29). Um span carrega o dado, o tipo
+/// do elemento e a quantidade — é a representação que a decisão exige.
 /// </summary>
-public sealed record ArrayValue(ImmutableArray<Value> Elements, LapisType ElementType) : Value
+public sealed record SpanValue(ImmutableArray<Value> Elements, LapisType ElementType) : Value
 {
-    public override LapisType Type => new ArrayType(ElementType);
+    public override LapisType Type => SpanType.Of(ElementType, Elements.Length);
 
-    public bool Equals(ArrayValue? other) =>
+    public bool Equals(SpanValue? other) =>
         other is not null && ElementType == other.ElementType && Elements.SequenceEqual(other.Elements);
 
     public override int GetHashCode()

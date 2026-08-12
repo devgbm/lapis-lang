@@ -154,7 +154,7 @@ internal sealed class Substitution
             case InstantiateExpression n:
                 return n with { Target = ApplyExpression(n.Target), Span = _invocation };
 
-            case ArrayExpression n:
+            case SpanExpression n:
                 return n with { Elements = [.. n.Elements.Select(ApplyExpression)], Span = _invocation };
 
             case IndexExpression n:
@@ -222,7 +222,7 @@ internal sealed class Substitution
         NamedTypeSyntax named when _bindings.TryGetValue(named.Name, out var binding)
             && binding is SingleBinding { Node: TypeSyntax captured } => captured,
 
-        ArrayTypeSyntax n => n with { Element = ApplyType(n.Element) },
+        SpanTypeSyntax n => n with { Element = ApplyType(n.Element) },
 
         FunctionTypeSyntax n => n with
         {

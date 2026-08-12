@@ -77,31 +77,58 @@ public sealed class SemanticPropertyTests
     }
 
     /// <summary>
-    /// Spec §21/§30: indexar produz um `Result`, sempre — dentro ou fora dos
-    /// limites, com índice negativo, em array vazio. Nunca lança, nunca aborta.
+    /// Spec §21/§30, revisada pelo plano 24: quando o tamanho **não** está no
+    /// tipo, indexar produz um <c>Option</c> — dentro ou fora dos limites, com
+    /// índice negativo, em span vazio. Nunca lança, nunca aborta.
+    ///
+    /// O span é <c>var</c> em todos os casos justamente para alargar o tamanho
+    /// para <c>?</c>: é o caso em que a checagem sobra para a execução, e é dele
+    /// que a propriedade fala.
     /// </summary>
     [Theory]
-    [InlineData("[]", "0")]
-    [InlineData("[1]", "0")]
-    [InlineData("[1]", "1")]
-    [InlineData("[1]", "-1")]
-    [InlineData("[1, 2, 3]", "2")]
-    [InlineData("[1, 2, 3]", "9223372036854775807")]
-    public void Indexing_AlwaysProducesResult(string array, string index)
+    [InlineData(".[]", "0")]
+    [InlineData(".[1]", "0")]
+    [InlineData(".[1]", "1")]
+    [InlineData(".[1]", "0 - 1")]
+    [InlineData(".[1, 2, 3]", "2")]
+    [InlineData(".[1, 2, 3]", "9223372036854775807")]
+    public void Indexing_UnknownSize_AlwaysProducesOption(string span, string index)
     {
-        // O array vazio precisa de anotação (spec §18), então o caso dele é escrito
-        // com uma; os demais dispensam.
-        var declaration = array == "[]" ? "def a: Int[] = [];" : $"def a = {array};";
+        // O span vazio não diz o que carrega (spec §18), então o caso dele é
+        // escrito com anotação; os demais dispensam.
+        var declaration = span == ".[]" ? "var a: [Int;?] = .[];" : $"var a = {span};";
         var source = SourceText.From($"{declaration}\nprint(a[{index}]);\n", "propriedade.ls");
 
         var output = new StringOutput();
         var result = Pipeline.Compile(source, PipelineStage.Evaluate, new RuntimeContext(output));
 
-        result.HasErrors.ShouldBeFalse();
+        result.HasErrors.ShouldBeFalse(
+            string.Join(", ", result.Diagnostics.Select(d => $"{d.Code} {d.Message}")));
+
         result.Evaluation!.Status.ShouldBe(ExecutionStatus.Completed);
         output.Text.ShouldSatisfyAllConditions(
-            () => output.Text.ShouldStartWith("Result."),
+            () => output.Text.ShouldStartWith("Option."),
             () => output.Text.ShouldNotContain("Exception"));
+    }
+
+    /// <summary>
+    /// E o outro lado: com o tamanho no tipo e o índice conhecido, a indexação é
+    /// <b>total</b> — o valor sai sem envelope, e a checagem de limites já
+    /// aconteceu no checker.
+    /// </summary>
+    [Theory]
+    [InlineData("0", "1")]
+    [InlineData("1", "2")]
+    [InlineData("2", "3")]
+    public void Indexing_KnownSize_IsTotal(string index, string expected)
+    {
+        var source = SourceText.From($"def a = .[1, 2, 3];\nprint(a[{index}]);\n", "propriedade.ls");
+
+        var output = new StringOutput();
+        var result = Pipeline.Compile(source, PipelineStage.Evaluate, new RuntimeContext(output));
+
+        result.HasErrors.ShouldBeFalse();
+        output.Text.ShouldBe(expected + "\n");
     }
 
     /// <summary>

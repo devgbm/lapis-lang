@@ -36,7 +36,6 @@ public sealed class RobustnessTests : LexerTestBase
     [InlineData("^")]
     [InlineData("$")]
     [InlineData("#")]
-    [InlineData("?")]
     public void UnsupportedSymbols_AreBad(string source)
     {
         var (tokens, diagnostics) = Lex(source);

@@ -105,8 +105,8 @@ public static class CompileTimeNatives
 
             Native(
                 KeysName,
-                FunctionType.Of([PrimitiveType.Str], new ArrayType(PrimitiveType.Str)),
-                (arguments, _) => new ArrayValue(
+                FunctionType.Of([PrimitiveType.Str], SpanType.Unknown(PrimitiveType.Str)),
+                (arguments, _) => new SpanValue(
                     [.. context.Keys(Key(arguments[0])).Select(k => (Value)new StrValue(k))],
                     PrimitiveType.Str)),
         ];

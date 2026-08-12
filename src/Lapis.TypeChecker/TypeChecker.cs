@@ -146,7 +146,8 @@ public sealed class TypeChecker
             CoreIf n => CheckIf(n, scope),
             CoreBinary n => CheckBinary(n, scope),
             CoreUnary n => CheckUnary(n, scope),
-            CoreArray n => CheckArray(n, scope, expected),
+            CoreSpan n => CheckArray(n, scope, expected),
+            CoreSpanRepeat n => CheckSpanRepeat(n, scope),
             CoreIndex n => CheckIndex(n, scope),
             CoreField n => CheckField(n, scope),
             CoreEnumDef n => CheckEnumDef(n, scope),
@@ -213,6 +214,17 @@ public sealed class TypeChecker
 
             valueType = declared;
         }
+        else if (node.IsMutable && valueType is SpanType { Size: FixedSize } widened)
+        {
+            // Um `var` sem anotação **alarga** o tamanho para `?` (plano 24 §24.7):
+            // `s = .[1,2,3,4,5]` tem de continuar válido, e o tipo não pode
+            // prometer um tamanho que a próxima atribuição desmente.
+            //
+            // Com anotação (`var f: [Int;3]`) o tamanho é mantido, e a
+            // reatribuição passa a ser checada — é o que dá indexação total num
+            // binding mutável.
+            valueType = SpanType.Unknown(widened.Element);
+        }
 
         // O nome só é visível no corpo — não no próprio valor. É isso que torna a
         // v0.2 não recursiva (Q8).
@@ -264,14 +276,39 @@ public sealed class TypeChecker
     /// a expressão é trabalho do partial evaluator (spec §58) e replicá-lo no
     /// checker significaria manter duas aritméticas em sincronia.
     /// </summary>
-    private static GenericArgument? ConstantOf(CoreExpr value, LapisType type, Scope scope) => value switch
+    private GenericArgument? ConstantOf(CoreExpr value, LapisType type, Scope scope) => value switch
     {
         CoreLiteral literal => new ConstArgument(literal.Value),
+
+        // `s.length` sobre um `[T;N]` é a constante `N`, e por isso serve de
+        // argumento const genérico (Q18).
+        CoreField field when _resolutions.TryGetValue(field.NodeId, out var resolution)
+            && resolution is SpanLengthResolution { Known: { } known } =>
+            new ConstArgument(new ConstInt(known)),
 
         CoreLambda lambda when type is FunctionType signature =>
             new ConstFunctionArgument(CoreSourcePrinter.PrintExpressionCompact(lambda), signature),
 
         CoreVariable variable when scope.TryLookup(variable.Name, out var binding) => binding.Constant,
+
+        _ => null,
+    };
+
+    /// <summary>
+    /// O índice como constante, quando dá — literal escrito, ou um <c>def</c>
+    /// ligado a um. É o que separa a indexação total da que devolve
+    /// <c>Option</c> (plano 24 §24.5).
+    ///
+    /// Um <c>var</c> nunca chega aqui: ele não é constante de compilação (Q25), e
+    /// é por isso que trocar <c>def i</c> por <c>var i</c> muda o tipo de
+    /// <c>s[i]</c>.
+    /// </summary>
+    private static long? ConstIntOf(CoreExpr expression, Scope scope) => expression switch
+    {
+        CoreLiteral { Value: ConstInt literal } => literal.Value,
+
+        CoreVariable variable when scope.TryLookup(variable.Name, out var binding)
+            && binding.Constant is ConstArgument { Value: ConstInt bound } => bound.Value,
 
         _ => null,
     };
@@ -888,8 +925,10 @@ public sealed class TypeChecker
         }
 
         // O tipo do `var` é o da declaração e não muda: uma atribuição precisa
-        // caber nele, como um argumento precisa caber no parâmetro.
-        if (valueType is not ErrorType and not NeverType && valueType != binding.Type)
+        // caber nele, como um argumento precisa caber no parâmetro. "Caber" é a
+        // relação, não a igualdade — é o que faz `var a = .[1]; a = .[1, 2];`
+        // valer, já que o `var` foi declarado com tamanho `?` (Q29).
+        if (!TypeRelations.IsAssignableTo(valueType, binding.Type))
         {
             _diagnostics.ReportError(
                 DiagnosticCodes.TypeMismatch,
@@ -1162,22 +1201,22 @@ public sealed class TypeChecker
 
     // ------------------------------------------- arrays, índice, enums
 
-    private LapisType CheckArray(CoreArray node, Scope scope, LapisType? expected = null)
+    private LapisType CheckArray(CoreSpan node, Scope scope, LapisType? expected = null)
     {
         if (node.Elements.IsEmpty)
         {
-            // Um array vazio não diz o que carrega; quem diz é a anotação, quando
-            // existe (spec §18).
-            if (expected is ArrayType)
+            // Um span vazio diz o **tamanho** (zero), não o que carrega; quem diz
+            // o elemento é a anotação, quando existe (spec §18).
+            if (expected is SpanType expectedSpan)
             {
-                return expected;
+                return SpanType.Of(expectedSpan.Element, 0);
             }
 
             _diagnostics.ReportError(
                 DiagnosticCodes.EmptyArrayNeedsAnnotation,
                 node.Span,
-                "array vazio requer anotação de tipo",
-                new DiagnosticNote("anote o `def`, por exemplo `def a: Int[] = [];`"));
+                "span vazio requer anotação de tipo",
+                new DiagnosticNote("anote o `def`, por exemplo `def a: [Int;0] = .[];`"));
 
             return ErrorType.Instance;
         }
@@ -1194,24 +1233,112 @@ public sealed class TypeChecker
                 continue;
             }
 
-            if (element != first)
+            // Junção, não igualdade: `.[.[1], .[2, 3]]` é um span de spans de
+            // tamanhos diferentes, e o elemento comum é `[Int;?]` — a mesma regra
+            // que dá tipo a `if c { .[1] } else { .[1, 2] }`.
+            if (TypeRelations.Join(first, element) is not { } joined)
             {
                 _diagnostics.ReportError(
                     DiagnosticCodes.HeterogeneousArray,
                     node.Elements[i].Span,
-                    $"elementos de array devem ter o mesmo tipo: {first.ToDisplayString()} "
+                    $"elementos de span devem ter o mesmo tipo: {first.ToDisplayString()} "
                     + $"e {element.ToDisplayString()}");
                 return ErrorType.Instance;
             }
+
+            first = joined;
         }
 
-        return first is ErrorType ? ErrorType.Instance : new ArrayType(first);
+        // O tamanho vem do literal: `.[1,2,3]` é `[Int;3]`.
+        return first is ErrorType ? ErrorType.Instance : SpanType.Of(first, node.Elements.Length);
     }
 
     /// <summary>
-    /// A regra fundamental da spec §21: <c>T[][Int]</c> tem tipo
-    /// <c>Result&lt;T, IndexError&gt;</c>, nunca <c>T</c>. A indexação pode falhar, e
-    /// isso aparece no tipo.
+    /// <c>.[T; inicial; n]</c> — span por repetição.
+    ///
+    /// O tamanho segue a mesma noção de constante da Q18: literal, <c>def</c>
+    /// ligado a literal, parâmetro const genérico. Quando o tamanho é constante o
+    /// tipo é <c>[T;n]</c> e a indexação por índice literal volta a ser total —
+    /// que é o ponto de a quantidade estar escrita. Quando não é, o tipo é
+    /// <c>[T;?]</c>, exatamente como qualquer outro span cujo tamanho ninguém
+    /// sabe.
+    ///
+    /// O elemento vem da <b>anotação escrita</b>, não do inicializador: em
+    /// <c>.[Option&lt;Int&gt;; Option&lt;Int&gt;.None; n]</c> a variante nulária
+    /// não determina o tipo sozinha (Q7 — não há inferência). O inicializador
+    /// precisa caber no elemento, pela mesma relação de sempre.
+    /// </summary>
+    private LapisType CheckSpanRepeat(CoreSpanRepeat node, Scope scope)
+    {
+        var element = _types.Resolve(node.Element, scope);
+        var initializer = CheckExpression(node.Initializer, scope, element);
+        var size = CheckExpression(node.Size, scope);
+
+        if (!TypeRelations.IsAssignableTo(initializer, element))
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.TypeMismatch,
+                node.Initializer.Span,
+                $"esperado {element.ToDisplayString()}, encontrado {initializer.ToDisplayString()}",
+                new DiagnosticNote("o valor inicial precisa caber no elemento escrito", node.Element.Span));
+
+            return ErrorType.Instance;
+        }
+
+        if (size is not ErrorType && size != PrimitiveType.Int)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.IndexMustBeInt,
+                node.Size.Span,
+                $"a quantidade de um span deve ser Int, encontrado {size.ToDisplayString()}");
+
+            return ErrorType.Instance;
+        }
+
+        if (element is ErrorType || size is ErrorType)
+        {
+            return ErrorType.Instance;
+        }
+
+        if (ConstIntOf(node.Size, scope) is not { } written)
+        {
+            // Quantidade só conhecida em execução: o span existe, mas o tipo não
+            // fala do tamanho.
+            _resolutions[node.NodeId] = new SpanRepeatResolution(null);
+            return SpanType.Unknown(element);
+        }
+
+        // Quantidade negativa é span vazio, não erro.
+        //
+        // A tentação é reportar: um `-1` escrito à mão é quase certamente engano.
+        // Mas a regra não sobreviveria ao partial evaluator — `0 - 1` não é
+        // constante para o checker, e dobrar a subtração transformaria um programa
+        // que compila num que não compila. Nenhuma transformação do PE pode mudar
+        // se um programa é bem tipado.
+        //
+        // Então vale a escolha da divisão inteira por zero (Q9): a operação é
+        // total, o resultado é o razoável, e o programa segue.
+        var length = Math.Max(0, written);
+
+        _resolutions[node.NodeId] = new SpanRepeatResolution(length <= int.MaxValue ? (int)length : null);
+        return length <= int.MaxValue ? SpanType.Of(element, (int)length) : SpanType.Unknown(element);
+    }
+
+    /// <summary>
+    /// Indexação (plano 24, revisando a spec §21).
+    ///
+    /// Com <b>tamanho e índice conhecidos</b> a operação é total e o tipo é o do
+    /// elemento — nada de envelope. Fora dos limites é <c>LAP0244</c>, erro de
+    /// compilação, checado pela mesma maquinaria que rejeita
+    /// <c>def a: Str = 1;</c>.
+    ///
+    /// Em qualquer outro caso — <c>[T;?]</c>, ou índice dinâmico — o tipo é
+    /// <c>Option&lt;T&gt;</c>. Deixou de ser <c>Result&lt;T, IndexError&gt;</c>
+    /// (Q31): <c>IndexError.OutOfBounds</c> nunca carregou informação, e
+    /// <c>Result</c> existe para o erro que <b>diz</b> alguma coisa.
+    ///
+    /// Provar <c>i &lt; n</c> para um <c>i</c> derivado de laço continua sendo
+    /// trabalho do partial evaluator (plano 14), não deste checker.
     /// </summary>
     private LapisType CheckIndex(CoreIndex node, Scope scope)
     {
@@ -1231,7 +1358,7 @@ public sealed class TypeChecker
             return ErrorType.Instance;
         }
 
-        if (target is not ArrayType array)
+        if (target is not SpanType span)
         {
             _diagnostics.ReportError(
                 DiagnosticCodes.NotIndexable,
@@ -1240,18 +1367,38 @@ public sealed class TypeChecker
             return ErrorType.Instance;
         }
 
+        if (span.Size is FixedSize size && ConstIntOf(node.Index, scope) is { } written)
+        {
+            if (written >= 0 && written < size.Value)
+            {
+                _resolutions[node.NodeId] = new TotalIndexResolution((int)written);
+                return span.Element;
+            }
+
+            _diagnostics.ReportError(
+                DiagnosticCodes.IndexOutOfBounds,
+                node.Index.Span,
+                $"índice {written} fora dos limites de {span.ToDisplayString()}",
+                new DiagnosticNote($"o span tem {size.Value} elemento(s)", node.Target.Span));
+
+            return ErrorType.Instance;
+        }
+
         // As definições vêm do prelude resolvido, não de uma busca por nome: assim
-        // sombrear `Result` no programa do usuário não muda a semântica de `[]`.
+        // sombrear `Option` no programa do usuário não muda a semântica de `[]`.
         var prelude = _prelude
             ?? throw new InternalCompilerException("indexação sem prelude carregado", node.Span);
 
-        return new NamedType(prelude.Result, prelude.IndexResultArguments(array.Element));
+        return prelude.OptionOf(span.Element);
     }
 
     /// <summary>
     /// Acesso a membro. Sobre um <c>MetaType</c> de enum, seleciona uma variante
     /// (<c>IndexError.OutOfBounds</c>) — a única forma de nomear variantes (Q3).
     /// </summary>
+    /// <summary>O único membro de um span: quantos elementos ele tem.</summary>
+    public const string LengthMember = "length";
+
     private LapisType CheckField(CoreField node, Scope scope)
     {
         var target = CheckExpression(node.Target, scope);
@@ -1259,6 +1406,18 @@ public sealed class TypeChecker
         if (target is ErrorType)
         {
             return ErrorType.Instance;
+        }
+
+        // `s.length` — constante quando o tamanho está no tipo, `Int` de runtime
+        // quando é `[T;?]`. É a peça que faltava desde o M2: `array_length` estava
+        // previsto no plano 09 e nunca existiu, e a falta dele impediu `@foreach`
+        // e forçou um `match variants[0]` no caso de reflection.
+        if (target is SpanType spanTarget && node.Name == LengthMember)
+        {
+            _resolutions[node.NodeId] = new SpanLengthResolution(
+                spanTarget.Size is FixedSize fixedSize ? fixedSize.Value : null);
+
+            return PrimitiveType.Int;
         }
 
         // Campo de uma instância de `type`.

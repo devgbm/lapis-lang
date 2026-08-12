@@ -69,7 +69,13 @@ public sealed class CoreFactory
 
     public CoreUnary Unary(SourceSpan span, UnaryOperator op, CoreExpr operand) => new(Next(), span, op, operand);
 
-    public CoreArray Array(SourceSpan span, ImmutableArray<CoreExpr> elements) => new(Next(), span, elements);
+    public CoreSpan Array(SourceSpan span, ImmutableArray<CoreExpr> elements) => new(Next(), span, elements);
+
+    public CoreSpanRepeat SpanRepeat(
+        SourceSpan span,
+        TypeSyntax element,
+        CoreExpr initializer,
+        CoreExpr size) => new(Next(), span, element, initializer, size);
 
     public CoreIndex Index(SourceSpan span, CoreExpr target, CoreExpr index) => new(Next(), span, target, index);
 

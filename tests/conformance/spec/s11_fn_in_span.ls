@@ -6,7 +6,7 @@
 def increment = fn(x: Int) Int { return x + 1; };
 def decrement = fn(x: Int) Int { return x - 1; };
 
-def operations = [increment, decrement];
+def operations = .[increment, decrement];
 
 def apply = fn(f: fn(Int) Int, v: Int) Int { return f(v); };
 

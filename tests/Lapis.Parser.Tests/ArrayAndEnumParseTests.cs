@@ -3,26 +3,73 @@ using Lapis.Diagnostics;
 
 namespace Lapis.Parser.Tests;
 
-public sealed class ArrayParseTests : ParserTestBase
+public sealed class SpanParseTests : ParserTestBase
 {
     [Fact]
-    public void Array_Literal() => ShouldPrintAs("[1, 2, 3];", "(array (int 1) (int 2) (int 3))");
+    public void Span_Literal() => ShouldPrintAs(".[1, 2, 3];", "(span (int 1) (int 2) (int 3))");
 
     [Fact]
-    public void Array_Empty() => ShouldPrintAs("[];", "(array)");
+    public void Span_Empty() => ShouldPrintAs(".[];", "(span)");
 
     [Fact]
-    public void Array_TrailingComma() => ShouldPrintAs("[1, 2,];", "(array (int 1) (int 2))");
+    public void Span_TrailingComma() => ShouldPrintAs(".[1, 2,];", "(span (int 1) (int 2))");
 
     [Fact]
-    public void Array_Nested() => ShouldPrintAs("[[1]];", "(array (array (int 1)))");
+    public void Span_Nested() => ShouldPrintAs(".[.[1]];", "(span (span (int 1)))");
 
     [Fact]
-    public void Array_OfExpressions() =>
-        ShouldPrintAs("[1 + 2];", "(array (binary + (int 1) (int 2)))");
+    public void Span_OfExpressions() =>
+        ShouldPrintAs(".[1 + 2];", "(span (binary + (int 1) (int 2)))");
 
     [Fact]
-    public void Array_Unclosed_ReportsError() => Codes("[1, 2;").ShouldNotBeEmpty();
+    public void Span_Unclosed_ReportsError() => Codes(".[1, 2;").ShouldNotBeEmpty();
+
+    /// <summary>
+    /// Sem o ponto, `[` abre um **tipo** (plano 24 §24.3): a forma nua deixou de
+    /// ser uma expressão, e é isso que desfaz a ambiguidade com `[Int;3]`.
+    /// </summary>
+    [Fact]
+    public void Span_WithoutDot_IsNotAnExpression() => Codes("[1, 2, 3];").ShouldNotBeEmpty();
+
+    // ------------------------------------------------ span por repetição
+
+    [Fact]
+    public void SpanRepeat_Simple() =>
+        ShouldPrintAs(".[Int; 0; 8];", "(span-repeat Int (int 0) (int 8))");
+
+    [Fact]
+    public void SpanRepeat_GenericElement() =>
+        ShouldPrintAs(
+            ".[Option<Int>; Option<Int>.None; 3];",
+            "(span-repeat Option<Int> (member None (instantiate <Int> (name Option))) (int 3))");
+
+    [Fact]
+    public void SpanRepeat_SpanElement() =>
+        ShouldPrintAs(".[[Int;2]; a; 3];", "(span-repeat [Int;2] (name a) (int 3))");
+
+    [Fact]
+    public void SpanRepeat_ExpressionSize() =>
+        ShouldPrintAs(".[Int; 0; n + 1];", "(span-repeat Int (int 0) (binary + (name n) (int 1)))");
+
+    /// <summary>
+    /// O separador é o que decide: com `,` a leitura é lista, e é ela que vale
+    /// mesmo quando o primeiro elemento também parseia como tipo.
+    /// </summary>
+    [Fact]
+    public void SpanRepeat_CommaMeansList() =>
+        ShouldPrintAs(".[a, b];", "(span (name a) (name b))");
+
+    /// <summary>Um elemento só, sem separador nenhum, continua sendo lista.</summary>
+    [Fact]
+    public void SpanRepeat_SingleElement_IsAList() =>
+        ShouldPrintAs(".[a];", "(span (name a))");
+
+    [Fact]
+    public void SpanRepeat_MissingSize_ReportsError() => Codes(".[Int; 0];").ShouldNotBeEmpty();
+
+    [Fact]
+    public void SpanRepeat_Unclosed_ReportsLap0105() =>
+        Codes(".[Int; 0; 8;").ShouldContain(DiagnosticCodes.ExpectedCloseBracket);
 }
 
 public sealed class IndexParseTests : ParserTestBase
@@ -37,8 +84,8 @@ public sealed class IndexParseTests : ParserTestBase
     public void Index_OnCall() => ShouldPrintAs("f()[0];", "(index (call (name f)) (int 0))");
 
     [Fact]
-    public void Index_OnArrayLiteral() =>
-        ShouldPrintAs("[1, 2][0];", "(index (array (int 1) (int 2)) (int 0))");
+    public void Index_OnSpanLiteral() =>
+        ShouldPrintAs(".[1, 2][0];", "(index (span (int 1) (int 2)) (int 0))");
 
     [Fact]
     public void Index_Unclosed_ReportsLap0105() =>
@@ -113,7 +160,7 @@ public sealed class GenericTypeSyntaxTests : ParserTestBase
     [Fact]
     public void GenericType_InAnnotation()
     {
-        var def = Parse("def r: Result<Int, IndexError> = x;")
+        var def = Parse("def r: Result<Int, Str> = x;")
             .Statements.ShouldHaveSingleItem().ShouldBeOfType<DefStatement>();
 
         var type = def.Annotation.ShouldBeOfType<NamedTypeSyntax>();
@@ -135,12 +182,12 @@ public sealed class GenericTypeSyntaxTests : ParserTestBase
     }
 
     [Fact]
-    public void GenericType_ArrayOfGeneric()
+    public void GenericType_SpanOfGeneric()
     {
-        var def = Parse("def a: Result<Int, IndexError>[] = x;")
+        var def = Parse("def a: [Result<Int, Str>;?] = x;")
             .Statements.ShouldHaveSingleItem().ShouldBeOfType<DefStatement>();
 
-        def.Annotation.ShouldBeOfType<ArrayTypeSyntax>()
+        def.Annotation.ShouldBeOfType<SpanTypeSyntax>()
             .Element.ShouldBeOfType<NamedTypeSyntax>().Name.ShouldBe("Result");
     }
 

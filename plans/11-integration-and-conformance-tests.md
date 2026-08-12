@@ -103,7 +103,7 @@ saber. Lista inicial:
 | `s05_general_syntax.ls` | §5 | programa completo com array e índice |
 | `s09_block_value.ls` | §9 | bloco vale a última expressão |
 | `s09_block_no_tail.ls` | §9 | bloco sem cauda vale `Void` |
-| `s11_fn_in_array.ls` | §11 | funções em literal de array |
+| `s11_fn_in_span.ls` | §11 | funções em literal de span |
 | `s12_early_return.ls` | §12 | `abs` com retorno antecipado |
 | `s12_void_return.ls` | §12 | `return;` em função `Void` |
 | `s12_missing_return.ls` | §12/§26 | `LAP0272` |
@@ -111,14 +111,14 @@ saber. Lista inicial:
 | `s14_user_type.ls` | §14 | `User`, `Box<T>` |
 | `s15_enums.ls` | §15 | `Color`, `Result` |
 | `s16_result.ls` | §16 | `Result` do prelude |
-| `s18_arrays.ls` | §18 | array homogêneo |
+| `s18_spans.ls` | §18 | span homogêneo — era `s18_arrays.ls` |
 | `s18_heterogeneous.ls` | §18 | `LAP0240` |
-| `s21_index_returns_result.ls` | §21 | tipo é `Result<Int, IndexError>` |
+| `s21_index_returns_option.ls` | §21 | tipo é `Option<Int>` — renomeado no M12, era `..._result.ls` |
 | `s22_match.ls` | §22 | `match` como expressão |
 | `s22_match_return.ls` | §22 | `unwrapOr` |
 | `s32_closure.ls` | §32 | captura de ambiente |
 | `s34_hello.ls` | §34 | saída `30` — **âncora do M1** |
-| `s42_bounds.ls` | §42 | `values[1]` ⇒ `Ok(20)` |
+| `s42_bounds.ls` | §42 | `values[1]` ⇒ `20`, total desde o M12 |
 | `s50_indexing.ls` | §50 | os três casos de indexação |
 
 ### 11.5 `examples/` como testes
@@ -132,8 +132,8 @@ atualizar. Isso impede que a documentação apodreça.
 |---|---|
 | `hello.ls` | spec §34, saída `30` |
 | `functions.ls` | closures, ordem superior, retorno antecipado |
-| `arrays.ls` | literais, indexação, `Ok`/`Err` |
-| `result.ls` | `match` sobre `Result` |
+| `spans.ls` | literais, indexação total e parcial, `length` — era `arrays.ls` |
+| `result.ls` | `match` sobre `Option` |
 
 ### 11.6 Testes de propriedade da semântica
 
@@ -141,7 +141,8 @@ atualizar. Isso impede que a documentação apodreça.
 |---|---|
 | `WellTyped_ProgramsDoNotThrow` | se o checker aceita, o evaluator não lança exceção C# |
 | `Evaluation_IsDeterministic` | mesma fonte ⇒ mesmo stdout e mesmo valor |
-| `Indexing_AlwaysProducesResult` | para qualquer array e índice, o valor é `Ok` ou `Err` (spec §30) |
+| `Indexing_UnknownSize_AlwaysProducesOption` | sem o tamanho no tipo, qualquer índice dá `Some` ou `None` (spec §30) |
+| `Indexing_KnownSize_IsTotal` | com o tamanho no tipo e índice constante, o elemento sai sem envelope (plano 24) |
 | `Pipeline_IsPure` | rodar o pipeline 2x no mesmo processo dá o mesmo resultado |
 | `Printer_Roundtrip` | `desugar(parse(print(core))) ≡ core` para todos os casos de conformidade que compilam |
 

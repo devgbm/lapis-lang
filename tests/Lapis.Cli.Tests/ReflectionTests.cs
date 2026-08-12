@@ -42,8 +42,8 @@ public sealed class ReflectionTests : ConstraintTestBase
         Output(Types + """
             def nomes = fn(info: TypeInfo) Str {
                 match info.variants[0] {
-                    Result.Ok(v) => return v.name,
-                    Result.Err(e) => return "?"
+                    Option.Some(v) => return v.name,
+                    Option.None => return "?"
                 }
             };
 
@@ -103,13 +103,15 @@ public sealed class ReflectionTests : ConstraintTestBase
         Codes(Types + "print(reflect(User, Color));").ShouldContain(DiagnosticCodes.ArgumentCountMismatch);
 
     /// <summary>
-    /// Indexar um array de metadados devolve `Result` como qualquer outro array
-    /// (spec §21): reflection não escapa das regras da linguagem.
+    /// Indexar um span de metadados devolve `Option` como qualquer outro span de
+    /// tamanho desconhecido (plano 24): reflection não escapa das regras da
+    /// linguagem. Os campos do <c>TypeInfo</c> são <c>[T;?]</c> justamente porque
+    /// a quantidade depende do tipo refletido.
     /// </summary>
     [Fact]
-    public void Reflect_FieldAccess_IsAnOrdinaryResult() =>
+    public void Reflect_FieldAccess_IsAnOrdinaryOption() =>
         Output(Types + "print(reflect(User).fields[0]);")
-            .ShouldBe("Result.Ok(FieldInfo { name: \"id\", typeName: \"Int\" })\n");
+            .ShouldBe("Option.Some(FieldInfo { name: \"id\", typeName: \"Int\" })\n");
 
     /// <summary>
     /// <c>reflect</c> é intrínseco, não binding — mas um binding do usuário com
@@ -268,7 +270,7 @@ public sealed class ReflectionSpecializationTests
     [Fact]
     public void Reflect_TypeParameterNames_AreFolded() =>
         Specialize("print(reflect(Result).typeParameterNames);")
-            .ShouldContain("""print(["T", "E"])""");
+            .ShouldContain("""print(.["T", "E"])""");
 
     /// <summary>
     /// O <c>TypeInfo</c> inteiro <b>não</b> vira literal: a expressão que

@@ -10,7 +10,7 @@
 //
 // `reflect` é um **intrínseco**, não uma função: o argumento tem de ser um tipo, e
 // "um tipo" não é expressável na gramática de tipos. Mesmo estatuto da indexação,
-// que produz `Result<T, IndexError>` sem existir assinatura escrita para ela.
+// que produz `Option<T>` sem existir assinatura escrita para ela.
 //
 // Saída esperada:
 //   User
@@ -39,12 +39,14 @@ print(reflect(User).fields);
 
 print(reflect(Color).name);
 
-// Indexar um array de metadados devolve `Result`, como qualquer outro array: a
-// reflection não abre exceção nas regras da linguagem.
+// Indexar um span de metadados devolve `Option`, como qualquer outro span de
+// tamanho desconhecido: a reflection não abre exceção nas regras da linguagem.
+// Os campos do `TypeInfo` são `[T;?]` porque a quantidade depende do tipo
+// refletido, e não há `N` para escrever.
 def primeiraVariante = fn(info: TypeInfo) Str {
     match info.variants[0] {
-        Result.Ok(variante) => return variante.name,
-        Result.Err(erro) => return "<sem variantes>"
+        Option.Some(variante) => return variante.name,
+        Option.None => return "<sem variantes>"
     }
 };
 
@@ -53,16 +55,16 @@ print(primeiraVariante(reflect(Color)));
 // Um tipo genérico **não instanciado** descreve a declaração...
 print(reflect(Result).typeParameterNames);
 
-def payload = fn(info: TypeInfo) Str[] {
+def payload = fn(info: TypeInfo) [Str;?] {
     match info.variants[0] {
-        Result.Ok(variante) => return variante.payloadTypeNames,
-        Result.Err(erro) => return reflect(Result).typeParameterNames
+        Option.Some(variante) => return variante.payloadTypeNames,
+        Option.None => return reflect(Result).typeParameterNames
     }
 };
 
 // ...e escrito com argumentos, descreve a instância: o payload de `Ok` deixa de
 // ser `T` e passa a ser `Int`.
-print(payload(reflect(Result<Int, IndexError>)));
+print(payload(reflect(Option<Int>)));
 
 // Igualdade estrutural, herdada de struct — nada de especial acontece aqui.
 print(reflect(User) == reflect(User));

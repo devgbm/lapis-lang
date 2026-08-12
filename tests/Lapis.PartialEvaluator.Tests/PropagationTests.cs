@@ -140,15 +140,99 @@ public sealed class PropagationTests : PETestBase
             "def f = fn(v: Int) Int { return match v { 1 => 2 + 3, _ => 4 + 5 }; };\nprint(f(1));",
             "def f = fn(v: Int) Int { return match v { 1 => 5, _ => 9 } }; print(f(1));");
 
-    // ------------------------------------------------------------ arrays
+    // ------------------------------------------------------------- spans
 
     [Fact]
-    public void Array_AllStatic_Folds() =>
-        ShouldSpecializeTo("print([1 + 1, 2 + 2]);", "print([2, 4]);");
+    public void Span_AllStatic_Folds() =>
+        ShouldSpecializeTo("print(.[1 + 1, 2 + 2]);", "print(.[2, 4]);");
 
     [Fact]
-    public void Array_PartlyDynamic_IsKept() =>
+    public void Span_PartlyDynamic_IsKept() =>
         ShouldSpecializeTo(
-            "def f = fn(x: Int) Int[] { return [1, x]; };\nprint(f(2));",
-            "def f = fn(x: Int) Int[] { return [1, x] }; print(f(2));");
+            "def f = fn(x: Int) [Int;2] { return .[1, x]; };\nprint(f(2));",
+            "def f = fn(x: Int) [Int;2] { return .[1, x] }; print(f(2));");
+
+    /// <summary>
+    /// Com o tamanho no tipo e o índice conhecido, o checker já resolveu a
+    /// indexação — o especializador só precisa ler o elemento, sem envelope
+    /// nenhum para desembrulhar (plano 24 §24.7).
+    /// </summary>
+    [Fact]
+    public void Span_TotalIndex_Folds() =>
+        ShouldSpecializeTo("def a = .[10, 20, 30];\nprint(a[1]);", "print(20);");
+
+    /// <summary>E o <c>length</c> de um span de tamanho conhecido é uma constante.</summary>
+    [Fact]
+    public void Span_KnownLength_Folds() =>
+        ShouldSpecializeTo("def a = .[10, 20, 30];\nprint(a.length);", "print(3);");
+
+    /// <summary>
+    /// A repetição com quantidade constante e inicializador conhecido é um valor:
+    /// o residual é a lista.
+    /// </summary>
+    [Fact]
+    public void SpanRepeat_Static_Folds() =>
+        ShouldSpecializeTo("print(.[Int; 1 + 1; 3]);", "print(.[2, 2, 2]);");
+
+    /// <summary>
+    /// Sem a quantidade constante não há o que construir em compilação: a
+    /// construção atravessa intacta.
+    /// </summary>
+    [Fact]
+    public void SpanRepeat_DynamicSize_IsKept() =>
+        ShouldSpecializeTo(
+            "def f = fn(n: Int) [Int;?] { return .[Int; 0; n]; };\nprint(f(3));",
+            "def f = fn(n: Int) [Int;?] { return .[Int; 0; n] }; print(f(3));");
+
+    // ------------------------------------------- argumento genérico nu
+
+    /// <summary>
+    /// Regressão. Um argumento genérico nu é uma <b>string</b>, não um
+    /// <c>CoreVariable</c>: a propagação não passava por ele, mas o <c>Let</c>
+    /// sumia mesmo assim, e o residual citava um nome que não existia mais.
+    ///
+    /// O bug é anterior ao span — o corpus só nunca tinha exercitado a forma.
+    /// </summary>
+    [Fact]
+    public void ConstGenericArgument_ByName_IsPropagated() =>
+        ShouldSpecializeTo(
+            """
+            def escala = fn<N: Int>(x: Int) Int { return x * N; };
+            def n = 3;
+            print(escala<n>(5));
+            """,
+            "def escala = fn<N: Int>(x: Int) Int { return x * N }; print(escala<3>(5));");
+
+    /// <summary>
+    /// A construção de um `type` genérico tem a mesma posição, e o mesmo
+    /// tratamento. O `Let` de `b` sobrevive porque um struct não é
+    /// residualizável (M7) — o que importa aqui é que o `n` sumiu do argumento.
+    /// </summary>
+    [Fact]
+    public void ConstGenericArgument_InConstruction_IsPropagated() =>
+        ShouldSpecializeTo(
+            """
+            def Boxed = type<T, N: Int> { value: T; };
+            def n = 4;
+            def b = .Boxed<Int, n> { value: 9 };
+            print(b.value);
+            """,
+            "def Boxed = type<T, N: Int> { value: T; }; "
+            + "def b = .Boxed<Int, 4> { value: 9 }; print(b.value);");
+
+    /// <summary>
+    /// E um argumento que nomeia um **tipo** atravessa intacto: definição de tipo
+    /// não é valor conhecido no ambiente estático, então nunca cai nesse caminho.
+    /// </summary>
+    [Fact]
+    public void TypeArgument_ByName_IsKept() =>
+        ShouldSpecializeTo(
+            """
+            def Cor = enum { Verde };
+            def identidade = fn<T>(v: T) T { return v; };
+            def f = fn(c: Cor) Cor { return identidade<Cor>(c); };
+            print(f(Cor.Verde));
+            """,
+            "def Cor = enum { Verde }; def identidade = fn<T>(v: T) T { return v }; "
+            + "def f = fn(c: Cor) Cor { return identidade<Cor>(c) }; print(f(Cor.Verde));");
 }

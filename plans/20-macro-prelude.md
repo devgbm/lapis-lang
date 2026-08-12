@@ -178,8 +178,83 @@ mudar o comportamento de nenhum programa que já funcionava.**
 
 ## Critérios de conclusão
 
-- [ ] `@unless` e `@while` no `prelude.ls`, escritos em LapisLang.
-- [ ] `@while` iterando sem crescer a pilha de C#, e abortando com `LAP0303` quando
+- [x] `@unless` e `@while` no `prelude.ls`, escritos em LapisLang.
+- [x] `@while` iterando sem crescer a pilha de C#, e abortando com `LAP0303` quando
       não termina.
-- [ ] `if`, `match` e a desestruturação de carga **intactos**.
-- [ ] Zero alteração de expectativa em qualquer teste anterior.
+- [x] `if`, `match` e a desestruturação de carga **intactos**.
+- [x] Zero alteração de expectativa em qualquer teste anterior.
+
+---
+
+## O que a implementação mudou no plano
+
+### 1. Macros do prelude precisaram de uma camada no registro
+
+O plano trata o `prelude.ls` como se macros já viajassem com ele. Não viajavam: o
+`MacroRegistry` era por arquivo, e o `PreludeLoader` nem roda expansão — uma
+`macro` no prelude chegaria ao desugar.
+
+Duas peças pequenas resolveram, e as duas espelham o que já existia para valores:
+
+- `PreludeLoader` separa as `MacroDeclaration` antes do desugar, e `PreludeScope`
+  as guarda ao lado dos bindings. Não são `PreludeBinding` porque uma macro não
+  tem tipo nem valor (Q19).
+- `MacroRegistry` ganhou uma camada de base. Uma macro do arquivo com o mesmo
+  nome **sombreia** a do prelude, sem diagnóstico — a mesma regra de
+  `def Result = ...`; duas do próprio arquivo continuam sendo `LAP0511`.
+
+### 2. A expansão funcionou sem nenhuma mudança no engine
+
+`@unless` e `@while` são exatamente o que o plano escreveu, e passaram de
+primeira: higiene renomeia `top` e `done`, a captura de bloco é *spliced* em vez
+de virar escopo aninhado, e a invocação gulosa consome `i < 3 { ... }` inteiro.
+O M8 e o M6 já tinham resolvido o que era preciso.
+
+### 3. A restrição de escrita apareceu — e foi removida
+
+O plano diz que "a macro precisa expandir para uma forma em que as declarações do
+usuário fiquem antes do primeiro rótulo gerado", e trata disso como cuidado ao
+escrever a macro. A implementação mostrou uma regra **do usuário**, e mais larga:
+
+```c
+var i = 0;
+@while i < 2 { i = i + 1; }
+var k = 0;                      // preso no join que `@while` deixou aberto
+@while k < 3 { k = k + 1; }     // LAP0201: 'k' não existe
+```
+
+A causa vinha do M6: `DesugarWithLabels` achatava **todos** os rótulos do bloco
+num grupo só, e joins irmãos não enxergam o que o outro declarou.
+
+O diagnóstico inicial foi de que não havia correção barata — que a saída seria
+*join com parâmetros*. Estava errado, e a discussão que corrigiu isso vale ser
+registrada: a irmandade só é **necessária** entre rótulos que se referenciam. Dois
+`@while` independentes não têm salto entre si, e o segundo pode ser um grupo
+**aninhado** na continuação do primeiro. Ver `Desugarer.CanSplitBefore`.
+
+O que a regra protegia continua protegido, e agora com precisão: onde um `goto`
+explícito atravessa a fronteira, os rótulos continuam irmãos e o destino continua
+sem enxergar o que o salto pode ter pulado.
+
+### 4. O corpo da macro precisava ser um escopo
+
+Ao lado disso apareceu uma inconsistência menor e independente: um `Block:body`
+escrito nu no `expand` é **colado** no lugar (`Substitution.ApplyStatementSpliced`,
+do M8), então `@while c { def x = 1; }` deixava `x` visível depois do laço —
+diferente de `if c { def x = 1; }`.
+
+O `expand` passou a escrever `{ body; }`. As duas formas são legítimas e a
+diferença agora é a escolha do autor da macro: `body;` cola, `{ body; }` escopa.
+
+---
+
+## O que ficou de fora
+
+**`@if` e `@match`** — pelo motivo do §20.3, que a implementação não teve razão
+nenhuma para revisitar. `match` continua no compilador **com** desestruturação de
+carga, que é justamente o que nenhuma macro conseguiria fazer com segurança.
+
+**`@foreach`** — continua precisando de um protocolo de iteração sobre coleções.
+E de algo mais básico que o plano não menciona: **não há como perguntar o tamanho
+de um array**. `array_length` está previsto no plano 09 mas nunca foi
+implementado, e sem ele nem a forma `índice < tamanho` se escreve.

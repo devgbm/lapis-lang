@@ -24,21 +24,31 @@ public sealed class DefTests : ParserTestBase
     }
 
     [Fact]
-    public void Def_WithArrayAnnotation()
+    public void Def_WithSpanAnnotation()
     {
-        var def = SingleDef("def x: Int[] = y;");
+        var def = SingleDef("def x: [Int;?] = y;");
 
-        def.Annotation.ShouldBeOfType<ArrayTypeSyntax>()
-            .Element.ShouldBeOfType<NamedTypeSyntax>().Name.ShouldBe("Int");
+        var span = def.Annotation.ShouldBeOfType<SpanTypeSyntax>();
+        span.Element.ShouldBeOfType<NamedTypeSyntax>().Name.ShouldBe("Int");
+        span.Size.ShouldBeOfType<UnknownSizeSyntax>();
     }
 
     [Fact]
-    public void Def_WithNestedArrayAnnotation()
+    public void Def_WithSizedSpanAnnotation()
     {
-        var def = SingleDef("def x: Int[][] = y;");
+        var def = SingleDef("def x: [Int;3] = y;");
 
-        def.Annotation.ShouldBeOfType<ArrayTypeSyntax>()
-            .Element.ShouldBeOfType<ArrayTypeSyntax>();
+        def.Annotation.ShouldBeOfType<SpanTypeSyntax>()
+            .Size.ShouldBeOfType<FixedSizeSyntax>().Value.ShouldBe(3);
+    }
+
+    [Fact]
+    public void Def_WithNestedSpanAnnotation()
+    {
+        var def = SingleDef("def x: [[Int;1];2] = y;");
+
+        def.Annotation.ShouldBeOfType<SpanTypeSyntax>()
+            .Element.ShouldBeOfType<SpanTypeSyntax>();
     }
 
     [Fact]

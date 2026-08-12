@@ -222,12 +222,36 @@ public sealed class CoreUnary(
     public CoreExpr Operand { get; } = operand;
 }
 
-public sealed class CoreArray(
+public sealed class CoreSpan(
     int nodeId,
     SourceSpan span,
     ImmutableArray<CoreExpr> elements) : CoreExpr(nodeId, span)
 {
     public ImmutableArray<CoreExpr> Elements { get; } = elements;
+}
+
+/// <summary>
+/// <c>.[T; inicial; n]</c> — span por repetição.
+///
+/// Não desaparece no desugar virando <c>CoreSpan</c> de <c>n</c> elementos: a
+/// quantidade pode não ser conhecida em compilação, e mesmo quando é, expandir
+/// oito mil zeros na Core seria trocar um nó por um programa. É construção
+/// própria, com semântica própria — o inicializador é avaliado <b>uma vez</b>,
+/// o que é invisível para valores (não há mutação de span) e visível para
+/// efeitos.
+/// </summary>
+public sealed class CoreSpanRepeat(
+    int nodeId,
+    SourceSpan span,
+    TypeSyntax element,
+    CoreExpr initializer,
+    CoreExpr size) : CoreExpr(nodeId, span)
+{
+    public TypeSyntax Element { get; } = element;
+
+    public CoreExpr Initializer { get; } = initializer;
+
+    public CoreExpr Size { get; } = size;
 }
 
 /// <summary>

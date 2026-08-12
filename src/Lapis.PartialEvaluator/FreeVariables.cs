@@ -88,6 +88,14 @@ public static class FreeVariables
 
                 break;
 
+            // O elemento de `.[T; inicial; n]` é uma **anotação**: `T` pode ser um
+            // tipo do usuário, e apagá-lo por "ninguém usa" quebraria a construção.
+            case CoreSpanRepeat n:
+                CollectFromType(n.Element, free);
+                Collect(n.Initializer, free);
+                Collect(n.Size, free);
+                break;
+
             // A construção referencia o tipo por **string**, não por
             // `CoreVariable` — mas `Flag` em `.Flag { }` é o mesmo `Flag` do
             // `def Flag = type { }`, e some junto se ninguém contar.
@@ -102,6 +110,21 @@ public static class FreeVariables
                 foreach (var field in n.Fields)
                 {
                     Collect(field.Value, free);
+                }
+
+                break;
+
+            // `escala<n>(5)` **usa** `n`, e o uso não é um `CoreVariable`: um
+            // argumento genérico nu é um `CoreNameArgument`, uma string. Sem
+            // contá-lo, `def n = 3;` vira código morto e o residual cita um nome
+            // que não existe mais. Vale igual para o nome de tipo em
+            // `Caixa<Cor>` — é o mesmo raciocínio de `CoreConstruct`.
+            case CoreInstantiate n:
+                Collect(n.Target, free);
+
+                foreach (var argument in n.Arguments)
+                {
+                    CollectFromArgument(argument, free);
                 }
 
                 break;
@@ -146,8 +169,16 @@ public static class FreeVariables
 
                 break;
 
-            case ArrayTypeSyntax n:
+            case SpanTypeSyntax n:
                 CollectFromType(n.Element, free);
+
+                // O tamanho pode ser um nome: `[Int;n]` cita o `n`, e é a mesma
+                // razão de contar o argumento genérico nu.
+                if (n.Size is NamedSizeSyntax size)
+                {
+                    free.Add(size.Name);
+                }
+
                 break;
 
             case FunctionTypeSyntax n:
@@ -260,12 +291,17 @@ public static class FreeVariables
                 yield return n.Operand;
                 break;
 
-            case CoreArray n:
+            case CoreSpan n:
                 foreach (var element in n.Elements)
                 {
                     yield return element;
                 }
 
+                break;
+
+            case CoreSpanRepeat n:
+                yield return n.Initializer;
+                yield return n.Size;
                 break;
 
             case CoreIndex n:

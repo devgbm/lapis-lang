@@ -10,10 +10,15 @@
 // imutáveis nada mudava entre iterações e o laço só parava pelo orçamento de
 // saltos. Um `var` declarado antes do rótulo é o slot que atravessa as voltas.
 //
-// Note que TODAS as declarações vêm antes do primeiro `label`. Não é estilo: o
-// que é declarado depois de um rótulo vive dentro daquele join, e um join não
-// enxerga os bindings de outro — o salto pode ter pulado a declaração. É a mesma
-// regra que vale entre o `goto` e o `label`.
+// Aqui as declarações vêm todas antes do primeiro `label` por clareza, não por
+// obrigação: rótulos que não saltam um para o outro formam grupos aninhados, e
+// um `var` escrito entre dois laços é visível no segundo. O que continua
+// invisível é o que um `goto` **explícito** pode ter pulado — ver
+// `tests/conformance/eval/mutation/scope_across_joins_with_jump.ls`.
+//
+// Este arquivo escreve os laços **à mão**, com `goto` e `label`, para mostrar a
+// forma. O `@while` do prelude gera exatamente isto; `examples/control.ls` tem a
+// versão que se escreve no dia a dia.
 //
 // Saída esperada:
 //   1
@@ -22,7 +27,7 @@
 //   55
 //   60
 
-def valores = [10, 20, 30];
+def valores = .[10, 20, 30];
 
 var i = 0;
 var soma = 0;
@@ -35,7 +40,7 @@ i = i + 1;
 print(i);
 goto conta if i < 3;
 
-// Somatório de 1 a 10 — a forma que o `@while` do plano 20 vai gerar por macro.
+// Somatório de 1 a 10 — exatamente a forma que `@while` gera por macro.
 label somando;
 soma = soma + n;
 n = n + 1;
@@ -43,14 +48,18 @@ goto somando if n <= 10;
 
 print(soma);
 
-// E percorrendo um array. A indexação continua devolvendo `Result`, então o
-// braço de erro existe mesmo quando o laço garante que ele não acontece.
+// E percorrendo um span. O índice é um `var`, então não é constante para o
+// checker: a indexação devolve `Option`, e o braço de `None` existe mesmo quando
+// o laço garante que ele não acontece. Com índice literal, `valores[1]` daria o
+// `Int` direto — ver `examples/spans.ls`.
+//
+// `valores.length` é `3` em compilação, porque o tamanho está no tipo.
 label percorre;
 match valores[k] {
-    Result.Ok(v) => { total = total + v; },
-    Result.Err(e) => { print("fora dos limites"); }
+    Option.Some(v) => { total = total + v; },
+    Option.None => { print("fora dos limites"); }
 }
 k = k + 1;
-goto percorre if k < 3;
+goto percorre if k < valores.length;
 
 print(total);

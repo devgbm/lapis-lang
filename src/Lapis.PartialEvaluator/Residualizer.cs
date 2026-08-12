@@ -38,7 +38,7 @@ public sealed class Residualizer(CoreFactory factory)
         // válido (spec §18, LAP0241), e a anotação que o tornava válido some
         // quando o valor substitui o `def`. Emiti-lo produziria um residual que
         // não compila — o PE tem que manter a expressão original.
-        ArrayValue array => !array.Elements.IsEmpty && array.Elements.All(CanResidualize),
+        SpanValue array => !array.Elements.IsEmpty && array.Elements.All(CanResidualize),
 
         _ => false,
     };
@@ -51,7 +51,7 @@ public sealed class Residualizer(CoreFactory factory)
         StrValue v => factory.Literal(span, new ConstStr(v.Value)),
         VoidValue => factory.Unit(span),
 
-        ArrayValue v => factory.Array(span, [.. v.Elements.Select(e => Residualize(e, span))]),
+        SpanValue v => factory.Array(span, [.. v.Elements.Select(e => Residualize(e, span))]),
 
         _ => throw new InternalCompilerException(
             $"valor sem forma sintática chegou ao residualizador: {value.GetType().Name}", span),

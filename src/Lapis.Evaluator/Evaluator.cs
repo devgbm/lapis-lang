@@ -148,7 +148,8 @@ public sealed class Evaluator
         CoreIf n => EvaluateIf(n, environment),
         CoreBinary n => EvaluateBinary(n, environment),
         CoreUnary n => EvaluateUnary(n, environment),
-        CoreArray n => EvaluateArray(n, environment),
+        CoreSpan n => EvaluateArray(n, environment),
+        CoreSpanRepeat n => EvaluateSpanRepeat(n, environment),
         CoreIndex n => EvaluateIndex(n, environment),
         CoreField n => EvaluateField(n, environment),
         CoreEnumDef n => EvaluateEnumDef(n),
@@ -446,7 +447,7 @@ public sealed class Evaluator
         return Completion.Normal(value);
     }
 
-    private Completion EvaluateArray(CoreArray node, Environment environment)
+    private Completion EvaluateArray(CoreSpan node, Environment environment)
     {
         var elements = ImmutableArray.CreateBuilder<Value>(node.Elements.Length);
 
@@ -463,10 +464,67 @@ public sealed class Evaluator
             elements.Add(evaluated.Value);
         }
 
-        var elementType = ((ArrayType)_program.TypeOf(node)).Element;
+        var elementType = ((SpanType)_program.TypeOf(node)).Element;
 
-        return Completion.Normal(new ArrayValue(elements.ToImmutable(), elementType));
+        return Completion.Normal(new SpanValue(elements.ToImmutable(), elementType));
     }
+
+    /// <summary>
+    /// <c>.[T; inicial; n]</c>.
+    ///
+    /// O inicializador é avaliado <b>uma vez</b> e o mesmo valor ocupa as <c>n</c>
+    /// posições. Não há como observar o compartilhamento — não existe escrita em
+    /// span (Q28) —, mas há como observar o número de avaliações: um
+    /// inicializador que imprime imprime uma vez só. É a leitura que faz de
+    /// <c>.[Int; 0; 8]</c> uma construção e não um laço escondido.
+    ///
+    /// Quantidade negativa produz span vazio, e não aborto: é a mesma escolha da
+    /// divisão inteira por zero (Q9) — a operação é total, e o programa segue.
+    /// </summary>
+    private Completion EvaluateSpanRepeat(CoreSpanRepeat node, Environment environment)
+    {
+        var initializer = Evaluate(node.Initializer, environment);
+
+        if (!initializer.IsNormal)
+        {
+            return initializer;
+        }
+
+        var size = Evaluate(node.Size, environment);
+
+        if (!size.IsNormal)
+        {
+            return size;
+        }
+
+        if (size.Value is not IntValue count)
+        {
+            throw new InternalCompilerException(
+                "quantidade de span que não é Int; o checker deveria ter rejeitado", node.Size.Span);
+        }
+
+        if (count.Value > MaxSpanRepeat)
+        {
+            return Completion.Abort(
+                DiagnosticCodes.SpanTooLarge,
+                node.Size.Span,
+                $"span de {count.Value} elementos excede o limite de {MaxSpanRepeat}");
+        }
+
+        var length = (int)Math.Max(0, count.Value);
+        var elementType = ((SpanType)_program.TypeOf(node)).Element;
+
+        return Completion.Normal(new SpanValue(
+            ImmutableArray.CreateRange(Enumerable.Repeat(initializer.Value, length)),
+            elementType));
+    }
+
+    /// <summary>
+    /// Orçamento de tamanho para a repetição com quantidade dinâmica, no mesmo
+    /// espírito do orçamento de saltos: o que não pode é travar. O checker aplica
+    /// o mesmo teto ao caso constante, e lá o diagnóstico é de compilação.
+    /// </summary>
+    private const long MaxSpanRepeat = 1_000_000;
 
     /// <summary>
     /// Indexação com checagem de limites (spec §41). Fora de limites <b>nunca</b>
@@ -492,24 +550,46 @@ public sealed class Evaluator
             return index;
         }
 
-        if (target.Value is not ArrayValue array || index.Value is not IntValue offset)
+        if (target.Value is not SpanValue span || index.Value is not IntValue offset)
         {
             throw new InternalCompilerException(
                 "indexação sobre valores inesperados; o checker deveria ter rejeitado", node.Span);
         }
 
+        var outcome = Primitives.SpanGet(span, offset.Value);
+
+        // O checker provou que o índice está dentro dos limites: o elemento sai
+        // direto, sem envelope (plano 24 §24.5).
+        if (_program.ResolutionOf<TotalIndexResolution>(node) is not null)
+        {
+            return Completion.Normal(outcome.IsInBounds
+                ? outcome.Value!
+                : throw new InternalCompilerException(
+                    "indexação provada total saiu dos limites", node.Span));
+        }
+
         var prelude = _prelude
             ?? throw new InternalCompilerException("indexação sem prelude carregado", node.Span);
 
-        var outcome = Primitives.ArrayGet(array, offset.Value);
-
         return Completion.Normal(outcome.IsInBounds
-            ? prelude.MakeOk(outcome.Value!, array.ElementType)
-            : prelude.MakeIndexError(array.ElementType));
+            ? prelude.MakeSome(outcome.Value!, span.ElementType)
+            : prelude.MakeNone(span.ElementType));
     }
 
     private Completion EvaluateField(CoreField node, Environment environment)
     {
+        // `s.length` — o valor sempre tem tamanho concreto, então a leitura é a
+        // mesma com ou sem o tamanho no tipo. É o que a decisão de Q29 exige da
+        // representação: o span carrega a quantidade junto do dado.
+        if (_program.ResolutionOf<SpanLengthResolution>(node) is not null)
+        {
+            var span = Evaluate(node.Target, environment);
+
+            return span.IsNormal
+                ? Completion.Normal(new IntValue(((SpanValue)span.Value).Elements.Length))
+                : span;
+        }
+
         // Acesso a campo de instância: precisa avaliar o alvo.
         if (_program.ResolutionOf<FieldResolution>(node) is { } field)
         {

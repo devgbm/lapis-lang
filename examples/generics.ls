@@ -85,11 +85,11 @@ print(twice<3>(5));
 // e o retorno de `make<4>` é `Boxed<Int, 4>`.
 
 def Boxed = type<T, N: Int> {
-    values: T[];
+    values: [T;?];
 };
 
 def make = fn<N: Int>(v: Int) Boxed<Int, N> {
-    return .Boxed<Int, N> { values: [v] };
+    return .Boxed<Int, N> { values: .[v] };
 };
 
 def quatro: Boxed<Int, 4> = make<4>(9);

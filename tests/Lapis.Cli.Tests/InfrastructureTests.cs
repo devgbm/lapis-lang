@@ -92,7 +92,7 @@ public sealed class InfrastructureTests
     [Theory]
     [InlineData("hello.ls")]
     [InlineData("functions.ls")]
-    [InlineData("arrays.ls")]
+    [InlineData("spans.ls")]
     [InlineData("result.ls")]
     [InlineData("types.ls")]
     [InlineData("generics.ls")]

@@ -61,6 +61,8 @@ public static class DiagnosticCodes
 
     public const string HeterogeneousArray = "LAP0240";
     public const string EmptyArrayNeedsAnnotation = "LAP0241";
+    public const string IndexOutOfBounds = "LAP0244";
+    public const string InvalidSpanSize = "LAP0245";
     public const string NotIndexable = "LAP0242";
     public const string IndexMustBeInt = "LAP0243";
 
@@ -132,4 +134,9 @@ public static class DiagnosticCodes
     // O código não é reciclado.
     public const string CallDepthExceeded = "LAP0302";
     public const string JumpLimitExceeded = "LAP0303";
+
+    // Quantidade dinâmica de `.[T; inicial; n]` acima do orçamento. Mesmo espírito
+    // do orçamento de saltos: um programa que pede um span grande demais termina
+    // com diagnóstico em vez de travar a máquina.
+    public const string SpanTooLarge = "LAP0304";
 }

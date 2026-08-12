@@ -33,7 +33,11 @@ public static class TypeSubstitution
                     ? argument.Type
                     : parameter,
 
-            ArrayType array => new ArrayType(Apply(array.Element, bindings)),
+            // O elemento substitui como qualquer tipo; o **tamanho** também,
+            // quando é um parâmetro const: `[Int;N]` com `N` ligado a 3 vira
+            // `[Int;3]`, que é o que fecha as constantes simbólicas de Q18 para
+            // spans.
+            SpanType span => new SpanType(Apply(span.Element, bindings), Apply(span.Size, bindings)),
 
             // Os parâmetros da própria função sombreiam os de fora: `fn<T>` aninhado
             // dentro de outro `fn<T>` liga o seu, e substituir aqui trocaria o nome
@@ -55,6 +59,13 @@ public static class TypeSubstitution
             _ => type,
         };
     }
+
+    private static SpanSize Apply(SpanSize size, IReadOnlyDictionary<string, GenericArgument> bindings) =>
+        size is ConstSize c
+        && bindings.TryGetValue(c.Parameter, out var bound)
+        && bound is ConstArgument { Value: ConstInt fixedSize }
+            ? new FixedSize((int)fixedSize.Value)
+            : size;
 
     public static ImmutableArray<GenericArgument> Apply(
         ImmutableArray<GenericArgument> arguments,

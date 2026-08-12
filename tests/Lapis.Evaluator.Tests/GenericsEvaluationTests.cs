@@ -38,7 +38,7 @@ public sealed class GenericEvaluationTests : EvaluatorTestBase
 
     [Fact]
     public void GenericVariant_Constructs() =>
-        Eval("Result<Int, IndexError>.Ok(42)").ShouldBe("Result.Ok(42)");
+        Eval("Result<Int, Str>.Ok(42)").ShouldBe("Result.Ok(42)");
 
     [Fact]
     public void GenericVariant_Nullary() =>
@@ -114,12 +114,12 @@ public sealed class ConstGenericEvaluationTests : EvaluatorTestBase
     [Fact]
     public void MixedTypeAndConstParameters() =>
         Output("""
-            def repeat = fn<T, N: Int>(value: T) T[] {
+            def repeat = fn<T, N: Int>(value: T) [T;?] {
                 if N == 2 {
-                    return [value, value];
+                    return .[value, value];
                 }
 
-                return [value];
+                return .[value];
             };
 
             print(repeat<Int, 2>(7));

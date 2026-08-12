@@ -7,7 +7,8 @@ evaluation**.
 - **Extensão:** `.ls` · **CLI:** `lapis` · **Implementação:** C# / .NET 10
 - **Especificação:** [`spec/lapislang-0.2.md`](spec/lapislang-0.2.md)
 - **Planos de implementação:** [`plans/`](plans/README.md)
-- **Extensão planejada:** [macros, reflection e `goto`/`label`](spec/lapislang-macros-0.1.md)
+- **Extensão implementada:** [macros, reflection e `goto`/`label`](spec/lapislang-macros-0.1.md)
+- **Extensão planejada:** [type members e extension methods](spec/lapislang-type-members-0.1.md)
 
 ```c
 def add = fn(a: Int, b: Int) Int {
@@ -45,39 +46,59 @@ lapis hello.ls
 | **M8** — macro engine (`match`/`expand`, higiene, `lapis expand`) | ✅ concluído |
 | **M9** — `constraint`, `throw` e contexto de compilação | ✅ concluído |
 | **M10** — reflection nas duas fases | ✅ concluído |
-| M11 — macros de controle no prelude | ⏳ próximo |
-| M12–M14 — PE: especialização, análise, equivalência | ⬜ |
+| **M11** — `@unless` e `@while` no prelude | ✅ concluído |
+| **M12** — span com o tamanho no tipo | ✅ concluído |
+| M13–M15 — type members, extension methods | ⏳ próximo |
+| M16–M18 — PE: especialização, análise, equivalência | ⬜ |
 
-**1453 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
+**1579 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
 evaluator, partial evaluator e CLI — entre eles uma **suíte de conformidade** de
-167 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
+185 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
 spec é um arquivo, e o nome do teste que falha já é o arquivo a abrir.
 
 A linguagem já roda programas de verdade: funções de primeira classe com
 closures, `return` explícito com verificação de "retorna em todos os caminhos",
-arrays com indexação segura, enums, `match` exaustivo, tipos definidos pelo
-usuário, generics (inclusive const generics), `goto`/`label`, mutação com `var` e
-um prelude escrito na própria linguagem.
+spans com indexação checada em compilação, enums, `match` exaustivo, tipos definidos pelo
+usuário, generics (inclusive const generics), `goto`/`label`, mutação com `var`,
+macros higiênicas com validação em tempo de compilação, reflection, e um prelude
+escrito na própria linguagem — laços inclusive.
 
 ```c
-def numbers = [10, 20, 30];
+def numbers = .[10, 20, 30];    // [Int;3] — o tamanho está no tipo
 
-def unwrapOr = fn<T>(r: Result<T, IndexError>, fallback: T) T {
-    match r {
-        Result.Ok(value) => return value,
-        Result.Err(error) => return fallback
+print(numbers[1]);              // 20 — total, os limites foram provados
+print(numbers.length);          // 3  — constante de compilação
+// print(numbers[3]);           // LAP0244: erro de compilação, não falha em execução
+
+// Oito zeros não se escrevem à mão: `.[T; inicial; n]` diz elemento,
+// valor inicial e quantidade.
+def zeros = .[Int; 0; 8];       // [Int;8]
+
+print(zeros.length);            // 8
+
+var mutaveis = .[10, 20, 30];   // [Int;?] — um `var` pode receber outro tamanho
+
+def unwrapOr = fn<T>(o: Option<T>, fallback: T) T {
+    match o {
+        Option.Some(value) => return value,
+        Option.None => return fallback
     }
 };
 
-print(unwrapOr<Int>(numbers[1], 0));    // 20
-print(unwrapOr<Int>(numbers[9], 0));    // 0
+print(unwrapOr<Int>(mutaveis[1], 0));    // 20
+print(unwrapOr<Int>(mutaveis[9], 0));    // 0
 ```
 
-Indexar **sempre** devolve `Result` (spec §21): a falha aparece no tipo, e o
-acesso fora de limites nunca lança. `match` deve ser exaustivo, porque é uma
-expressão e precisa produzir um valor em toda execução. E argumentos genéricos
-são **sempre explícitos** — não há inferência na 0.2 (decisão Q7), o que mantém o
-type checker previsível e deixa a porta aberta para inferência depois.
+Um **span** é uma sequência com o tamanho no tipo, e é a diferença entre as duas
+metades desse exemplo. Onde o tamanho é conhecido e o índice é constante, indexar
+é **total**: o compilador verifica os limites e devolve o elemento, sem envelope
+nenhum. Onde o tamanho se perde, a checagem sobra para a execução e o resultado é
+um `Option<T>` — a falha aparece no tipo, e o acesso fora de limites nunca lança.
+A quantidade de `.[T; inicial; n]` segue a mesma divisa: constante entra no tipo,
+dinâmica dá `[T;?]`. `match` deve ser exaustivo, porque é uma expressão e precisa produzir um valor em
+toda execução. E argumentos genéricos são **sempre explícitos** — não há
+inferência na 0.2 (decisão Q7), o que mantém o type checker previsível e deixa a
+porta aberta para inferência depois.
 
 Const generics são o caso interessante para a pesquisa: `N` é conhecido no ponto
 da instanciação mesmo quando o resto só existe em execução. Um argumento const
@@ -251,9 +272,39 @@ E porque é tudo valor comum, o partial evaluator dobra reflection de graça:
 `reflect(User).name` residualiza como `"User"`, e o programa não paga nada por ter
 usado.
 
-O que falta (M11 em diante): as macros de controle no prelude e o resto do partial
-evaluator — especialização de chamadas e eliminação de bounds check. O roteiro
-completo está em [`plans/`](plans/README.md).
+E o **prelude** (M11) usa tudo isso para escrever, na própria linguagem, as
+construções de controle que a LapisLang não tem:
+
+```c
+var i = 0;
+
+@while i < 3 {          // vem do prelude — não precisa declarar
+    i = i + 1;
+    print(i);
+}
+```
+
+`@while` são seis linhas de `prelude.ls` sobre `goto` e `label`. É a tese do
+sistema de macros em uma frase: **um laço, que em qualquer outra linguagem é
+trabalho de compilador, aqui é biblioteca.** E nada foi retirado do compilador
+para isso — `if` e `match` continuam onde estavam, com desestruturação de carga,
+que é justamente o que nenhuma macro faria com segurança (Q23). Um `@while`
+quebrado não tem como regredir um programa que já funcionava.
+
+O escopo se comporta como se esperaria: o corpo do laço é um escopo (o que ele
+declara não escapa), e um `var` declarado entre dois laços é visível no segundo.
+Só o que um `goto` **explícito** pode ter pulado continua invisível no destino —
+que é a única forma de o contrário ser mentira. `examples/control.ls` mostra os
+três casos.
+
+O que falta: **fechar a linguagem** primeiro (M13–M15) — type members e extension
+methods —, porque o partial evaluator precisa de um caso para cada construção, e
+escrevê-lo contra uma superfície que ainda cresce significa reabri-lo a cada
+milestone. O **span** já entrou (M12): o tamanho no tipo tirou do partial
+evaluator o caso trivial de eliminação de bounds check e deixou com ele o
+interessante — provar `i < n` para um `i` derivado de laço. Depois o resto do PE (M16–M18):
+especialização de chamadas e eliminação de bounds check. O roteiro completo está em
+[`plans/`](plans/README.md).
 
 ```bash
 $ lapis examples/hello.ls

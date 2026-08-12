@@ -25,7 +25,7 @@ public static class ValueFormatter
         BoolValue v => v.Value ? "true" : "false",
         StrValue v => quoteStrings ? new ConstStr(v.Value).ToDisplayString() : v.Value,
         VoidValue => "()",
-        ArrayValue v => "[" + string.Join(", ", v.Elements.Select(e => Format(e, quoteStrings: true))) + "]",
+        SpanValue v => "[" + string.Join(", ", v.Elements.Select(e => Format(e, quoteStrings: true))) + "]",
 
         // Enums são impressos qualificados, exatamente como a linguagem exige que
         // sejam escritos (Q3): `Result.Ok(20)`, não `Ok(20)`.

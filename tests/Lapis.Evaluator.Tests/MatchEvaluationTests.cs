@@ -96,14 +96,14 @@ public sealed class MatchEvaluationTests : EvaluatorTestBase
     [Fact]
     public void Section22_UnwrapOr() =>
         Output("""
-            def unwrapOr = fn(result: Result<Int, IndexError>, fallback: Int) Int {
+            def unwrapOr = fn(result: Option<Int>, fallback: Int) Int {
                 match result {
-                    Result.Ok(value) => return value,
-                    Result.Err(error) => return fallback
+                    Option.Some(value) => return value,
+                    Option.None => return fallback
                 }
             };
 
-            def values = [10, 20, 30];
+            var values = .[10, 20, 30];
 
             print(unwrapOr(values[1], 0));
             print(unwrapOr(values[9], 0));
@@ -113,11 +113,11 @@ public sealed class MatchEvaluationTests : EvaluatorTestBase
     [Fact]
     public void Section22_MatchAsExpression() =>
         Output("""
-            def values = [10, 20, 30];
+            var values = .[10, 20, 30];
 
             def x = match values[1] {
-                Result.Ok(value) => value,
-                Result.Err(error) => 0
+                Option.Some(value) => value,
+                Option.None => 0
             };
 
             print(x);

@@ -33,6 +33,18 @@ public static class PreludeLoader
         var diagnostics = new DiagnosticBag();
 
         var file = Parser.Parser.Parse(source, diagnostics);
+
+        // As macros do prelude saem do arquivo antes do desugar (plano 20): elas
+        // não são código, são sintaxe, e o resto do pipeline não as conhece. É a
+        // mesma coisa que a expansão faz num arquivo do usuário — só que aqui
+        // ninguém as invoca, então basta separá-las.
+        //
+        // O prelude não usa macros. Se um dia usar, é aqui que a expansão entra.
+        var macros = file.Statements.OfType<Ast.Surface.MacroDeclaration>().ToImmutableArray();
+        file = file with { Statements = [.. file.Statements.Where(s => s is not Ast.Surface.MacroDeclaration)] };
+
+        RejectDuplicateMacros(macros);
+
         var core = Desugar.Desugarer.Desugar(file, diagnostics);
         var typed = TypeChecker.TypeChecker.Check(core, prelude: null, diagnostics);
 
@@ -50,7 +62,23 @@ public static class PreludeLoader
             throw new InternalCompilerException($"o prelude abortou: {evaluation.Message}");
         }
 
-        return new PreludeScope(CollectBindings(typed, context));
+        return new PreludeScope(CollectBindings(typed, context), macros);
+    }
+
+    /// <summary>
+    /// Duas macros com o mesmo nome no prelude seriam bug do compilador, não erro
+    /// do usuário — daí a exceção em vez do <c>LAP0511</c>.
+    /// </summary>
+    private static void RejectDuplicateMacros(ImmutableArray<Ast.Surface.MacroDeclaration> macros)
+    {
+        var duplicated = macros
+            .GroupBy(m => m.Name, StringComparer.Ordinal)
+            .FirstOrDefault(g => g.Count() > 1);
+
+        if (duplicated is not null)
+        {
+            throw new InternalCompilerException($"o prelude declara '{duplicated.Key}' duas vezes");
+        }
     }
 
     /// <summary>

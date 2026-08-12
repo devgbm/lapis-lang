@@ -1,8 +1,8 @@
-// spec §16 — `Result` vem do prelude e é genérico, então a construção leva os
+// spec §16 — `Option` vem do prelude e é genérico, então a construção leva os
 // argumentos antes do ponto (Q7).
 // expect: output
-// Result.Ok(10)
-// Result.Err(IndexError.OutOfBounds)
+// Option.Some(10)
+// Option.None
 // ---
-print(Result<Int, IndexError>.Ok(10));
-print(Result<Int, IndexError>.Err(IndexError.OutOfBounds));
+print(Option<Int>.Some(10));
+print(Option<Int>.None);

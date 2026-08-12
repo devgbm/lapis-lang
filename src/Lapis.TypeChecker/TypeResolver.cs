@@ -83,8 +83,8 @@ public sealed class TypeResolver(DiagnosticBag diagnostics)
             case NamedTypeSyntax named:
                 return ResolveNamed(named, scope);
 
-            case ArrayTypeSyntax array:
-                return new ArrayType(Resolve(array.Element, scope));
+            case SpanTypeSyntax span:
+                return new SpanType(Resolve(span.Element, scope), ResolveSize(span.Size));
 
             case FunctionTypeSyntax function:
                 var parameters = function.Parameters
@@ -95,6 +95,42 @@ public sealed class TypeResolver(DiagnosticBag diagnostics)
 
             default:
                 throw InternalCompilerException.Unreachable(syntax, syntax.Span);
+        }
+    }
+
+    /// <summary>
+    /// O tamanho como escrito. Um identificador é um <b>parâmetro const</b> —
+    /// <c>fn&lt;N: Int&gt;(s: [Int;N])</c> —, e a substituição de Q18 o fecha quando
+    /// a assinatura é instanciada.
+    /// </summary>
+    private SpanSize ResolveSize(SpanSizeSyntax size)
+    {
+        switch (size)
+        {
+            case UnknownSizeSyntax:
+                return UnknownSize.Instance;
+
+            case FixedSizeSyntax fixedSize when fixedSize.Value is >= 0 and <= int.MaxValue:
+                return new FixedSize((int)fixedSize.Value);
+
+            case FixedSizeSyntax fixedSize:
+                diagnostics.ReportError(
+                    DiagnosticCodes.InvalidSpanSize,
+                    size.Span,
+                    $"o tamanho de um span deve caber num Int não negativo, encontrado {fixedSize.Value}");
+
+                return UnknownSize.Instance;
+
+            case NamedSizeSyntax named when TypeParameters.ContainsKey(named.Name):
+                return new ConstSize(named.Name);
+
+            default:
+                diagnostics.ReportError(
+                    DiagnosticCodes.InvalidSpanSize,
+                    size.Span,
+                    $"'{((NamedSizeSyntax)size).Name}' não é um parâmetro const em escopo");
+
+                return UnknownSize.Instance;
         }
     }
 

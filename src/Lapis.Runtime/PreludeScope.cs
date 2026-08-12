@@ -21,11 +21,12 @@ public sealed record PreludeBinding(string Name, LapisType Type, Value Value);
 public sealed class PreludeScope
 {
     public const string ResultName = "Result";
-    public const string IndexErrorName = "IndexError";
+    public const string OptionName = "Option";
     public const string ContextErrorName = "ContextError";
     public const string OkVariant = "Ok";
     public const string ErrVariant = "Err";
-    public const string OutOfBoundsVariant = "OutOfBounds";
+    public const string SomeVariant = "Some";
+    public const string NoneVariant = "None";
     public const string MissingVariant = "Missing";
 
     public const string TypeInfoName = "TypeInfo";
@@ -35,11 +36,19 @@ public sealed class PreludeScope
     public const string StructVariant = "Struct";
     public const string EnumVariant = "Enum";
 
-    public PreludeScope(ImmutableArray<PreludeBinding> bindings)
+    /// <param name="macros">
+    /// As macros que o <c>prelude.ls</c> declara (plano 20). São dado como os
+    /// bindings: quem as registra é o expander, e quem as lê do arquivo é o
+    /// orquestrador.
+    /// </param>
+    public PreludeScope(
+        ImmutableArray<PreludeBinding> bindings,
+        ImmutableArray<Ast.Surface.MacroDeclaration> macros = default)
     {
         Bindings = bindings;
+        Macros = macros.IsDefault ? [] : macros;
         Result = RequireEnum(bindings, ResultName, OkVariant, ErrVariant);
-        IndexError = RequireEnum(bindings, IndexErrorName, OutOfBoundsVariant);
+        Option = RequireEnum(bindings, OptionName, SomeVariant, NoneVariant);
         ContextError = RequireEnum(bindings, ContextErrorName, MissingVariant);
         TypeKind = RequireEnum(bindings, TypeKindName, StructVariant, EnumVariant);
 
@@ -49,10 +58,8 @@ public sealed class PreludeScope
 
         OkVariantIndex = Result.IndexOfVariant(OkVariant);
         ErrVariantIndex = Result.IndexOfVariant(ErrVariant);
-        OutOfBoundsIndex = IndexError.IndexOfVariant(OutOfBoundsVariant);
-
-        OutOfBounds = new EnumValue(IndexError, OutOfBoundsIndex, [], []);
-        IndexErrorType = new NamedType(IndexError, []);
+        SomeVariantIndex = Option.IndexOfVariant(SomeVariant);
+        NoneVariantIndex = Option.IndexOfVariant(NoneVariant);
 
         Missing = new EnumValue(ContextError, ContextError.IndexOfVariant(MissingVariant), [], []);
         ContextErrorType = new NamedType(ContextError, []);
@@ -62,9 +69,26 @@ public sealed class PreludeScope
 
     public ImmutableArray<PreludeBinding> Bindings { get; }
 
+    /// <summary>
+    /// As construções que a linguagem <b>não tem</b>, escritas na própria
+    /// linguagem: <c>@unless</c> e <c>@while</c> (plano 20).
+    ///
+    /// Elas não têm tipo nem valor, e por isso não são <see cref="PreludeBinding"/>:
+    /// uma macro não é first-class citizen (Q19). Ficam aqui porque o prelude é o
+    /// lugar de tudo o que todo programa enxerga.
+    /// </summary>
+    public ImmutableArray<Ast.Surface.MacroDeclaration> Macros { get; }
+
     public TypeDefinition Result { get; }
 
-    public TypeDefinition IndexError { get; }
+    /// <summary>
+    /// O retorno de uma indexação que pode falhar (Q31).
+    ///
+    /// Era <c>Result&lt;T, IndexError&gt;</c> até o M12. <c>IndexError.OutOfBounds</c>
+    /// nunca carregou informação — um enum de uma variante cujo significado é
+    /// "falhou" —, e <c>Result</c> existe para o erro que <b>diz</b> alguma coisa.
+    /// </summary>
+    public TypeDefinition Option { get; }
 
     public TypeDefinition ContextError { get; }
 
@@ -83,27 +107,24 @@ public sealed class PreludeScope
 
     public int ErrVariantIndex { get; }
 
-    public int OutOfBoundsIndex { get; }
+    public int SomeVariantIndex { get; }
 
-    /// <summary>O valor <c>IndexError.OutOfBounds</c>, que é único e imutável.</summary>
-    public EnumValue OutOfBounds { get; }
-
-    public LapisType IndexErrorType { get; }
+    public int NoneVariantIndex { get; }
 
     /// <summary>O valor <c>ContextError.Missing</c>, único e imutável.</summary>
     public EnumValue Missing { get; }
 
     public LapisType ContextErrorType { get; }
 
-    public EnumValue MakeOk(Value payload, LapisType okType) =>
-        new(Result, OkVariantIndex, [payload], IndexResultArguments(okType));
+    /// <summary><c>Option&lt;T&gt;</c> — o tipo de uma indexação que pode falhar.</summary>
+    public LapisType OptionOf(LapisType element) =>
+        new NamedType(Option, GenericArgument.OfTypes([element]));
 
-    public EnumValue MakeIndexError(LapisType okType) =>
-        new(Result, ErrVariantIndex, [OutOfBounds], IndexResultArguments(okType));
+    public EnumValue MakeSome(Value payload, LapisType element) =>
+        new(Option, SomeVariantIndex, [payload], GenericArgument.OfTypes([element]));
 
-    /// <summary>Os argumentos genéricos de <c>Result&lt;T, IndexError&gt;</c> (spec §21).</summary>
-    public ImmutableArray<GenericArgument> IndexResultArguments(LapisType okType) =>
-        GenericArgument.OfTypes([okType, IndexErrorType]);
+    public EnumValue MakeNone(LapisType element) =>
+        new(Option, NoneVariantIndex, [], GenericArgument.OfTypes([element]));
 
     /// <summary><c>Result&lt;Str, ContextError&gt;</c> — o retorno de <c>contextGet</c>.</summary>
     public LapisType ContextResultType =>
@@ -203,11 +224,11 @@ public sealed class PreludeScope
                 new StrValue(name),
                 kindValue,
                 Strings(typeParameterNames),
-                new ArrayValue(
+                new SpanValue(
                     [.. fields.Select(f => (Value)new StructValue(
                         FieldInfo, [new StrValue(f.Name), new StrValue(f.TypeName)], []))],
                     new NamedType(FieldInfo, [])),
-                new ArrayValue(
+                new SpanValue(
                     [.. variants.Select(v => (Value)new StructValue(
                         VariantInfo,
                         [
@@ -221,7 +242,7 @@ public sealed class PreludeScope
             []);
     }
 
-    private static ArrayValue Strings(IReadOnlyList<string> values) =>
+    private static SpanValue Strings(IReadOnlyList<string> values) =>
         new([.. values.Select(v => (Value)new StrValue(v))], PrimitiveType.Str);
 
     private static TypeDefinition RequireStruct(ImmutableArray<PreludeBinding> bindings, string name)
