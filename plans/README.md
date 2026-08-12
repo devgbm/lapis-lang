@@ -99,7 +99,8 @@ concatenação faz sentido.
 | 24 | [Span: sequência com tamanho no tipo](24-spans.md) | `Lapis.Ast` + `Lapis.TypeChecker` + `prelude.ls` | M12 |
 | 21 | [Type members](21-type-members.md) | `Lapis.Parser` … `Lapis.Evaluator` | M13 |
 | 22 | [Métodos de instância e `self`](22-instance-members.md) | `Lapis.TypeChecker` + `Lapis.Evaluator` | M14 |
-| 23 | [Extensions genéricas](23-generic-extensions.md) | `Lapis.TypeChecker` | M15 ⏳ Q27 |
+| 23 | [Membros sobre tipos genéricos](23-generic-extensions.md) | `Lapis.TypeChecker` | M15 |
+| 25 | [`is`: testar variante e desembrulhar carga](25-is-pattern-test.md) | `Lapis.Parser` + `Lapis.Desugar` + `Lapis.TypeChecker` | M16 |
 
 ### Apêndices normativos
 
@@ -131,10 +132,11 @@ concatenação faz sentido.
 | **M12** ✅ | Span | `[Int;3]`, `.[1,2,3]`, `.[Int;0;8]`, índice literal checado, `length` constante, indexação → `Option` | 24 |
 | **M13** ✅ | Type members | `def User.create`, `User.defaultAge`, `mutavel.campo = e` | 21 |
 | **M14** ✅ | Métodos de instância | `user.hello()` ≡ chamar a função com `user` no argumento 0 | 22 |
-| **M15** | Extensions genéricas | `def<T> Result<T>.isOk` — **bloqueado por Q27** | 23 |
-| **M16** | PE especialização | beta reduction, inlining, especialização de funções | 13 |
-| **M17** | PE análise | range analysis, bounds-check elimination, `lapis pe --trace` | 14, 15 |
-| **M18** | Equivalência | property-based: `eval(P,S) ≡ eval(PE(P,S),S)` | 11, 14 |
+| **M15** | Membros sobre genéricos | `def Result<?, ?>.isOk` — Q27 decidida | 23 |
+| **M16** | `is` | `e is Some(v)` — Q23 fechada, sem nó novo na Core | 25 |
+| **M17** | PE especialização | beta reduction, inlining, especialização de funções | 13 |
+| **M18** | PE análise | range analysis, bounds-check elimination, `lapis pe --trace` | 14, 15 |
+| **M19** | Equivalência | property-based: `eval(P,S) ≡ eval(PE(P,S),S)` | 11, 14 |
 
 **Por que span veio primeiro.** O plano 24 mudou a sintaxe de tipo de sequência e
 o `prelude.ls` junto — `TypeInfo` tem quatro campos de span — e trocou o retorno
@@ -159,9 +161,10 @@ O custo é assumido: os type members chegam sem que o M15 já saiba eliminar a
 chamada, então `user.hello()` custa uma chamada até lá. É preço de sintaxe, não de
 semântica.
 
-**O que ainda falta para "fechar"**, além de M15: **Q23** — a construção para
-ler a carga de uma variante com segurança, que Q22 adiou e sem a qual `@match`
-não pode existir. É o último buraco conhecido da superfície.
+**Com M15 e M16 a superfície fecha.** A **Q23** — ler a carga de uma variante com
+segurança — era o último buraco conhecido, e a decisão do autor a resolveu com
+`is` (plano 25). A **Q27**, que bloqueava o plano 23, foi dissolvida pelo `?`
+curinga em vez de respondida.
 
 **Por que as macros vêm antes do partial evaluator** (decisão do autor), e por que
 o **M7 é a exceção**:
@@ -201,9 +204,9 @@ O M6 vir primeiro também paga uma dívida: o plano 14 (bounds-check elimination
               ↓
         17 → 18 → 19 → 20                           (M8–M11)
               ↓
-        24 → 21 → 22 → 23                           (M12–M15)
+        24 → 21 → 22 → 23 → 25                      (M12–M16)
               ↓
-        13 → 14 → 15                                (M16–M18)
+        13 → 14 → 15                                (M17–M19)
 ```
 
 Observação sobre a ordem da spec: a spec §43–§52 sugere construir o evaluator

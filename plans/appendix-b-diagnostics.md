@@ -230,6 +230,29 @@ máquina. O orçamento é de **execução**, e não de compilação — se o che
 rejeitasse a quantidade constante, o partial evaluator poderia transformar um
 programa que compila num que não compila, só por dobrar a expressão do tamanho.
 
+### `is` (plano 25 — proposta, M16)
+
+| Código | Severidade | Mensagem |
+|---|---|---|
+| `LAP0730` | error | a ligação de `is` só vale em condição de `if` ou à esquerda de `&&` |
+| `LAP0731` | error | a ligação de `is` não atravessa um salto |
+| `LAP0732` | error | `'{0}'` não é variante de {1} |
+| `LAP0733` | error | a variante `'{0}'` não carrega valor |
+| `LAP0734` | error | a variante `'{0}'` carrega {1} valores; escreva um padrão de `match` |
+
+`LAP0730` e `LAP0731` são a **regra de escopo** da ligação, e não limitações de
+implementação. `e is Some(v)` produz um `Bool`, e um `Bool` vai a qualquer lugar —
+a ligação, não. As duas posições permitidas são aquelas em que o desugar consegue
+dar escopo a `v` traduzindo para `match`.
+
+`LAP0731` em particular é a mesma regra do `var` declarado entre um `goto` e o seu
+rótulo: o destino é alcançável sem passar pela ligação, então ela não pode existir
+lá. Ver `tests/conformance/eval/mutation/scope_across_joins_with_jump.ls`.
+
+`LAP0732` repete a mensagem de `LAP0251` de propósito — é o mesmo erro visto de
+outro lugar. `LAP0734` é a fronteira com `match`: `is` liga **um** valor, e a forma
+completa já tem casa.
+
 ---
 
 ## LAP052x — `goto` e `label` (implementado, M6)
@@ -393,9 +416,19 @@ tirá-lo. O código é outro porque quem reporta é o checker: só ele sabe se a
 
 | Código | Severidade | Mensagem |
 |---|---|---|
-| `LAP0720` | error | `'{0}'` é declarado para `{1}` e para `{2}`, que se sobrepõem |
-| `LAP0721` | error | o parâmetro genérico `'{0}'` não aparece no dono do membro |
-| `LAP0722` | error | o dono do membro tem {0} argumentos genéricos, e `{1}` espera {2} |
+| `LAP0720` | error | `'{0}'` é declarado para {1} e para {2}, que se sobrepõem |
+| `LAP0721` | error | `'?'` só é válido como argumento genérico do dono de um membro |
+| `LAP0722` | error | o dono do membro tem {0} argumentos genéricos, e `'{1}'` espera {2} |
+
+A decisão da **Q27** trocou `?` curinga por parâmetro nomeado, e `LAP0721` mudou
+de sentido junto: ele não fala mais de "parâmetro que não aparece no dono" — não
+há parâmetros no dono —, e sim da fronteira de onde `?` vale. `def x: Result<?, ?>`
+não compila, porque `?` como tipo de valor seria um `Any` estrutural pela porta
+dos fundos.
+
+`LAP0720` fica mais fácil de defender com a decisão nova: com `?` escrito, os dois
+padrões que se sobrepõem estão **na fonte**, e não são consequência sutil de duas
+declarações parecidas.
 
 ---
 

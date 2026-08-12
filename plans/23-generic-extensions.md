@@ -1,6 +1,6 @@
-# Plano 23 — Extensions genéricas e especializadas
+# Plano 23 — Membros sobre tipos genéricos
 
-**Projeto:** `Lapis.Ast`, `Lapis.TypeChecker`
+**Projeto:** `Lapis.Ast`, `Lapis.Parser`, `Lapis.TypeChecker`
 **Milestone:** M15
 **Spec:** [`lapislang-type-members-0.1.md`](../spec/lapislang-type-members-0.1.md) §8.1
 **Depende de:** 21 (type members), 22 (instância), 04 (generics)
@@ -9,140 +9,227 @@
 
 ## Objetivo
 
-`def Result<T>.isOk` e `def Result<Int>.doubleOrZero` — membros sobre tipos
-genéricos, e a regra que decide qual se aplica.
-
-> **Este plano tem uma questão aberta que precisa de decisão antes de virar
-> código.** Ver §23.2 e **Q27**. Ele está escrito para deixar a decisão preparada,
-> não para ser executado como está.
+`def Result<?, ?>.isOk` e `def Result<Int, ?>.maiorQue` — membros sobre tipos
+genéricos, com o alcance de cada um **escrito**, não deduzido.
 
 ## Escopo
 
-**Entra:** `def T<P>.m`, `def T<Arg>.m`, casamento do receptor contra o padrão do
-dono, regra de especificidade.
+**Entra:** `?` como argumento genérico curinga, membros com dono parcialmente
+aplicado, `self` sobre dono genérico, sobreposição entre declarações.
 
-**Fica de fora:** *where clauses*, bounds, e qualquer forma de restrição sobre `P`
-— a 0.2 não tem bounds em nenhum lugar, e introduzi-los aqui os traria para a
-linguagem inteira pela porta dos fundos.
+**Fica de fora:** ligar o argumento do dono a um nome utilizável no corpo
+(§23.6); *where clauses* e bounds — a 0.2 não tem bounds em lugar nenhum.
 
 ---
 
 ## O que será construído
 
-### 23.1 As duas formas
+### 23.1 A decisão do autor fecha a Q27 — e a dissolve
+
+A pergunta da Q27 era: casar `Result<Int, Error>` contra `Result<T, E>` **é**
+unificação, e a Q7 diz que argumento genérico nunca é inferido. As três saídas
+examinadas eram ruins: sem extensions genéricas, com unificação restrita, ou
+exigindo `result.isOk<Int>()` que ninguém escreve.
+
+A decisão do autor **não escolhe entre as três**. Ela troca a pergunta:
 
 ```c
-def Result<T>.isOk        = fn(self) Bool { ... };   // parâmetro: vale para todo Result
-def Result<Int>.doubled   = fn(self) Int { ... };    // argumento: só para Result<Int, E>
+def Result<?, ?>.isOk       = fn(self) Bool { ... };          // qualquer Result
+def Result<Int, ?>.maiorQue = fn(self, v: Int) Bool { ... };  // só Result<Int, ...>
+def Result.ok = fn<T>(value: T) Result<T, Error> { ... };     // membro genérico
 ```
 
-A diferença é sintaticamente invisível — `T` e `Int` são os dois um
-`NamedTypeSyntax` sem argumentos, exatamente a ambiguidade que a 0.2 já conhece de
-`GenericArgumentSyntax` ("um identificador nu é os dois"). A regra que a resolve
-tem de ser dita:
+> **`<>` do lado esquerdo do `=` fala do dono. `<>` do lado direito fala do
+> membro.**
 
-> Um nome no dono é **parâmetro** se aparecer na lista de parâmetros genéricos da
-> própria declaração; caso contrário é um tipo.
+E `?` não é um parâmetro: é **curinga**. Ele não liga nome nenhum, então não há o
+que unificar e não há o que transportar para o corpo. A Q27 não é respondida —
+ela deixa de existir.
 
-O que exige declarar os parâmetros:
+Isso também apaga a §23.1 da versão anterior deste plano, que precisava de
+`def<T> Result<T>.isOk` só para dizer quais identificadores no dono eram
+parâmetros. Com `?`, **nenhum** é.
 
-```c
-def<T> Result<T>.isOk = fn(self) Bool { ... };
-```
+### 23.2 `?` é a mesma decisão de `[T;?]`
 
-Feio, e honesto: é o mesmo princípio de Q7 — argumento genérico é sempre
-explícito, e adivinhar qual identificador é parâmetro seria inferência sintática.
-A alternativa (convenção de maiúscula, `T` é parâmetro e `Int` não) foi descartada
-por transformar estilo em semântica.
+Não é coincidência de símbolo. A leitura é literalmente a mesma:
 
-### 23.2 A questão aberta — Q27
-
-Casar `Result<Int, IndexError>` contra `Result<T, E>` **é unificação**, e Q7
-estabelece que argumento genérico nunca é inferido. As duas coisas não convivem em
-silêncio, e há três saídas:
-
-| Saída | Custo |
+| Forma | `?` significa |
 |---|---|
-| **A. Só extensions especializadas** — `Result<Int>.m`, nunca `Result<T>.m` | some a metade útil da feature: `isOk` teria de ser escrito por instanciação |
-| **B. Unificação restrita ao dono** — casar só a cabeça `Result<...>` e ligar os parâmetros posicionalmente | é inferência, mas de forma **fechada**: sem bounds, sem recursão, sem falha parcial. Q7 continua valendo onde ela vale, que é chamada de função |
-| **C. Exigir o argumento na invocação** — `result.isOk<Int>()` | coerente com Q7 ao pé da letra, e inutiliza a sintaxe: ninguém escreve isso |
+| `[Int;?]` | não se sabe o tamanho (Q29) |
+| `Result<?, ?>` | não se diz quais argumentos |
 
-**A recomendação é B**, com a justificativa registrada: o que Q7 recusa é deduzir
-o argumento de uma chamada a partir dos valores passados. Aqui o argumento já
-está **escrito no tipo do receptor** — `Result<Int, IndexError>` é o que o checker
-já sabe —, e o casamento só o transporta para o corpo do membro. Não há busca, não
-há escolha, não há falha ambígua.
+E a regra de atribuibilidade é a mesma, na mesma direção: **esquecer o que se
+sabia é seguro; afirmar o que não se sabe, não.** `Result<Int, Error>` cabe onde
+se espera `Result<?, ?>`; o contrário não.
 
-Isso precisa de confirmação do autor antes da implementação.
+Essa é a **terceira** regra de subtipagem da linguagem, e as três têm a mesma
+forma — `Never <: T` (Q13), `[T;N] <: [T;?]` (Q29), `T<A,B> <: T<?,?>` (Q27). Vale
+dizer em voz alta porque é o tipo de coerência que se perde sem alguém notar.
 
-### 23.3 Especificidade
+### 23.3 O que entra no modelo de tipos
 
-Se B for adotada, `Result<Int>` casa com `Result<T>` **e** com `Result<Int>`. Com
-membros de nomes diferentes não há problema; com o mesmo nome, há:
+`GenericArgument` ganha um caso curinga. É o mínimo:
 
-```c
-def<T> Result<T>.descrever = fn(self) Str { ... };
-def    Result<Int>.descrever = fn(self) Str { ... };
+```csharp
+public sealed record WildcardArgument : GenericArgument;
 ```
 
-A spec §7 diz "sem overload", e isto **não é** overload — é a mesma assinatura para
-dois donos que se sobrepõem. Duas leituras:
+Um `NamedType(Result, [Wildcard, Wildcard])` é o tipo que `self` recebe em
+`def Result<?, ?>.isOk`. `TypeRelations.IsAssignableTo` ganha uma cláusula:
 
-1. **Erro** (`LAP0720`): o espaço de nomes de membro é por tipo, e `Result<Int>`
-   tem dois `descrever`. Falha ruidosamente, coerente com a postura da 0.2 em
-   `a < b < c` e em `LAP0502`.
-2. **Mais específico vence**: precisa de uma ordem de especificidade, que é uma
-   regra nova no sistema de tipos e uma fonte clássica de surpresa.
+```csharp
+// Q27: T<A,B> cabe em T<?,?>. Posição a posição — `Result<Int, ?>` aceita
+// `Result<Int, Error>` e recusa `Result<Bool, Error>`.
+if (target is NamedType wanted && source is NamedType actual
+    && wanted.Definition.Id == actual.Definition.Id)
+{
+    return wanted.Arguments.Zip(actual.Arguments)
+        .All(p => p.First is WildcardArgument || p.First == p.Second);
+}
+```
 
-**A recomendação é 1** — erro. Faz parte de Q27.
+Curinga é **só de posição**, nunca de definição: `Result<?, ?>` não aceita um
+`Option<Int>`. O nome do dono continua exato.
 
-### 23.4 Diagnósticos
+### 23.4 A tabela de membros passa a ser por padrão, não por nome
+
+Hoje `_members` é `Dictionary<TypeDefinitionId, Dictionary<nome, MemberInfo>>`. O
+valor vira uma **lista**, porque o mesmo nome pode ter várias declarações com
+donos diferentes:
+
+```csharp
+private readonly Dictionary<int, Dictionary<string, List<MemberInfo>>> _members;
+```
+
+`MemberInfo` ganha o padrão do dono (`ImmutableArray<GenericArgument>`, com
+curingas). A resolução em `CheckField` filtra os candidatos pelo tipo do receptor
+usando §23.3.
+
+### 23.5 Sobreposição é erro, e agora é **visível**
+
+```c
+def Result<?, ?>.descrever   = fn(self) Str { ... };
+def Result<Int, ?>.descrever = fn(self) Str { ... };   // LAP0720
+```
+
+A Q27 já recomendava erro em vez de regra de especificidade. A decisão do autor
+melhora o argumento: com `?` escrito, a sobreposição está **na fonte**. Não é uma
+consequência sutil de duas declarações que parecem diferentes — são dois padrões
+que qualquer leitor vê que se cruzam.
+
+A checagem é a que a §23.3 já dá: dois padrões se sobrepõem quando existe algum
+tipo que casa com os dois, e com curinga isso é comparação posição a posição.
+
+`LAP0720` é reportado na **segunda** declaração, com nota apontando a primeira —
+mesma forma de `LAP0702`.
+
+### 23.6 O que `?` **não** dá, e por quê
+
+```c
+def Result<?, ?>.unwrapOr = fn(self, fallback: ???) ??? { ... };
+```
+
+Não há nome para o argumento do dono, então não há como escrever o tipo de
+`fallback`. Isso é limitação real, e é o preço de `?` ser curinga em vez de
+binder — que é justamente o que dissolve a Q27.
+
+**Recomendação: aceitar a limitação nesta milestone.** O que se escreve com
+curinga é o que não olha para dentro: `isOk`, `isFail`, `descrever`. O que precisa
+do argumento tem duas saídas, ambas adiáveis:
+
+1. um membro **genérico** que recebe o receptor explicitamente
+   (`def Result.unwrapOr = fn<T>(r: Result<T, Error>, fallback: T) T`), que já
+   funciona hoje;
+2. curinga **nomeado** numa milestone futura, se a forma (1) provar ser
+   insuficiente na prática.
+
+Adiar aqui é barato porque não fecha porta: `?` continua válido no dia em que um
+nome for permitido ao lado dele.
+
+### 23.7 `self` sobre dono genérico
+
+O M14 recusa com `LAP0295` ("genérico ainda não aceita membro de instância").
+Aqui a recusa some: `self` recebe `NamedType(dono, padrão)` — com curingas onde a
+declaração escreveu `?`.
+
+A consequência cai de graça da §23.3: o corpo só consegue fazer com `self` o que
+não depende dos argumentos. `self.value` sobre `Result<?, ?>` não compila, e a
+mensagem é a de campo desconhecido, que é a verdade.
+
+### 23.8 Membro genérico — o lado direito
+
+```c
+def Result.ok = fn<T>(value: T) Result<T, Error> { ... };
+
+var iRes = Result.ok<Int>(10);      // Result<Int, Error>
+```
+
+Isto **já funciona** hoje: o membro é um valor comum ligado a uma `fn` genérica, e
+`Result.ok<Int>(10)` é `Call(Instantiate(Field(Result, ok), <Int>))` — a cadeia
+pós-fixa do M4 cobre. O plano só precisa de teste e de exemplo, não de código.
+
+Vale registrar porque é o meio da regra do autor: os dois lados da igualdade podem
+ter `<>`, e eles falam de coisas diferentes.
+
+### 23.9 Diagnósticos
 
 ```text
-LAP0720  '{0}' é declarado para '{1}' e para '{2}', que se sobrepõem
-LAP0721  o parâmetro genérico '{0}' não aparece no dono do membro
+LAP0720  '{0}' é declarado para {1} e para {2}, que se sobrepõem
+LAP0721  '?' só é válido como argumento genérico do dono de um membro
 LAP0722  o dono do membro tem {0} argumentos genéricos, e '{1}' espera {2}
 ```
+
+`LAP0721` marca a fronteira: `?` **não** é um tipo. `def x: Result<?, ?> = ...`
+não compila, e nem `fn(r: Result<?, ?>)`. Ele existe só na posição de dono, onde
+significa "esta declaração vale para qualquer coisa aqui" — e permiti-lo como tipo
+de valor seria um `Any` estrutural pela porta dos fundos.
 
 ---
 
 ## Decisões de design
 
-### Por que não bounds
+### Por que `?` e não um parâmetro nomeado
 
-`def<T: Comparable> Array<T>.sort` seria a forma útil, e exige bounds — que a 0.2
-não tem em lugar nenhum. Introduzi-los aqui os traria para a linguagem inteira sem
-a discussão que eles merecem. Fica para uma spec própria.
+Um parâmetro nomeado (`def Result<T, E>.isOk`) obrigaria a distinguir "`T` é
+parâmetro" de "`Int` é tipo" — que era o nó da versão anterior deste plano, e a
+razão de ela propor `def<T>`. `?` não tem esse problema porque não nomeia nada.
 
-### Por que o dono é `TypeSyntax` desde o plano 21
+O custo é a §23.6. A troca é boa: uma limitação declarada vale mais do que uma
+regra de inferência que ninguém consegue prever.
 
-`Result<Int>` no lado esquerdo de um `def` só é representável se `Owner` for
-`TypeSyntax`. Guardar `string` no plano 21 obrigaria a reabrir parser, desugar e
-checker aqui — daí a forma larga entrar antes de ser usada.
+### Por que a sobreposição não escolhe a mais específica
+
+Especificidade é uma regra que o leitor precisa simular de cabeça para saber qual
+membro roda. Erro é uma regra que ele não precisa saber. A 0.2 já faz a mesma
+escolha em `a < b < c`, e por isso mesmo.
 
 ---
 
 ## Testes necessários
 
-Escritos para a saída **B + 1**; se a decisão de Q27 for outra, a tabela muda.
-
 | Teste | Fonte | Esperado |
 |---|---|---|
-| `Generic_AppliesToEveryInstance` | `def<T> Result<T>.isOk` | vale para `Result<Int>` e `Result<Str>` |
-| `Generic_BindsTheParameter` | corpo usa `T` | `T` é `Int` num `Result<Int>` |
-| `Specialized_OnlyItsInstance` | `def Result<Int>.doubled` | `LAP0701` num `Result<Str>` |
-| `Overlapping_IsError` | genérico + especializado, mesmo nome | `LAP0720` |
-| `UnusedParameter_IsError` | `def<T> User.m` | `LAP0721` |
-| `WrongArity_IsError` | `def<T> Result<T>.m` (Result tem 2) | `LAP0722` |
-| `Generic_IsFoldedByPE` | receptor conhecido | especializa como chamada comum |
+| `Wildcard_AppliesToAnyInstance` | `Result<?, ?>.isOk` em `Result<Int, Error>` | compila |
+| `Wildcard_IsPositional` | `Result<Int, ?>.m` em `Result<Bool, Error>` | `LAP0701` |
+| `Wildcard_DoesNotCrossDefinitions` | `Result<?, ?>.m` em `Option<Int>` | `LAP0701` |
+| `Overlap_IsAnError` | `Result<?, ?>.d` e `Result<Int, ?>.d` | `LAP0720` |
+| `Disjoint_PatternsCoexist` | `Result<Int, ?>.d` e `Result<Bool, ?>.d` | compila |
+| `Wildcard_IsNotAType` | `def x: Result<?, ?> = y;` | `LAP0721` |
+| `Wildcard_ArityIsChecked` | `Result<?>.m` | `LAP0722` |
+| `Self_OnGenericOwner` | `fn(self)` em `Result<?, ?>` | `self: Result<?, ?>` |
+| `Self_CannotReadArgumentDependentField` | `self.value` | erro de campo |
+| `GenericMember_OnTheRight` | `Result.ok = fn<T>(...)` | já funciona; teste e exemplo |
+| corpus | equivalência do PE | inalterada |
 
 ---
 
 ## Critérios de conclusão
 
-- [ ] **Q27 decidida pelo autor** — sem isso o plano não começa.
-- [ ] `def<T> Result<T>.m` aplicável a toda instanciação, com `T` ligado no corpo.
-- [ ] Sobreposição entre genérico e especializado reportada, não resolvida em
-      silêncio.
-- [ ] Q7 preservada onde ela vale: nenhuma inferência em chamada de função.
+- [ ] `?` como argumento genérico de dono, e **só** ali (`LAP0721`).
+- [ ] `T<A,B> <: T<?,?>`, posição a posição, numa direção só.
+- [ ] Tabela de membros por padrão, com resolução pelo tipo do receptor.
+- [ ] Sobreposição virando `LAP0720`, sem regra de especificidade.
+- [ ] `self` sobre dono genérico, sem o `LAP0295` do M14.
+- [ ] Membro genérico (`fn<T>` do lado direito) coberto por teste e exemplo.
 - [ ] Zero alteração de expectativa em qualquer teste anterior.

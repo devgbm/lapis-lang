@@ -17,7 +17,8 @@ statement      = def_statement
                | macro_declaration
                | expr_statement ;
 
-def_statement  = ( "def" | "var" ) IDENT ( "." IDENT )? ( ":" type )? "=" expression ";" ;
+def_statement  = ( "def" | "var" ) member_owner? IDENT ( ":" type )? "=" expression ";" ;
+member_owner   = IDENT generic_args? "." ;      (* `def Result<?, ?>.isOk` — M15 *)
 
 assign_statement = IDENT ( "." IDENT )* "=" expression ";" ;
 
@@ -51,6 +52,15 @@ decisão entre "cauda" e "statement" continua sendo tomada pelo token seguinte
 um token: depois do primeiro identificador, `.` significa membro e `:` ou `=`
 significa `def` comum. Um membro é definitivo — `var T.m` é `LAP0705`.
 
+**`<>` dos dois lados do `=` falam de coisas diferentes** (M15, plano 23): à
+esquerda, do **dono**; à direita, do **membro**.
+
+```c
+def Result<?, ?>.isOk       = fn(self) Bool { ... };          // qualquer Result
+def Result<Int, ?>.maiorQue = fn(self, v: Int) Bool { ... };  // só Result<Int, ...>
+def Result.ok = fn<T>(value: T) Result<T, Error> { ... };     // membro genérico
+```
+
 **`x.a.b = e;`** atribui a um campo. O receptor é sempre um **nome**, nunca uma
 expressão qualquer: `f().x = e` mutaria um temporário que ninguém mais vê, e por
 isso `f()` nem entra na produção. A mutabilidade segue o binding, não a forma do
@@ -80,7 +90,8 @@ return_expr    = "return" expression?
                | or_expr ;
 
 or_expr        = and_expr ( "||" and_expr )* ;
-and_expr       = eq_expr  ( "&&" eq_expr  )* ;
+and_expr       = is_expr  ( "&&" is_expr  )* ;
+is_expr        = eq_expr ( "is" is_pattern )? ;         (* não encadeia — M16 *)
 eq_expr        = rel_expr ( ( "==" | "!=" ) rel_expr )* ;
 rel_expr       = add_expr ( ( "<" | ">" | "<=" | ">=" ) add_expr )? ;   (* não encadeia *)
 add_expr       = mul_expr ( ( "+" | "-" ) mul_expr )* ;
@@ -139,7 +150,30 @@ if_expr        = "if" expression block ( "else" ( block | if_expr ) )? ;
 
 match_expr     = "match" expression "{" match_arm ( "," match_arm )* ","? "}" ;
 match_arm      = pattern "=>" expression ;
+
+(* M16, plano 25. Distinto de `variant_pattern` (A.9): `is` liga **um** nome, sem
+   aninhamento, e aceita a variante sem qualificação. Padrão completo é `match`. *)
+is_pattern      = ( IDENT generic_args? "." )? IDENT ( "(" IDENT ")" )? ;
 ```
+
+**`is`** (A.3) testa a variante e, na forma com parênteses, liga a carga:
+
+```c
+e is Some                              // Bool
+e is Some(value)                       // Bool, e liga `value`
+e is Result<Int, ?>.Ok(value)          // dono escrito, com curinga
+```
+
+A variante **pode vir sem qualificação**, e isto relaxa a Q3 num ponto só: o enum
+é o tipo do escrutinado, que o checker já conhece, então `Some` sozinho não é
+ambíguo como um `Red` solto em posição de expressão seria. `match` continua
+exigindo a forma qualificada.
+
+A **ligação** só é permitida onde o desugar consegue lhe dar escopo — condição de
+`if` e operando esquerdo de `&&` —, e **não atravessa um salto**: em
+`goto L if e is Some(v);` o destino é alcançável sem passar pela ligação, que é a
+mesma razão de um `var` declarado entre o salto e o rótulo não estar em escopo
+lá.
 
 Note que a condição de `if` e o escrutinado de `match` usam `expression` sem
 restrição alguma. Isso é possível porque a construção de `type` começa com `.`
@@ -213,8 +247,18 @@ generic_param  = IDENT                       (* parâmetro de tipo:   <T>      *
 generic_args   = "<" generic_arg ( "," generic_arg )* ","? ">" ;
 generic_arg    = fn_expr                     (* valor de função     *)
                | "-"? ( INT | FLOAT ) | STRING | "true" | "false"   (* valor const *)
+               | "?"                         (* curinga — só em dono de membro, M15 *)
                | type ;                      (* tipo, ou IDENT ambíguo *)
 ```
+
+**`?` é curinga, não parâmetro** (M15, plano 23). Ele não liga nome nenhum, e por
+isso não há unificação a fazer nem argumento a transportar para o corpo — foi o
+que dissolveu a Q27. É o mesmo `?` de `[Int;?]`, com a mesma leitura ("não se diz")
+e a mesma regra de atribuibilidade: `Result<Int, Error>` cabe em `Result<?, ?>`, e
+não o contrário.
+
+Só vale em **posição de dono de membro**. `def x: Result<?, ?> = y;` é `LAP0721`:
+permitir `?` como tipo de valor seria um `Any` estrutural pela porta dos fundos.
 
 `generic_args` é um pós-fixo **independente da chamada**: `identity<Int>` é uma
 expressão por si só, e uma única produção cobre `identity<Int>(10)`
@@ -410,8 +454,14 @@ dos demais statements.
 
 ```text
 def  var  fn  type  enum  return  true  false  if  else  match  goto
-macro  expand  constraint  throw
+macro  expand  constraint  throw  is
 ```
+
+`is` entra no M16 (plano 25): `e is Some(v)` testa a variante e liga a carga. É
+reservada por decisão do autor; um `is` contextual seria possível — depois de uma
+expressão completa, um identificador `is` seguido de nome de variante só pode ser
+o operador —, e a escolha é reversível. Custo medido de reservá-la: zero, `is` não
+aparecia em nenhum `.ls` do repositório.
 
 `macro`, `expand` e `constraint` entraram no M8; `throw`, no M9. `@` passou a ser token: inicia
 uma invocação de macro, e — só depois do primeiro caractere de um identificador,

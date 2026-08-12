@@ -633,7 +633,7 @@ some se a substituição for parcial.
 
 ---
 
-## Q23 ⏳ — Construção para ler carga de variante com segurança
+## Q23 ✅ — Construção para ler carga de variante com segurança
 
 **Problema.** Para `@match` ser macro, é preciso ler a carga de uma variante fora do
 `match` da Core. Três saídas foram examinadas, e **as três caíram**:
@@ -652,9 +652,31 @@ Uma macro transforma sintaxe. Ela não tem como estabelecer que um valor é da
 variante `Ok` no ponto do acesso — isso é papel de uma construção da linguagem, com
 regra de tipo própria.
 
-**✅ Decidido pelo autor: adiar, e resolver com uma palavra reservada.** A
-funcionalidade será atacada criando uma construção própria para acessar a carga com
-segurança. `if` e `match` continuam no compilador até lá (Q22).
+**✅ Decidido pelo autor: a palavra reservada é `is`** (plano 25).
+
+```c
+e is Some                     // Bool
+e is Some(value)              // Bool, e liga `value` onde o teste é verdadeiro
+
+if e is Some(value) { var a = value + 1; }
+```
+
+Os três requisitos abaixo são satisfeitos porque **a ligação e a prova nascem
+juntas**: não existe posição em que `value` esteja em escopo e a variante seja
+outra. Não há análise de fluxo, e não há caminho de runtime para o caso falso — há
+ausência de escopo.
+
+`is` é açúcar sobre `match` — nenhum nó novo na Core —, o que mantém a Q22
+intacta: o plano 14 continua com uma forma de controle a entender.
+
+Duas restrições vêm junto, e a segunda diverge do exemplo original do autor:
+
+- a ligação só vale onde o desugar consegue lhe dar escopo: condição de `if` e
+  operando esquerdo de `&&` (`LAP0730`);
+- a ligação **não atravessa um salto** (`LAP0731`). É a mesma regra do `var`
+  declarado entre um `goto` e o seu rótulo: o destino é alcançável sem passar pela
+  ligação. Permitir exigiria parâmetro em join point ou dominância — e dominância
+  é justamente a terceira saída que esta questão recusou.
 
 **O requisito, sem projetar a solução:**
 
@@ -802,9 +824,9 @@ variante de enum, e registra uma `Resolution` — como `VariantResolution` e
 Consequência que decide o custo da feature: **a Core não ganha nó nenhum e não há
 fase de lowering.**
 
-## Q27 — Extensions genéricas casam receptor contra padrão? ⏳
+## Q27 ✅ — Extensions genéricas casam receptor contra padrão?
 
-**Sem decisão. Bloqueia o plano 23.**
+**Decidida pelo autor — e a decisão dissolve a pergunta.**
 
 `def<T> Result<T>.isOk` aplicado a um `Result<Int, IndexError>` exige casar o tipo
 do receptor contra o padrão do dono e ligar `T`. Isso **é** unificação, e Q7
@@ -825,6 +847,35 @@ Junto vem a sobreposição: se `Result<T>.descrever` e `Result<Int>.descrever`
 coexistem, `Result<Int>` tem dois. A recomendação é **erro** (`LAP0720`) em vez de
 uma regra de especificidade — falhar ruidosamente, como a 0.2 já faz com
 `a < b < c`.
+
+> **✅ Decidido pelo autor: nenhuma das três.** O alcance passa a ser **escrito**,
+> com `?` como curinga:
+>
+> ```c
+> def Result<?, ?>.isOk       = fn(self) Bool { ... };          // qualquer Result
+> def Result<Int, ?>.maiorQue = fn(self, v: Int) Bool { ... };  // só Result<Int, ...>
+> def Result.ok = fn<T>(value: T) Result<T, Error> { ... };     // membro genérico
+> ```
+>
+> A regra em uma linha: **`<>` à esquerda do `=` fala do dono; `<>` à direita fala
+> do membro.**
+>
+> `?` **não** é parâmetro, é curinga: não liga nome nenhum. Então não há
+> unificação, não há o que transportar para o corpo, e a tensão com a Q7
+> desaparece — não foi resolvida, deixou de existir.
+>
+> É também a **terceira** regra de subtipagem, com a mesma forma das duas
+> anteriores: `Never <: T` (Q13), `[T;N] <: [T;?]` (Q29), `T<A,B> <: T<?,?>`. Nas
+> três, esquecer o que se sabia é seguro e afirmar o que não se sabe não é. O `?`
+> de `Result<?, ?>` é literalmente o mesmo `?` de `[Int;?]`.
+>
+> O preço é declarado: sem nome para o argumento do dono, o corpo não consegue
+> escrevê-lo — `def Result<?, ?>.unwrapOr` não tem como anotar o `fallback`. O que
+> precisa do argumento se escreve como membro genérico, que já funciona. Ver plano
+> 23 §23.6.
+>
+> A sobreposição segue sendo `LAP0720`, e a decisão a melhora: com `?` escrito, os
+> dois padrões que se cruzam estão **na fonte**.
 
 ## Q29 — `[T;N]` é atribuível a `[T;?]`? ✅
 
