@@ -51,9 +51,9 @@ lapis hello.ls
 | M13–M15 — type members, extension methods | ⏳ próximo |
 | M16–M18 — PE: especialização, análise, equivalência | ⬜ |
 
-**1537 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
+**1579 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
 evaluator, partial evaluator e CLI — entre eles uma **suíte de conformidade** de
-180 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
+185 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
 spec é um arquivo, e o nome do teste que falha já é o arquivo a abrir.
 
 A linguagem já roda programas de verdade: funções de primeira classe com
@@ -69,6 +69,12 @@ def numbers = .[10, 20, 30];    // [Int;3] — o tamanho está no tipo
 print(numbers[1]);              // 20 — total, os limites foram provados
 print(numbers.length);          // 3  — constante de compilação
 // print(numbers[3]);           // LAP0244: erro de compilação, não falha em execução
+
+// Oito zeros não se escrevem à mão: `.[T; inicial; n]` diz elemento,
+// valor inicial e quantidade.
+def zeros = .[Int; 0; 8];       // [Int;8]
+
+print(zeros.length);            // 8
 
 var mutaveis = .[10, 20, 30];   // [Int;?] — um `var` pode receber outro tamanho
 
@@ -88,7 +94,8 @@ metades desse exemplo. Onde o tamanho é conhecido e o índice é constante, ind
 é **total**: o compilador verifica os limites e devolve o elemento, sem envelope
 nenhum. Onde o tamanho se perde, a checagem sobra para a execução e o resultado é
 um `Option<T>` — a falha aparece no tipo, e o acesso fora de limites nunca lança.
-`match` deve ser exaustivo, porque é uma expressão e precisa produzir um valor em
+A quantidade de `.[T; inicial; n]` segue a mesma divisa: constante entra no tipo,
+dinâmica dá `[T;?]`. `match` deve ser exaustivo, porque é uma expressão e precisa produzir um valor em
 toda execução. E argumentos genéricos são **sempre explícitos** — não há
 inferência na 0.2 (decisão Q7), o que mantém o type checker previsível e deixa a
 porta aberta para inferência depois.

@@ -20,6 +20,11 @@
 //   Option.Some(10)
 //   Option.None
 //   3
+//   [0, 0, 0, 0, 0, 0, 0, 0]
+//   8
+//   [Option.None, Option.None, Option.None]
+//   ["x", "x", "x", "x", "x"]
+//   5
 
 // ----------------------------------------------------- tamanho no tipo
 
@@ -48,3 +53,31 @@ print(mutaveis[3]);
 // O valor, esse, sempre carrega a quantidade junto do dado — `length` continua
 // respondendo, só que agora em execução.
 print(mutaveis.length);
+
+// ------------------------------------------------- span por repetição
+
+// A forma por lista não escala: oito zeros não se escrevem programaticamente com
+// `.[0, 0, ...]`. `.[T; inicial; n]` diz elemento, valor inicial e quantidade.
+//
+// Os separadores são `;`, os mesmos de `[Int;8]` — a lista usa `,`, e um token
+// separa as duas leituras.
+def zeros = .[Int; 0; 8];
+
+print(zeros);
+print(zeros.length);
+
+// O elemento é escrito porque nem sempre sai do inicializador: sem inferência
+// (Q7), `Option<Int>.None` não determina sozinho o tipo do span.
+def vazias = .[Option<Int>; Option<Int>.None; 3];
+
+print(vazias);
+
+// E a quantidade pode só existir em execução — é a outra metade do motivo de a
+// forma existir. Aí o tipo é `[Str;?]`, como qualquer span cujo tamanho ninguém
+// sabe. O inicializador é avaliado **uma vez**: não é laço, é construção.
+var quantas = 5;
+
+def repetido = .[Str; "x"; quantas];
+
+print(repetido);
+print(repetido.length);

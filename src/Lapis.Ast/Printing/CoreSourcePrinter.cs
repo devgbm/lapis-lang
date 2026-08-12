@@ -266,6 +266,14 @@ public static class CoreSourcePrinter
                 builder.Append(']');
                 break;
 
+            case CoreSpanRepeat n:
+                builder.Append(".[").Append(SurfaceSExprPrinter.PrintType(n.Element)).Append("; ");
+                Print(builder, n.Initializer, indent, Precedence.Lowest);
+                builder.Append("; ");
+                Print(builder, n.Size, indent, Precedence.Lowest);
+                builder.Append(']');
+                break;
+
             case CoreIndex n:
                 Print(builder, n.Target, indent, Precedence.Postfix);
                 builder.Append('[');

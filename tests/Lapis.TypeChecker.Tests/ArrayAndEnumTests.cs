@@ -88,6 +88,86 @@ public sealed class SpanTypeTests : TypeCheckerTestBase
     public void VarAnnotated_IndexesTotally() =>
         TypeOfDef("var a: [Int;3] = .[1, 2, 3];\ndef b = a[1];", "b").ShouldBe(PrimitiveType.Int);
 
+    // ------------------------------------------------ span por repetição
+
+    /// <summary>
+    /// Com a quantidade constante, o tamanho entra no tipo como em qualquer
+    /// literal — e é o que faz a indexação por índice literal voltar a ser total.
+    /// </summary>
+    [Fact]
+    public void Repeat_ConstantSize_PutsTheSizeInTheType() =>
+        TypeOfFirstDef("def a = .[Int; 0; 8];").ToDisplayString().ShouldBe("[Int;8]");
+
+    [Fact]
+    public void Repeat_ConstantSizeFromDef_PutsTheSizeInTheType() =>
+        TypeOfDef("def n = 3;\ndef a = .[Str; \"x\"; n];", "a").ToDisplayString().ShouldBe("[Str;3]");
+
+    /// <summary>E sem a quantidade constante, o tipo não fala do tamanho.</summary>
+    [Fact]
+    public void Repeat_DynamicSize_IsUnknownSize() =>
+        TypeOfDef("var n = 3;\ndef a = .[Int; 0; n];", "a").ToDisplayString().ShouldBe("[Int;?]");
+
+    [Fact]
+    public void Repeat_ConstantSize_IndexesTotally() =>
+        TypeOfDef("def a = .[Int; 0; 8];\ndef b = a[7];", "b").ShouldBe(PrimitiveType.Int);
+
+    [Fact]
+    public void Repeat_ConstantSize_OutOfBounds_ReportsLap0244() =>
+        ShouldFailWith("def a = .[Int; 0; 8]; def b = a[8];", DiagnosticCodes.IndexOutOfBounds);
+
+    /// <summary>
+    /// O elemento vem da anotação escrita, não do inicializador: sem inferência
+    /// (Q7), `Option&lt;Int&gt;.None` não determina sozinho o tipo do span.
+    /// </summary>
+    [Fact]
+    public void Repeat_ElementComesFromTheAnnotation() =>
+        TypeOfFirstDef("def a = .[Option<Int>; Option<Int>.None; 3];")
+            .ToDisplayString().ShouldBe("[Option<Int>;3]");
+
+    [Fact]
+    public void Repeat_InitializerMustFitTheElement() =>
+        ShouldFailWith("""def a = .[Int; "x"; 3];""", DiagnosticCodes.TypeMismatch);
+
+    /// <summary>O inicializador cabe pela relação, não pela igualdade (Q29).</summary>
+    [Fact]
+    public void Repeat_InitializerUsesAssignability() =>
+        ShouldPass("def a = .[[Int;?]; .[1, 2, 3]; 2];");
+
+    [Fact]
+    public void Repeat_SizeMustBeInt() =>
+        ShouldFailWith("""def a = .[Int; 0; "x"];""", DiagnosticCodes.IndexMustBeInt);
+
+    [Fact]
+    public void Repeat_UnknownElement_ReportsLap0204() =>
+        ShouldFailWith("def a = .[Naotem; 0; 3];", DiagnosticCodes.UnknownType);
+
+    [Fact]
+    public void Repeat_ZeroSize_IsAccepted() =>
+        TypeOfFirstDef("def a = .[Int; 0; 0];").ToDisplayString().ShouldBe("[Int;0]");
+
+    /// <summary>
+    /// Quantidade negativa é span vazio, não erro — a mesma escolha da divisão
+    /// inteira por zero (Q9). Reportar quebraria o partial evaluator: `0 - 1` não
+    /// é constante aqui, e dobrar a subtração transformaria um programa que
+    /// compila num que não compila.
+    /// </summary>
+    [Fact]
+    public void Repeat_NegativeSize_IsEmpty() =>
+        TypeOfFirstDef("def a = .[Int; 0; -1];").ToDisplayString().ShouldBe("[Int;0]");
+
+    /// <summary>O `var` alarga a repetição como alarga qualquer span.</summary>
+    [Fact]
+    public void Repeat_InVar_Widens() =>
+        TypeOfDef("var a = .[Int; 0; 8];\ndef b = a;", "b").ToDisplayString().ShouldBe("[Int;?]");
+
+    [Fact]
+    public void Repeat_InAnnotatedVar_KeepsTheSize() =>
+        ShouldFailWith("var a: [Int;3] = .[Int; 0; 3]; a = .[4, 5];", DiagnosticCodes.TypeMismatch);
+
+    [Fact]
+    public void Repeat_AnnotationChecksTheSize() =>
+        ShouldFailWith("def a: [Int;3] = .[Int; 0; 4];", DiagnosticCodes.TypeMismatch);
+
     // ---------------------------------------------------------- length
 
     /// <summary>

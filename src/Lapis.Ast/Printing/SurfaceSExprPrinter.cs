@@ -243,6 +243,13 @@ public static class SurfaceSExprPrinter
                 Close(builder, indent);
                 break;
 
+            case SpanRepeatExpression n:
+                Open(builder, indent, $"span-repeat {PrintType(n.Element)}");
+                PrintExpression(builder, n.Initializer, indent + 1);
+                PrintExpression(builder, n.Size, indent + 1);
+                Close(builder, indent);
+                break;
+
             case IndexExpression n:
                 Open(builder, indent, "index");
                 PrintExpression(builder, n.Target, indent + 1);

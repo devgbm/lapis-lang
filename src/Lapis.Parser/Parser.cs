@@ -1057,6 +1057,11 @@ public sealed class Parser
         _tokens.Advance(); // '.'
         _tokens.Advance(); // '['
 
+        if (TryParseSpanRepeat(start, out var repeat))
+        {
+            return repeat;
+        }
+
         var elements = ImmutableArray.CreateBuilder<Expression>();
 
         while (Current.Kind != TokenKind.CloseBracket && !_tokens.AtEnd)
@@ -1081,6 +1086,60 @@ public sealed class Parser
         }
 
         return new SpanExpression(elements.ToImmutable()) { Span = SpanFrom(start) };
+    }
+
+    /// <summary>
+    /// <c>.[T; inicial; n]</c> — a forma por repetição, decidida por um token.
+    ///
+    /// As duas leituras de <c>.[</c> divergem no separador: a lista usa
+    /// <c>,</c> e a repetição usa <c>;</c>, os mesmos <c>;</c> de <c>[Int;8]</c>.
+    /// A decisão precisa de especulação porque o primeiro componente é um
+    /// <b>tipo</b> aqui e uma <b>expressão</b> lá, e <c>a</c> parseia como os dois.
+    ///
+    /// Só depois de ver o <c>;</c> a forma está escolhida — daí em diante os
+    /// erros são reportados, não engolidos, senão um erro dentro do
+    /// inicializador faria a expressão inteira ser relida como lista e produziria
+    /// um diagnóstico sobre a coisa errada.
+    /// </summary>
+    private bool TryParseSpanRepeat(int start, out Expression repeat)
+    {
+        repeat = null!;
+
+        var mark = _tokens.Mark();
+
+        _speculating++;
+        var element = ParseType();
+        var isRepeat = !_tokens.AtEnd && Current.Kind == TokenKind.Semicolon;
+        _speculating--;
+
+        if (!isRepeat)
+        {
+            _tokens.Reset(mark);
+            return false;
+        }
+
+        _tokens.Advance(); // ';'
+
+        var initializer = ParseExpression();
+
+        if (!_tokens.Match(TokenKind.Semicolon))
+        {
+            Report(
+                DiagnosticCodes.ExpectedSemicolon,
+                Current.Span,
+                "esperado ';' antes da quantidade do span",
+                new DiagnosticNote("a forma é `.[T; inicial; n]`"));
+        }
+
+        var size = ParseExpression();
+
+        if (!_tokens.Match(TokenKind.CloseBracket))
+        {
+            Report(DiagnosticCodes.ExpectedCloseBracket, Current.Span, "esperado ']' para fechar o span");
+        }
+
+        repeat = new SpanRepeatExpression(element, initializer, size) { Span = SpanFrom(start) };
+        return true;
     }
 
     /// <summary>

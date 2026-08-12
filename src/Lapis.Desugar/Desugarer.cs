@@ -369,6 +369,7 @@ public sealed class Desugarer
         CallExpression e => JumpsTo(e.Callee, names) || e.Arguments.Any(a => JumpsTo(a, names)),
         InstantiateExpression e => JumpsTo(e.Target, names),
         SpanExpression e => e.Elements.Any(x => JumpsTo(x, names)),
+        SpanRepeatExpression e => JumpsTo(e.Initializer, names) || JumpsTo(e.Size, names),
         IndexExpression e => JumpsTo(e.Target, names) || JumpsTo(e.Index, names),
         MemberExpression e => JumpsTo(e.Target, names),
         ConstructExpression e => e.Fields.Any(f => JumpsTo(f.Value, names)),
@@ -500,6 +501,16 @@ public sealed class Desugarer
 
             case SpanExpression n:
                 return _factory.Array(n.Span, [.. n.Elements.Select(DesugarExpression)]);
+
+            // A repetição **não** vira uma lista de `n` elementos aqui: `n` pode
+            // não ser conhecido em compilação, e quando é, expandir mil zeros na
+            // Core seria trocar um nó por um programa.
+            case SpanRepeatExpression n:
+                return _factory.SpanRepeat(
+                    n.Span,
+                    n.Element,
+                    DesugarExpression(n.Initializer),
+                    DesugarExpression(n.Size));
 
             // A checagem de limites é semântica do nó Index (spec §41), não uma
             // expansão feita aqui: expandi-la exigiria referenciar `Result` antes

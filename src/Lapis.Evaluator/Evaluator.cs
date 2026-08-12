@@ -149,6 +149,7 @@ public sealed class Evaluator
         CoreBinary n => EvaluateBinary(n, environment),
         CoreUnary n => EvaluateUnary(n, environment),
         CoreSpan n => EvaluateArray(n, environment),
+        CoreSpanRepeat n => EvaluateSpanRepeat(n, environment),
         CoreIndex n => EvaluateIndex(n, environment),
         CoreField n => EvaluateField(n, environment),
         CoreEnumDef n => EvaluateEnumDef(n),
@@ -467,6 +468,63 @@ public sealed class Evaluator
 
         return Completion.Normal(new SpanValue(elements.ToImmutable(), elementType));
     }
+
+    /// <summary>
+    /// <c>.[T; inicial; n]</c>.
+    ///
+    /// O inicializador é avaliado <b>uma vez</b> e o mesmo valor ocupa as <c>n</c>
+    /// posições. Não há como observar o compartilhamento — não existe escrita em
+    /// span (Q28) —, mas há como observar o número de avaliações: um
+    /// inicializador que imprime imprime uma vez só. É a leitura que faz de
+    /// <c>.[Int; 0; 8]</c> uma construção e não um laço escondido.
+    ///
+    /// Quantidade negativa produz span vazio, e não aborto: é a mesma escolha da
+    /// divisão inteira por zero (Q9) — a operação é total, e o programa segue.
+    /// </summary>
+    private Completion EvaluateSpanRepeat(CoreSpanRepeat node, Environment environment)
+    {
+        var initializer = Evaluate(node.Initializer, environment);
+
+        if (!initializer.IsNormal)
+        {
+            return initializer;
+        }
+
+        var size = Evaluate(node.Size, environment);
+
+        if (!size.IsNormal)
+        {
+            return size;
+        }
+
+        if (size.Value is not IntValue count)
+        {
+            throw new InternalCompilerException(
+                "quantidade de span que não é Int; o checker deveria ter rejeitado", node.Size.Span);
+        }
+
+        if (count.Value > MaxSpanRepeat)
+        {
+            return Completion.Abort(
+                DiagnosticCodes.SpanTooLarge,
+                node.Size.Span,
+                $"span de {count.Value} elementos excede o limite de {MaxSpanRepeat}");
+        }
+
+        var length = (int)Math.Max(0, count.Value);
+        var elementType = ((SpanType)_program.TypeOf(node)).Element;
+
+        return Completion.Normal(new SpanValue(
+            ImmutableArray.CreateRange(Enumerable.Repeat(initializer.Value, length)),
+            elementType));
+    }
+
+    /// <summary>
+    /// Orçamento de tamanho para a repetição com quantidade dinâmica, no mesmo
+    /// espírito do orçamento de saltos: o que não pode é travar. O checker aplica
+    /// o mesmo teto ao caso constante, e lá o diagnóstico é de compilação.
+    /// </summary>
+    private const long MaxSpanRepeat = 1_000_000;
 
     /// <summary>
     /// Indexação com checagem de limites (spec §41). Fora de limites <b>nunca</b>

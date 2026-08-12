@@ -40,6 +40,7 @@ public static class Effects
             CoreIf n => IsPure(n.Condition) && IsPure(n.Then) && IsPure(n.Else),
 
             CoreSpan n => n.Elements.All(IsPure),
+            CoreSpanRepeat n => IsPure(n.Initializer) && IsPure(n.Size),
             CoreIndex n => IsPure(n.Target) && IsPure(n.Index),
             CoreField n => IsPure(n.Target),
             CoreInstantiate n => IsPure(n.Target),

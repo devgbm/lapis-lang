@@ -147,6 +147,7 @@ public sealed class TypeChecker
             CoreBinary n => CheckBinary(n, scope),
             CoreUnary n => CheckUnary(n, scope),
             CoreSpan n => CheckArray(n, scope, expected),
+            CoreSpanRepeat n => CheckSpanRepeat(n, scope),
             CoreIndex n => CheckIndex(n, scope),
             CoreField n => CheckField(n, scope),
             CoreEnumDef n => CheckEnumDef(n, scope),
@@ -1250,6 +1251,77 @@ public sealed class TypeChecker
 
         // O tamanho vem do literal: `.[1,2,3]` é `[Int;3]`.
         return first is ErrorType ? ErrorType.Instance : SpanType.Of(first, node.Elements.Length);
+    }
+
+    /// <summary>
+    /// <c>.[T; inicial; n]</c> — span por repetição.
+    ///
+    /// O tamanho segue a mesma noção de constante da Q18: literal, <c>def</c>
+    /// ligado a literal, parâmetro const genérico. Quando o tamanho é constante o
+    /// tipo é <c>[T;n]</c> e a indexação por índice literal volta a ser total —
+    /// que é o ponto de a quantidade estar escrita. Quando não é, o tipo é
+    /// <c>[T;?]</c>, exatamente como qualquer outro span cujo tamanho ninguém
+    /// sabe.
+    ///
+    /// O elemento vem da <b>anotação escrita</b>, não do inicializador: em
+    /// <c>.[Option&lt;Int&gt;; Option&lt;Int&gt;.None; n]</c> a variante nulária
+    /// não determina o tipo sozinha (Q7 — não há inferência). O inicializador
+    /// precisa caber no elemento, pela mesma relação de sempre.
+    /// </summary>
+    private LapisType CheckSpanRepeat(CoreSpanRepeat node, Scope scope)
+    {
+        var element = _types.Resolve(node.Element, scope);
+        var initializer = CheckExpression(node.Initializer, scope, element);
+        var size = CheckExpression(node.Size, scope);
+
+        if (!TypeRelations.IsAssignableTo(initializer, element))
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.TypeMismatch,
+                node.Initializer.Span,
+                $"esperado {element.ToDisplayString()}, encontrado {initializer.ToDisplayString()}",
+                new DiagnosticNote("o valor inicial precisa caber no elemento escrito", node.Element.Span));
+
+            return ErrorType.Instance;
+        }
+
+        if (size is not ErrorType && size != PrimitiveType.Int)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.IndexMustBeInt,
+                node.Size.Span,
+                $"a quantidade de um span deve ser Int, encontrado {size.ToDisplayString()}");
+
+            return ErrorType.Instance;
+        }
+
+        if (element is ErrorType || size is ErrorType)
+        {
+            return ErrorType.Instance;
+        }
+
+        if (ConstIntOf(node.Size, scope) is not { } written)
+        {
+            // Quantidade só conhecida em execução: o span existe, mas o tipo não
+            // fala do tamanho.
+            _resolutions[node.NodeId] = new SpanRepeatResolution(null);
+            return SpanType.Unknown(element);
+        }
+
+        // Quantidade negativa é span vazio, não erro.
+        //
+        // A tentação é reportar: um `-1` escrito à mão é quase certamente engano.
+        // Mas a regra não sobreviveria ao partial evaluator — `0 - 1` não é
+        // constante para o checker, e dobrar a subtração transformaria um programa
+        // que compila num que não compila. Nenhuma transformação do PE pode mudar
+        // se um programa é bem tipado.
+        //
+        // Então vale a escolha da divisão inteira por zero (Q9): a operação é
+        // total, o resultado é o razoável, e o programa segue.
+        var length = Math.Max(0, written);
+
+        _resolutions[node.NodeId] = new SpanRepeatResolution(length <= int.MaxValue ? (int)length : null);
+        return length <= int.MaxValue ? SpanType.Of(element, (int)length) : SpanType.Unknown(element);
     }
 
     /// <summary>

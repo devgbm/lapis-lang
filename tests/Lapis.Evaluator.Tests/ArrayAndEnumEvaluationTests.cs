@@ -1,3 +1,5 @@
+using Lapis.Diagnostics;
+
 namespace Lapis.Evaluator.Tests;
 
 public sealed class SpanEvaluationTests : EvaluatorTestBase
@@ -46,6 +48,70 @@ public sealed class SpanEvaluationTests : EvaluatorTestBase
     [Fact]
     public void Span_Length_OfEmpty() =>
         Output("def a: [Int;0] = .[];\nprint(a.length);").ShouldBe("0\n");
+
+    // ------------------------------------------------ span por repetição
+
+    [Fact]
+    public void Repeat_FillsEveryPosition() => Eval(".[Int; 0; 4]").ShouldBe("[0, 0, 0, 0]");
+
+    [Fact]
+    public void Repeat_OfEnumVariant() =>
+        Eval(".[Option<Int>; Option<Int>.None; 2]").ShouldBe("[Option.None, Option.None]");
+
+    [Fact]
+    public void Repeat_ZeroSize_IsEmpty() => Eval(".[Str; \"x\"; 0]").ShouldBe("[]");
+
+    /// <summary>
+    /// Quantidade negativa produz span vazio, não aborto — a operação é total,
+    /// como a divisão inteira por zero (Q9).
+    /// </summary>
+    [Fact]
+    public void Repeat_NegativeSize_IsEmpty() =>
+        Output("var n = 0 - 5;\nprint(.[Int; 0; n]);").ShouldBe("[]\n");
+
+    [Fact]
+    public void Repeat_DynamicSize_IsReadAtRuntime() =>
+        Output("var n = 3;\nprint(.[Int; 7; n]);\nprint(.[Int; 7; n].length);")
+            .ShouldBe("[7, 7, 7]\n3\n");
+
+    /// <summary>
+    /// O inicializador roda <b>uma vez</b>: o compartilhamento não é observável
+    /// (não há escrita em span), mas o número de avaliações é.
+    /// </summary>
+    [Fact]
+    public void Repeat_EvaluatesTheInitializerOnce() =>
+        Output("""
+            def registra = fn(x: Int) Int {
+                print("chamou");
+                return x;
+            };
+
+            def a = .[Int; registra(7); 3];
+
+            print(a);
+            """).ShouldBe("chamou\n[7, 7, 7]\n");
+
+    /// <summary>E o inicializador vem antes da quantidade, como todo o resto.</summary>
+    [Fact]
+    public void Repeat_EvaluatesLeftToRight() =>
+        Output("""
+            def registra = fn(x: Int) Int {
+                print(x);
+                return x;
+            };
+
+            var n = 2;
+            def a = .[Int; registra(1); registra(n)];
+            """).ShouldBe("1\n2\n");
+
+    /// <summary>
+    /// Quantidade grande demais aborta com `LAP0304` em vez de travar: mesmo
+    /// espírito do orçamento de saltos.
+    /// </summary>
+    [Fact]
+    public void Repeat_TooLarge_AbortsWithLap0304() =>
+        ExpectAbort("var n = 2000000;\ndef a = .[Int; 0; n];")
+            .ShouldBe(DiagnosticCodes.SpanTooLarge);
 }
 
 /// <summary>

@@ -166,6 +166,24 @@ public sealed class PropagationTests : PETestBase
     public void Span_KnownLength_Folds() =>
         ShouldSpecializeTo("def a = .[10, 20, 30];\nprint(a.length);", "print(3);");
 
+    /// <summary>
+    /// A repetição com quantidade constante e inicializador conhecido é um valor:
+    /// o residual é a lista.
+    /// </summary>
+    [Fact]
+    public void SpanRepeat_Static_Folds() =>
+        ShouldSpecializeTo("print(.[Int; 1 + 1; 3]);", "print(.[2, 2, 2]);");
+
+    /// <summary>
+    /// Sem a quantidade constante não há o que construir em compilação: a
+    /// construção atravessa intacta.
+    /// </summary>
+    [Fact]
+    public void SpanRepeat_DynamicSize_IsKept() =>
+        ShouldSpecializeTo(
+            "def f = fn(n: Int) [Int;?] { return .[Int; 0; n]; };\nprint(f(3));",
+            "def f = fn(n: Int) [Int;?] { return .[Int; 0; n] }; print(f(3));");
+
     // ------------------------------------------- argumento genérico nu
 
     /// <summary>

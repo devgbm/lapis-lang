@@ -58,6 +58,15 @@ public sealed record SpanLengthResolution(int? Known) : Resolution;
 /// </summary>
 public sealed record TotalIndexResolution(int Index) : Resolution;
 
+/// <summary>
+/// A quantidade de um <c>.[T; inicial; n]</c>, quando o checker a conhece.
+///
+/// <c>null</c> quando <c>n</c> só existe em execução: aí o evaluator lê o
+/// número do valor, e o tipo é <c>[T;?]</c>. É o mesmo par de regimes de
+/// <see cref="SpanLengthResolution"/>, do outro lado da construção.
+/// </summary>
+public sealed record SpanRepeatResolution(int? Known) : Resolution;
+
 /// <summary>A definição criada por um <c>type</c> ou <c>enum</c>.</summary>
 public sealed record TypeDefinitionResolution(TypeDefinition Definition) : Resolution;
 

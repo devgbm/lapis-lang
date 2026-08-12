@@ -133,6 +133,18 @@ que junção nenhuma resolve, como `.[1, "x"]`.
 
 `LAP0241` continua valendo: `.[]` diz o tamanho, não o tipo do elemento.
 
+`LAP0245` é do **tipo** `[T;N]`, escrito em posição de anotação — `[Int;true]`. A
+quantidade de `.[T; inicial; n]` **não** passa por ele: negativa produz span
+vazio, e grande demais aborta em execução com `LAP0304`. Os dois são de execução
+de propósito. Se o checker rejeitasse a quantidade constante, o partial evaluator
+poderia transformar um programa que compila num que não compila, só por dobrar
+`0 - 1` em `-1` — e nenhuma transformação dele pode mudar se um programa é bem
+tipado. Span vazio para quantidade negativa é a mesma escolha da divisão inteira
+por zero (Q9): a operação é total.
+
+`LAP0304` mora na família de execução, junto de `LAP0303`, e pelo mesmo motivo: a
+garantia não é "nunca falta memória", é "o programa termina e diz o que houve".
+
 ### Campos, variantes e construção
 
 | Código | Severidade | Mensagem |
@@ -204,12 +216,19 @@ Não são diagnósticos de compilação: são relatados na saída de execução 
 | ~~`LAP0301`~~ | — | **aposentado** (Q9): a divisão inteira por zero produz o maior `Int`, então a operação é total |
 | `LAP0302` | abort | profundidade de chamada excedida (limite {0}) |
 | `LAP0303` | abort | limite de saltos excedido (limite {0}) |
+| `LAP0304` | abort | span de {0} elementos excede o limite de {1} |
 
 `LAP0303` chegou com o `goto` para trás (M6). Até o M4 todo programa terminava por
 construção — sem recursão (Q8) e sem laços; `goto` para trás acaba com isso, e este
 é o diagnóstico que troca um travamento por uma mensagem. O orçamento é do
 **programa inteiro** (1.000.000 de saltos), não de cada laço: é o que torna "todo
 programa termina ou reporta `LAP0303`" uma propriedade verificável.
+
+`LAP0304` é o mesmo raciocínio aplicado à quantidade de `.[T; inicial; n]` (plano
+24): um span pedido grande demais termina com diagnóstico em vez de travar a
+máquina. O orçamento é de **execução**, e não de compilação — se o checker
+rejeitasse a quantidade constante, o partial evaluator poderia transformar um
+programa que compila num que não compila, só por dobrar a expressão do tamanho.
 
 ---
 

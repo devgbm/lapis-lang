@@ -124,6 +124,13 @@ public static class CoreSExprPrinter
                 Close(builder, indent);
                 break;
 
+            case CoreSpanRepeat n:
+                Open(builder, indent, $"{tag}span-repeat {SurfaceSExprPrinter.PrintType(n.Element)}");
+                PrintExpression(builder, n.Initializer, indent + 1, ids);
+                PrintExpression(builder, n.Size, indent + 1, ids);
+                Close(builder, indent);
+                break;
+
             case CoreIndex n:
                 Open(builder, indent, $"{tag}index");
                 PrintExpression(builder, n.Target, indent + 1, ids);

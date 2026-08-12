@@ -42,6 +42,16 @@ public sealed record PartialEvaluationResult(CoreProgram Residual, PEStatistics 
 /// </summary>
 public sealed class PartialEvaluator
 {
+    /// <summary>
+    /// Até quantos elementos vale a pena materializar ao dobrar uma repetição.
+    ///
+    /// Não é limite da linguagem — é onde dobrar deixa de ser otimização: um nó
+    /// vira <c>n</c> literais no residual, e para <c>n</c> grande isso é
+    /// pessimização. Acima do teto a construção atravessa intacta, o que é sempre
+    /// seguro.
+    /// </summary>
+    private const int MaxFoldedRepeat = 1_024;
+
     private readonly CoreFactory _factory = new();
     private readonly Residualizer _residualizer;
     private readonly PEOptions _options;
@@ -116,6 +126,7 @@ public sealed class PartialEvaluator
         CoreLambda n => SpecializeLambda(n, environment),
         CoreCall n => SpecializeCall(n, environment),
         CoreSpan n => SpecializeArray(n, environment),
+        CoreSpanRepeat n => SpecializeSpanRepeat(n, environment),
         CoreIndex n => SpecializeIndex(n, environment),
         CoreMatch n => SpecializeMatch(n, environment),
         CoreAssign n => SpecializeAssign(n, environment),
@@ -529,6 +540,54 @@ public sealed class PartialEvaluator
             _factory.Array(
                 node.Span,
                 [.. elements.Select((r, i) => _residualizer.Residualize(r, node.Elements[i].Span))]),
+            TypeOf(node)));
+    }
+
+    /// <summary>
+    /// <c>.[T; inicial; n]</c>.
+    ///
+    /// Dobra quando o inicializador é conhecido <b>e</b> o checker fixou a
+    /// quantidade — aí o span inteiro é um valor, e o residual é a lista. Sem a
+    /// quantidade fixa não há o que construir em compilação: o número só existe
+    /// em execução.
+    ///
+    /// A repetição dobrada vira uma lista de verdade no residual, então há um teto:
+    /// dobrar <c>.[Int; 0; 500000]</c> trocaria um nó por meio milhão de literais
+    /// impressos, o que é pessimização, não otimização. Acima do teto a construção
+    /// atravessa intacta — recusar-se a dobrar é sempre seguro.
+    /// </summary>
+    private PECompletion SpecializeSpanRepeat(CoreSpanRepeat node, StaticEnvironment environment)
+    {
+        var initializer = Specialize(node.Initializer, environment);
+
+        if (!initializer.FlowsThroughStatically)
+        {
+            return initializer;
+        }
+
+        var size = Specialize(node.Size, environment);
+
+        if (!size.FlowsThroughStatically)
+        {
+            return size;
+        }
+
+        if (_options.ConstantFolding
+            && _types?.ResolutionOf<SpanRepeatResolution>(node) is { Known: { } known and <= MaxFoldedRepeat }
+            && ValueOf(initializer.Result) is { } value
+            && TypeOf(node) is SpanType span)
+        {
+            return PECompletion.Normal(Reduce(
+                new SpanValue([.. Enumerable.Repeat(value, known)], span.Element),
+                node));
+        }
+
+        return PECompletion.Normal(new DynamicResult(
+            _factory.SpanRepeat(
+                node.Span,
+                node.Element,
+                _residualizer.Residualize(initializer.Result, node.Initializer.Span),
+                _residualizer.Residualize(size.Result, node.Size.Span)),
             TypeOf(node)));
     }
 

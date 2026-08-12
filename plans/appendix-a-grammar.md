@@ -111,11 +111,20 @@ primary        = INT | FLOAT | STRING | "true" | "false"
                | if_expr
                | match_expr ;
 
-span_literal   = "." "[" ( expression ( "," expression )* ","? )? "]" ;
+span_literal   = span_list | span_repeat ;
+
+span_list      = "." "[" ( expression ( "," expression )* ","? )? "]" ;
+span_repeat    = "." "[" type ";" expression ";" expression "]" ;   (* .[Int; 0; 8] *)
 
 (* O ponto é o mesmo de `.User { }` (Q2): `[` inicia um **tipo**, `.[` inicia um
    **valor**. A desambiguação é de um token, e é o que permite ao tamanho viver no
-   tipo (A.6) sem colidir com a construção. *)
+   tipo (A.6) sem colidir com a construção.
+
+   Entre as duas formas de `.[`, quem decide é o **separador**: `,` é lista, `;` é
+   repetição — os mesmos `;` de `[Int;8]`. A escolha exige especulação de um
+   componente, porque o primeiro é um tipo na repetição e uma expressão na lista, e
+   um IDENT parseia como os dois. Depois do `;` a forma está fixada, e os erros
+   passam a ser reportados em vez de engolidos. *)
 
 if_expr        = "if" expression block ( "else" ( block | if_expr ) )? ;
 

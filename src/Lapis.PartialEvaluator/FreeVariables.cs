@@ -88,6 +88,14 @@ public static class FreeVariables
 
                 break;
 
+            // O elemento de `.[T; inicial; n]` é uma **anotação**: `T` pode ser um
+            // tipo do usuário, e apagá-lo por "ninguém usa" quebraria a construção.
+            case CoreSpanRepeat n:
+                CollectFromType(n.Element, free);
+                Collect(n.Initializer, free);
+                Collect(n.Size, free);
+                break;
+
             // A construção referencia o tipo por **string**, não por
             // `CoreVariable` — mas `Flag` em `.Flag { }` é o mesmo `Flag` do
             // `def Flag = type { }`, e some junto se ninguém contar.
@@ -289,6 +297,11 @@ public static class FreeVariables
                     yield return element;
                 }
 
+                break;
+
+            case CoreSpanRepeat n:
+                yield return n.Initializer;
+                yield return n.Size;
                 break;
 
             case CoreIndex n:

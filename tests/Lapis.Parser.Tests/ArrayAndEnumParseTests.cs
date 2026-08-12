@@ -30,6 +30,46 @@ public sealed class SpanParseTests : ParserTestBase
     /// </summary>
     [Fact]
     public void Span_WithoutDot_IsNotAnExpression() => Codes("[1, 2, 3];").ShouldNotBeEmpty();
+
+    // ------------------------------------------------ span por repetição
+
+    [Fact]
+    public void SpanRepeat_Simple() =>
+        ShouldPrintAs(".[Int; 0; 8];", "(span-repeat Int (int 0) (int 8))");
+
+    [Fact]
+    public void SpanRepeat_GenericElement() =>
+        ShouldPrintAs(
+            ".[Option<Int>; Option<Int>.None; 3];",
+            "(span-repeat Option<Int> (member None (instantiate <Int> (name Option))) (int 3))");
+
+    [Fact]
+    public void SpanRepeat_SpanElement() =>
+        ShouldPrintAs(".[[Int;2]; a; 3];", "(span-repeat [Int;2] (name a) (int 3))");
+
+    [Fact]
+    public void SpanRepeat_ExpressionSize() =>
+        ShouldPrintAs(".[Int; 0; n + 1];", "(span-repeat Int (int 0) (binary + (name n) (int 1)))");
+
+    /// <summary>
+    /// O separador é o que decide: com `,` a leitura é lista, e é ela que vale
+    /// mesmo quando o primeiro elemento também parseia como tipo.
+    /// </summary>
+    [Fact]
+    public void SpanRepeat_CommaMeansList() =>
+        ShouldPrintAs(".[a, b];", "(span (name a) (name b))");
+
+    /// <summary>Um elemento só, sem separador nenhum, continua sendo lista.</summary>
+    [Fact]
+    public void SpanRepeat_SingleElement_IsAList() =>
+        ShouldPrintAs(".[a];", "(span (name a))");
+
+    [Fact]
+    public void SpanRepeat_MissingSize_ReportsError() => Codes(".[Int; 0];").ShouldNotBeEmpty();
+
+    [Fact]
+    public void SpanRepeat_Unclosed_ReportsLap0105() =>
+        Codes(".[Int; 0; 8;").ShouldContain(DiagnosticCodes.ExpectedCloseBracket);
 }
 
 public sealed class IndexParseTests : ParserTestBase

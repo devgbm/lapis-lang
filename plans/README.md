@@ -128,7 +128,7 @@ concatenação faz sentido.
 | **M9** ✅ | Compile time | `@post` com deduplicação de rota; `throw` e contexto | 18 |
 | **M10** ✅ | Reflection | `reflect(Color).variants` nas duas fases | 19 |
 | **M11** ✅ | Macros de controle | `@unless` e `@while` no prelude; **nada é retirado** da Core | 20 |
-| **M12** ✅ | Span | `[Int;3]`, `.[1,2,3]`, índice literal checado, `length` constante, indexação → `Option` | 24 |
+| **M12** ✅ | Span | `[Int;3]`, `.[1,2,3]`, `.[Int;0;8]`, índice literal checado, `length` constante, indexação → `Option` | 24 |
 | **M13** | Type members | `def User.create`, `User.defaultAge`, `mutavel.campo = e` | 21 |
 | **M14** | Métodos de instância | `user.hello()` ≡ chamar a função com `user` no argumento 0 | 22 |
 | **M15** | Extensions genéricas | `def<T> Result<T>.isOk` — **bloqueado por Q27** | 23 |

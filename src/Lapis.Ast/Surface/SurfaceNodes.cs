@@ -226,6 +226,24 @@ public sealed record InstantiateExpression(
 /// </summary>
 public sealed record SpanExpression(ImmutableArray<Expression> Elements) : Expression;
 
+/// <summary>
+/// <c>.[Int; 0; 8]</c> — construção de span por repetição: elemento, valor
+/// inicial e quantidade.
+///
+/// A forma por lista não escala: um span de oito zeros não se escreve
+/// programaticamente com <c>.[0, 0, ...]</c>, e a quantidade pode nem ser
+/// conhecida. Os separadores são <c>;</c>, os mesmos de <c>[Int;8]</c> — a lista
+/// usa <c>,</c>, então um token separa as duas leituras.
+///
+/// O elemento é escrito porque ele não sai do inicializador em todos os casos:
+/// <c>.[Option&lt;Int&gt;; Option&lt;Int&gt;.None; n]</c> precisa dizer o tipo, já
+/// que a variante nulária não o determina sozinha.
+/// </summary>
+public sealed record SpanRepeatExpression(
+    TypeSyntax Element,
+    Expression Initializer,
+    Expression Size) : Expression;
+
 public sealed record IndexExpression(Expression Target, Expression Index) : Expression;
 
 /// <summary>

@@ -15,9 +15,9 @@ devolve `Option<T>`.
 
 ## Escopo
 
-**Entra:** o tipo `[T;N]`/`[T;?]`, a construção `.[...]`, indexação checada,
-`length`, a troca de `Result<T, IndexError>` por `Option<T>`, e a migração do
-prelude e do corpus.
+**Entra:** o tipo `[T;N]`/`[T;?]`, a construção `.[...]` — por lista e por
+repetição, `.[T; inicial; n]` —, indexação checada, `length`, a troca de
+`Result<T, IndexError>` por `Option<T>`, e a migração do prelude e do corpus.
 
 **Fica de fora:** `Array` e `List` como biblioteca (span é a base delas);
 aritmética de tamanho (Q30); o sistema de constraints que tornaria `[T;?]`
@@ -268,6 +268,8 @@ Por enquanto `concat` devolve `[T;?]`.
 - [x] Indexação devolvendo `Option<T>`; `IndexError` aposentado.
 - [x] `length` constante sobre `[T;N]`, runtime sobre `[T;?]`.
 - [x] Prelude, exemplos e corpus migrados, **com as mesmas saídas**.
+- [x] `.[T; inicial; n]` construindo por repetição, com quantidade constante ou
+      dinâmica.
 
 ---
 
@@ -334,6 +336,60 @@ nomeia um **tipo** atravessa intacto, porque definição de tipo não é valor
 conhecido no ambiente estático. `FreeVariables` também passou a contar nomes em
 argumento genérico e em tamanho de span (`[Int;n]`), que é o outro lado da mesma
 omissão.
+
+### `.[T; inicial; n]` — construção por repetição
+
+Pedida pelo autor depois da primeira entrega, e a lacuna era real: um span de oito
+zeros não se escreve programaticamente com `.[0, 0, ...]`, e a quantidade pode nem
+ser conhecida por quem escreve.
+
+```c
+def zeros = .[Int; 0; 8];                               // [Int;8]
+def vazias = .[Option<Int>; Option<Int>.None; 3];       // [Option<Int>;3]
+
+var n = 4;
+def repetido = .[Str; "x"; n];                          // [Str;?]
+```
+
+Quatro decisões:
+
+- **Os separadores são `;`**, os mesmos de `[Int;8]`; a lista usa `,`. Um token
+  separa as duas leituras de `.[`, e a escolha custa a especulação de um
+  componente — o primeiro é um tipo aqui e uma expressão lá, e um IDENT parseia
+  como os dois.
+- **O elemento é escrito**, porque nem sempre sai do inicializador:
+  `Option<Int>.None` não determina sozinho o tipo do span, e não há inferência
+  (Q7). O inicializador precisa caber no elemento pela relação de sempre — o que
+  faz `.[[Int;?]; .[1, 2, 3]; 2]` valer por Q29.
+- **O tamanho segue a Q18**: constante — literal, `def` ligado a literal,
+  parâmetro const — põe o número no tipo, e a indexação por índice literal volta a
+  ser total. Dinâmico dá `[T;?]`. Um `var` alarga como alarga qualquer span, e
+  anotado mantém o tamanho: é regra da ligação, não da construção.
+- **O inicializador é avaliado uma vez.** O compartilhamento não é observável (não
+  há escrita em span, Q28), mas o número de avaliações é. É a leitura que faz de
+  `.[Int; 0; 8]` uma construção e não um laço escondido.
+
+Não vira `CoreSpan` de `n` elementos no desugar: `n` pode não ser conhecido, e
+quando é, expandir mil zeros na Core seria trocar um nó por um programa. É nó
+próprio — `CoreSpanRepeat` —, com caso em cada fase.
+
+### O que a quantidade inválida ensinou sobre o PE
+
+A primeira versão rejeitava quantidade constante negativa (`LAP0245`) e constante
+grande demais. As duas regras caíram no mesmo teste, e por um motivo que vale
+registrar: **o partial evaluator não pode mudar se um programa é bem tipado**.
+
+`.[Int; 0; 0 - 1]` compila — `0 - 1` não é constante para o checker. O PE dobra a
+subtração, o residual vira `.[Int; 0; -1]`, e a regra do negativo passa a
+rejeitá-lo. A propriedade `Residual_IsReparseableAndWellTyped` pegou exatamente
+isso.
+
+A saída é a mesma da divisão inteira por zero (Q9): a operação é **total**.
+Quantidade negativa é span vazio, sem diagnóstico. Quantidade grande demais aborta
+em execução com `LAP0304`, no espírito do orçamento de saltos — a garantia não é
+"nunca falta memória", é "o programa termina e diz o que houve". E o especializador
+só dobra a repetição até 1024 elementos: acima disso, dobrar é pessimização, e
+recusar-se a dobrar é sempre seguro.
 
 ### `length` como argumento const genérico exige um `def`
 
