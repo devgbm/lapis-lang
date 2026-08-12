@@ -34,14 +34,15 @@ macro square
 // árvore capturada entra como árvore, e `(e * e)` já é a certa.
 print(@square 2 + 2);
 
-// `@unless` é a macro que o `goto`/`label` do M6 existia para viabilizar. Ela
-// acrescenta uma construção que a linguagem não tem, sem tocar no compilador.
+// `@unless` é a macro que o `goto`/`label` do M6 existia para viabilizar — hoje
+// construída sobre `if` (plano 26 — Q32). Ela acrescenta uma construção que a
+// linguagem não tem, sem tocar no compilador.
 macro unless
     match Expression:condition Block:body
     expand {
-        goto done if condition;
-        body;
-        label done;
+        if !condition {
+            body;
+        }
     };
 
 def pular = false;

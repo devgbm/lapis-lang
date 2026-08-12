@@ -49,13 +49,19 @@ public static class Effects
 
             CoreMatch n => IsPure(n.Scrutinee) && n.Arms.All(a => IsPure(a.Body)),
 
+            // `is` é ramificação, como `If` e `Match`: puro quando o escrutinado
+            // e os dois ramos são (plano 25).
+            CoreIs n => IsPure(n.Scrutinee) && IsPure(n.Then) && IsPure(n.Else),
+
             // Chamada é impura por conservadorismo: o PE não sabe o que há do
             // outro lado, e `print` é justamente uma chamada.
             CoreCall => false,
 
-            // `return` e os saltos são fluxo de controle: mover ou duplicar um
-            // deles muda para onde o programa vai, que é observável.
-            CoreReturn or CoreGoto or CoreGotoIf or CoreLabeled => false,
+            // `return`, `break` e `continue` são fluxo de controle: mover ou
+            // duplicar um deles muda para onde o programa vai, que é observável.
+            // Um `loop` não é puro pelo mesmo motivo — mover ou duplicar quantas
+            // vezes ele itera é observável — mesmo quando o corpo, isolado, seria.
+            CoreReturn or CoreLoop or CoreBreak or CoreContinue => false,
 
             // `throw` aborta a compilação: eliminá-lo por ser "sem efeito" seria
             // apagar exatamente o efeito que ele tem.

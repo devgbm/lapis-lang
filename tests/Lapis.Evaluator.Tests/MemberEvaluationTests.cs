@@ -192,10 +192,11 @@ public sealed class FieldAssignmentEvaluationTests : EvaluatorTestBase
             var u = .User { name: "x", age: 0 };
             var i = 0;
 
-            label conta;
-            i = i + 1;
-            u.age = i;
-            goto conta if i < 3;
+            loop {
+                i = i + 1;
+                u.age = i;
+                if i < 3 { continue; } else { break; }
+            }
 
             print(u.age);
             """).ShouldBe("3\n");

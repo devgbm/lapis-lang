@@ -118,10 +118,17 @@ public static class DiagnosticCodes
     public const string MacroIsNotAValue = "LAP0510";
     public const string DuplicateMacro = "LAP0511";
 
-    // LAP052x — goto e label (plano 16)
-    public const string UnknownLabel = "LAP0520";
-    public const string LabelOutOfScope = "LAP0521";
-    public const string DuplicateLabel = "LAP0522";
+    // LAP052x — goto e label (plano 16, retirado no plano 26 — Q32). LAP0520,
+    // LAP0521 e LAP0522 ficam retirados e não reciclados: código publicado nunca
+    // volta ao pool, mesma regra de LAP0301/LAP0706.
+
+    // Controle de fluxo estruturado (plano 26, M16 — Q32): `loop`/`break`/
+    // `continue` substituem `goto`/`label`.
+    public const string BreakOrContinueOutsideLoop = "LAP0523";
+    public const string UnknownLoopLabel = "LAP0524";
+    public const string LoopLabelOutOfScope = "LAP0525";
+    public const string IncompatibleBreakValues = "LAP0526";
+    public const string BareIfCannotHaveBareIfBody = "LAP0527";
 
     // LAP06xx — reflection (plano 19)
     public const string ReflectExpectsType = "LAP0601";
@@ -167,13 +174,32 @@ public static class DiagnosticCodes
     // declarando para quais instâncias dele o membro vale.
     public const string MemberOwnerArity = "LAP0722";
 
+    // LAP073x — `is` (plano 25, M16, fecha Q23).
+    //
+    // A divisão entre eles segue quem sabe responder: LAP0730 é sobre a
+    // **posição** da ligação, que é sintaxe, e sai do desugar; os outros três
+    // dependem do **tipo** do escrutinado — qual enum declara a variante e
+    // quantos valores ela carrega — e saem do checker.
+    //
+    // LAP0731 fica reservado, não emitido: cobriria "a ligação não atravessa um
+    // `goto`" (plano 25 §25.4 original), situação que deixou de existir quando
+    // a Q32 (plano 26) derrubou `goto`/`label`. Não reciclado.
+    public const string IsBindingRequiresIfOrAnd = "LAP0730";
+    public const string UnknownIsVariant = "LAP0732";
+    public const string IsVariantHasNoPayload = "LAP0733";
+    public const string IsVariantHasMultiplePayloads = "LAP0734";
+
     // LAP03xx — Execução
     //
     // LAP0301 (divisão por zero) foi aposentado: a divisão inteira por zero passou
     // a produzir o maior Int (Q9), então a operação é total e não há o que relatar.
     // O código não é reciclado.
     public const string CallDepthExceeded = "LAP0302";
-    public const string JumpLimitExceeded = "LAP0303";
+
+    // Chegou com o `goto` para trás (M6) e continua com `loop` (plano 26, Q32) —
+    // mesmo código, mesmo espírito, mecanismo mais simples por baixo. A mensagem
+    // fala de "iterações", não mais de "saltos".
+    public const string IterationLimitExceeded = "LAP0303";
 
     // Quantidade dinâmica de `.[T; inicial; n]` acima do orçamento. Mesmo espírito
     // do orçamento de saltos: um programa que pede um span grande demais termina

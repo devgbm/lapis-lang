@@ -98,30 +98,6 @@ public static class CoreSourcePrinter
             current = let.Body;
         }
 
-        if (current is CoreLabeled labeled)
-        {
-            PrintLabeled(builder, labeled, indent, topLevel);
-            return;
-        }
-
-        // Um salto nunca é cauda: `goto` é statement, e imprimi-lo sem `;` daria
-        // texto que não reparseia.
-        if (current is CoreGoto or CoreGotoIf)
-        {
-            // O salto implícito que fecha o segmento não é impresso: o `label`
-            // logo abaixo é o que o recria no reparse. Imprimir daria um `goto`
-            // a mais, e a Core deixaria de ser a mesma.
-            if (current is CoreGoto { IsImplicit: true })
-            {
-                return;
-            }
-
-            Indent(builder, indent);
-            Print(builder, current, indent, Precedence.Lowest);
-            builder.AppendLine(";");
-            return;
-        }
-
         // Uma cauda `()` é sempre omitida: no topo ela é só o fim do arquivo, e
         // dentro de um bloco `{ s; }` e `{ s; () }` desugaram para a mesma Core —
         // omitir mantém o round-trip e deixa a saída bem mais legível.
@@ -155,15 +131,11 @@ public static class CoreSourcePrinter
                 builder.Append(n.Name);
                 break;
 
-            case CoreLet or CoreLabeled:
+            case CoreLet:
                 builder.AppendLine("{");
                 PrintSequence(builder, node, indent + 1, topLevel: false);
                 Indent(builder, indent);
                 builder.Append('}');
-                break;
-
-            case CoreGoto n:
-                builder.Append("goto ").Append(n.Label);
                 break;
 
             case CoreAssign n:
@@ -178,9 +150,26 @@ public static class CoreSourcePrinter
                 Print(builder, n.Value, indent, Precedence.Lowest);
                 break;
 
-            case CoreGotoIf n:
-                builder.Append("goto ").Append(n.Label).Append(" if ");
-                Print(builder, n.Condition, indent, Precedence.Lowest);
+            case CoreLoop n:
+                builder.Append(n.Label is null ? "loop " : $"loop :{n.Label} ").AppendLine("{");
+                PrintBlockBody(builder, n.Body, indent + 1);
+                Indent(builder, indent);
+                builder.Append('}');
+                break;
+
+            case CoreBreak n:
+                builder.Append(n.Label is null ? "break" : $"break :{n.Label}");
+
+                if (n.Value is not null)
+                {
+                    builder.Append(n.Label is null ? " " : ", ");
+                    Print(builder, n.Value, indent, Precedence.Lowest);
+                }
+
+                break;
+
+            case CoreContinue n:
+                builder.Append(n.Label is null ? "continue" : $"continue :{n.Label}");
                 break;
 
             case CoreLambda n:
@@ -317,6 +306,10 @@ public static class CoreSourcePrinter
                 builder.Append('}');
                 break;
 
+            case CoreIs n:
+                PrintIs(builder, n, indent, context);
+                break;
+
             case CoreTypeDef n:
                 PrintTypeDef(builder, n, indent);
                 break;
@@ -342,27 +335,6 @@ public static class CoreSourcePrinter
 
             default:
                 throw InternalCompilerException.Unreachable(node, node.Span);
-        }
-    }
-
-    /// <summary>
-    /// A operação inversa da decomposição em blocos básicos: a entrada, e depois
-    /// <c>label L;</c> seguido do corpo de cada join.
-    /// </summary>
-    private static void PrintLabeled(StringBuilder builder, CoreLabeled node, int indent, bool topLevel)
-    {
-        // A entrada e todo join que não é o último são **seguidos** por um
-        // `label L;`, então o que os fecha é statement, não cauda: precisa de `;`.
-        // Só o último join carrega o valor do construto, e aí a regra volta a ser
-        // a do chamador.
-        PrintSequence(builder, node.Entry, indent, topLevel: true);
-
-        for (var i = 0; i < node.Joins.Length; i++)
-        {
-            Indent(builder, indent);
-            builder.Append("label ").Append(node.Joins[i].Name).AppendLine(";");
-
-            PrintSequence(builder, node.Joins[i].Body, indent, i == node.Joins.Length - 1 && topLevel);
         }
     }
 
@@ -448,6 +420,73 @@ public static class CoreSourcePrinter
         PrintSequence(builder, body, indent, topLevel: false);
     }
 
+    /// <summary>
+    /// <see cref="CoreIs"/> tem duas formas de fonte, e a escolha entre elas é o
+    /// que preserva o round-trip (plano 02 §2.8).
+    ///
+    /// Ramos <c>true</c>/<c>false</c> sem ligação são o teste puro, e voltam como
+    /// <c>e is V</c> — imprimi-lo como <c>if e is V { true } else { false }</c>
+    /// reparsearia num <c>If</c> <b>envolvendo</b> um <c>Is</c>, que é outra
+    /// árvore. Qualquer outro par de ramos volta na forma com <c>if</c>, que é a
+    /// única em que a ligação tem onde existir (§25.3).
+    ///
+    /// As duas direções fecham: quem escreve <c>if e is V { true } else { false }</c>
+    /// produz este mesmo nó, e o printer o devolve na forma curta — que reparseia
+    /// para ele de novo. É forma canônica, não perda.
+    /// </summary>
+    private static void PrintIs(StringBuilder builder, CoreIs node, int indent, Precedence context)
+    {
+        if (node.BindingName is null
+            && node.Then is CoreLiteral { Value: ConstBool { Value: true } }
+            && node.Else is CoreLiteral { Value: ConstBool { Value: false } })
+        {
+            var needsParens = context > Precedence.Is;
+
+            if (needsParens)
+            {
+                builder.Append('(');
+            }
+
+            Print(builder, node.Scrutinee, indent, Precedence.Is + 1);
+            builder.Append(" is ");
+            PrintIsPattern(builder, node);
+
+            if (needsParens)
+            {
+                builder.Append(')');
+            }
+
+            return;
+        }
+
+        builder.Append("if ");
+        Print(builder, node.Scrutinee, indent, Precedence.Is + 1);
+        builder.Append(" is ");
+        PrintIsPattern(builder, node);
+        builder.AppendLine(" {");
+        PrintBlockBody(builder, node.Then, indent + 1);
+        Indent(builder, indent);
+        builder.AppendLine("} else {");
+        PrintBlockBody(builder, node.Else, indent + 1);
+        Indent(builder, indent);
+        builder.Append('}');
+    }
+
+    private static void PrintIsPattern(StringBuilder builder, CoreIs node)
+    {
+        if (node.OwnerName is not null)
+        {
+            builder.Append(node.OwnerName).Append('.');
+        }
+
+        builder.Append(node.VariantName);
+
+        if (node.BindingName is not null)
+        {
+            builder.Append('(').Append(node.BindingName).Append(')');
+        }
+    }
+
     private static void PrintBinary(StringBuilder builder, CoreBinary node, int indent, Precedence context)
     {
         var precedence = (Precedence)node.Operator.Precedence();
@@ -476,7 +515,13 @@ public static class CoreSourcePrinter
     private enum Precedence
     {
         Lowest = 0,
-        Unary = 7,
-        Postfix = 8,
+
+        // O degrau que o plano 25 §25.7 abriu entre `&&` (2) e `==` (4).
+        Is = 3,
+
+        // Acima do maior valor de BinaryOperator.Precedence() (7, Multiply/Divide),
+        // para que `context > Precedence.Unary` continue certo em qualquer combinação.
+        Unary = 8,
+        Postfix = 9,
     }
 }

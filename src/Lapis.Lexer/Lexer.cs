@@ -27,11 +27,14 @@ public sealed class Lexer
         ["if"] = TokenKind.IfKeyword,
         ["else"] = TokenKind.ElseKeyword,
         ["match"] = TokenKind.MatchKeyword,
-        ["goto"] = TokenKind.GotoKeyword,
+        ["loop"] = TokenKind.LoopKeyword,
+        ["break"] = TokenKind.BreakKeyword,
+        ["continue"] = TokenKind.ContinueKeyword,
         ["macro"] = TokenKind.MacroKeyword,
         ["expand"] = TokenKind.ExpandKeyword,
         ["constraint"] = TokenKind.ConstraintKeyword,
         ["throw"] = TokenKind.ThrowKeyword,
+        ["is"] = TokenKind.IsKeyword,
     };
 
     private readonly SourceText _source;

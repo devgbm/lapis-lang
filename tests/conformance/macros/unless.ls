@@ -1,5 +1,5 @@
-// `@unless` construída sobre `goto`/`label` — a macro que o M6 existia para
-// viabilizar (spec de macros §12.1).
+// `@unless` construída sobre `if` — a macro que o M6 existia para viabilizar
+// (spec de macros §12.1; reescrita sobre `if` no plano 26 — Q32).
 //
 // A macro não acrescenta nada ao compilador: é sintaxe que a própria linguagem
 // define, e some antes do desugar.
@@ -10,9 +10,9 @@
 macro unless
     match Expression:condition Block:body
     expand {
-        goto done if condition;
-        body;
-        label done;
+        if !condition {
+            body;
+        }
     };
 
 def pular = false;

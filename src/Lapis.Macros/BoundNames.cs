@@ -61,6 +61,51 @@ internal static class BoundNames
                 }
 
                 break;
+
+            case LoopExpression n:
+                if (n.Label is not null)
+                {
+                    names.Add(n.Label);
+                }
+
+                Collect(n.Body, names);
+                break;
+
+            // `break`/`continue` não ligam o rótulo, mas precisam acompanhar o
+            // `loop` que o liga — senão a referência ficaria apontando para o
+            // nome não renomeado (mesma razão de `GotoStatement` acompanhar
+            // `LabelStatement`, plano 16, agora sobre `loop`).
+            case BreakExpression n:
+                if (n.Label is not null)
+                {
+                    names.Add(n.Label);
+                }
+
+                if (n.Value is not null)
+                {
+                    Collect(n.Value, names);
+                }
+
+                break;
+
+            case ContinueExpression n:
+                if (n.Label is not null)
+                {
+                    names.Add(n.Label);
+                }
+
+                break;
+
+            // A ligação de `is` também é do `expand`, como o rótulo de `loop`
+            // acima (plano 25).
+            case IsExpression n:
+                if (n.BindingName is not null)
+                {
+                    names.Add(n.BindingName);
+                }
+
+                Collect(n.Scrutinee, names);
+                break;
         }
     }
 
@@ -71,16 +116,6 @@ internal static class BoundNames
             case DefStatement s:
                 names.Add(s.Name);
                 Collect(s.Value, names);
-                break;
-
-            case LabelStatement s:
-                names.Add(s.Label);
-                break;
-
-            // Um `goto` não liga o rótulo, mas precisa acompanhar o `label` que o
-            // liga — senão o salto ficaria apontando para o nome não renomeado.
-            case GotoStatement s:
-                names.Add(s.Label);
                 break;
 
             case ExpressionStatement s:

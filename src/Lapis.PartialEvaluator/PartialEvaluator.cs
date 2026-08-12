@@ -129,10 +129,11 @@ public sealed class PartialEvaluator
         CoreSpanRepeat n => SpecializeSpanRepeat(n, environment),
         CoreIndex n => SpecializeIndex(n, environment),
         CoreMatch n => SpecializeMatch(n, environment),
+        CoreIs n => SpecializeIs(n, environment),
         CoreAssign n => SpecializeAssign(n, environment),
-        CoreLabeled n => SpecializeLabeled(n, environment),
-        CoreGotoIf n => SpecializeGotoIf(n, environment),
-        CoreGoto or CoreEnumDef or CoreTypeDef => PECompletion.Normal(Keep(node)),
+        CoreLoop n => SpecializeLoop(n, environment),
+        CoreBreak n => SpecializeBreak(n, environment),
+        CoreContinue or CoreEnumDef or CoreTypeDef => PECompletion.Normal(Keep(node)),
         CoreField n => SpecializeField(n, environment),
         CoreInstantiate n => SpecializeInstantiate(n, environment),
         CoreConstruct n => SpecializeConstruct(n, environment),
@@ -839,6 +840,49 @@ public sealed class PartialEvaluator
         return new PECompletion(kind, new DynamicResult(residual, TypeOf(node)));
     }
 
+    /// <summary>
+    /// <c>e is Variante(x)</c> (plano 25). Ramifica como <see cref="SpecializeIf"/>,
+    /// mas <b>não dobra</b>: os dois ramos são especializados e o teste sobrevive.
+    ///
+    /// Não é conservadorismo escolhido — é que o PE nunca chega a conhecer um
+    /// <c>EnumValue</c> hoje. Construir uma variante é uma chamada, e chamada é
+    /// impura por conservadorismo (<see cref="Effects"/>); e um valor de enum
+    /// tampouco sabe voltar a ser expressão (<c>Residualizer.CanResidualize</c>).
+    /// É a mesma parede que <see cref="SpecializeMatch"/> encontra.
+    ///
+    /// Quando o M17–M19 ensinar o PE a avaliar construção de variante, dobrar o
+    /// <c>is</c> passa a ser possível — e é aqui que entra: escolher o ramo pela
+    /// etiqueta e, com ligação, propagar a carga adiante como valor conhecido.
+    /// Escrevê-lo antes disso seria ramo morto que nenhum teste alcança.
+    /// </summary>
+    private PECompletion SpecializeIs(CoreIs node, StaticEnvironment environment)
+    {
+        var scrutinee = Specialize(node.Scrutinee, environment);
+
+        if (!scrutinee.FlowsThroughStatically)
+        {
+            return scrutinee;
+        }
+
+        var thenBranch = Specialize(node.Then, environment.Child());
+        var elseBranch = Specialize(node.Else, environment.Child());
+
+        var residual = _factory.Is(
+            node.Span,
+            _residualizer.Residualize(scrutinee.Result, node.Scrutinee.Span),
+            node.OwnerName,
+            node.VariantName,
+            node.BindingName,
+            _residualizer.Residualize(thenBranch.Result, node.Then.Span),
+            _residualizer.Residualize(elseBranch.Result, node.Else.Span),
+            node.VariantSpan,
+            node.BindingSpan);
+
+        return new PECompletion(
+            PECompletion.Join(thenBranch.Kind, elseBranch.Kind),
+            new DynamicResult(residual, TypeOf(node)));
+    }
+
     private static bool TrySelect(
         CorePattern pattern,
         Value value,
@@ -913,54 +957,56 @@ public sealed class PartialEvaluator
     }
 
     /// <summary>
-    /// Um grupo de joins é residualizado inteiro: especializar o fluxo de um laço
-    /// exige <i>widening</i> ou combustível, e isso é o plano 14. O que se faz aqui
-    /// é especializar as expressões dentro de cada segmento, que é seguro porque um
-    /// <c>def</c> não muda entre voltas e um <c>var</c> já é desconhecido.
+    /// O corpo é residualizado inteiro: especializar quantas vezes um <c>loop</c>
+    /// itera exige <i>widening</i> ou combustível, e isso são os planos 17-19. O
+    /// que se faz aqui é especializar as expressões dentro do corpo, que é seguro
+    /// porque um <c>def</c> não muda entre voltas e um <c>var</c> já é
+    /// desconhecido — mesmo raciocínio do <c>Labeled</c> que este nó substitui
+    /// (plano 16, retirado no 26).
     /// </summary>
-    private PECompletion SpecializeLabeled(CoreLabeled node, StaticEnvironment environment)
+    private PECompletion SpecializeLoop(CoreLoop node, StaticEnvironment environment)
     {
-        var entry = Specialize(node.Entry, environment.Child());
-        var kind = entry.Kind;
+        var body = Specialize(node.Body, environment.Child());
 
-        var joins = ImmutableArray.CreateBuilder<CoreJoin>(node.Joins.Length);
-
-        foreach (var join in node.Joins)
-        {
-            var body = Specialize(join.Body, environment.Child());
-            kind = PECompletion.Join(kind, body.Kind);
-
-            joins.Add(join with { Body = _residualizer.Residualize(body.Result, join.Body.Span) });
-        }
-
-        var residual = _factory.Labeled(
+        var residual = _factory.Loop(
             node.Span,
-            _residualizer.Residualize(entry.Result, node.Entry.Span),
-            joins.MoveToImmutable());
+            node.Label,
+            _residualizer.Residualize(body.Result, node.Body.Span),
+            node.LabelSpan);
 
-        // Nunca `Returned`: um salto pode desviar do `return` que o segmento
-        // aparenta executar, então o retorno deste grupo é sempre condicional.
+        // Nunca `Returned`: um `break` pode desviar do `return` que o corpo
+        // aparenta executar, então o retorno deste `loop` é sempre condicional —
+        // mesma leitura conservadora que `Labeled` já tinha.
         return new PECompletion(
-            kind == PECompletionKind.Normal ? PECompletionKind.Normal : PECompletionKind.MayReturn,
+            body.Kind == PECompletionKind.Normal ? PECompletionKind.Normal : PECompletionKind.MayReturn,
             new DynamicResult(residual, TypeOf(node)));
     }
 
-    private PECompletion SpecializeGotoIf(CoreGotoIf node, StaticEnvironment environment)
+    /// <summary>
+    /// A própria completion é sempre <c>Normal</c> — como <c>CoreGoto</c> antes
+    /// dele (plano 16): o PE não modela "isto desvia", só "isto retorna". Quem
+    /// protege a leitura conservadora é <see cref="SpecializeLoop"/>, que nunca
+    /// deixa um grupo que contém um <c>break</c> declarar <c>Returned</c>.
+    /// </summary>
+    private PECompletion SpecializeBreak(CoreBreak node, StaticEnvironment environment)
     {
-        var condition = Specialize(node.Condition, environment);
-
-        if (!condition.FlowsThroughStatically)
+        if (node.Value is null)
         {
-            return condition;
+            return PECompletion.Normal(new DynamicResult(
+                _factory.Break(node.Span, node.Label, null, node.LabelSpan), NeverType.Instance));
         }
 
-        return PECompletion.Normal(new DynamicResult(
-            _factory.GotoIf(
-                node.Span,
-                node.Label,
-                _residualizer.Residualize(condition.Result, node.Condition.Span),
-                node.LabelSpan),
-            PrimitiveType.Void));
+        var value = Specialize(node.Value, environment);
+
+        if (!value.FlowsThroughStatically)
+        {
+            return value;
+        }
+
+        var residual = _factory.Break(
+            node.Span, node.Label, _residualizer.Residualize(value.Result, node.Value.Span), node.LabelSpan);
+
+        return PECompletion.Normal(new DynamicResult(residual, NeverType.Instance));
     }
 
     // ----------------------------------------------------------- auxiliar
@@ -1042,6 +1088,7 @@ public sealed class PartialEvaluator
                 CoreLambda lambda => lambda.Parameters.Any(p => p.Name == name)
                                      || lambda.TypeParameters.Any(p => p.Name == name),
                 CoreMatch match => match.Arms.Any(a => BoundNames(a.Pattern).Contains(name)),
+                CoreIs @is => @is.BindingName == name,
                 _ => false,
             };
         }

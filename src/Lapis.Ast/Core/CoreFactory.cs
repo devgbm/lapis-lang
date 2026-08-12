@@ -106,6 +106,22 @@ public sealed class CoreFactory
     public CoreMatch Match(SourceSpan span, CoreExpr scrutinee, ImmutableArray<CoreArm> arms) =>
         new(Next(), span, scrutinee, arms);
 
+    public CoreIs Is(
+        SourceSpan span,
+        CoreExpr scrutinee,
+        string? ownerName,
+        string variantName,
+        string? bindingName,
+        CoreExpr then,
+        CoreExpr otherwise,
+        SourceSpan? variantSpan = null,
+        SourceSpan? bindingSpan = null) =>
+        new(Next(), span, scrutinee, ownerName, variantName, bindingName, then, otherwise)
+        {
+            VariantSpan = variantSpan ?? span,
+            BindingSpan = bindingSpan,
+        };
+
     public CoreTypeDef TypeDef(
         SourceSpan span,
         ImmutableArray<CoreTypeParameter> typeParameters,
@@ -120,14 +136,14 @@ public sealed class CoreFactory
         SourceSpan typeNameSpan) =>
         new(Next(), span, typeName, typeArguments, fields) { TypeNameSpan = typeNameSpan };
 
-    public CoreGoto Goto(SourceSpan span, string label, SourceSpan labelSpan, bool isImplicit = false) =>
-        new(Next(), span, label) { LabelSpan = labelSpan, IsImplicit = isImplicit };
+    public CoreLoop Loop(SourceSpan span, string? label, CoreExpr body, SourceSpan? labelSpan = null) =>
+        new(Next(), span, label, body) { LabelSpan = labelSpan };
 
-    public CoreGotoIf GotoIf(SourceSpan span, string label, CoreExpr condition, SourceSpan labelSpan) =>
-        new(Next(), span, label, condition) { LabelSpan = labelSpan };
+    public CoreBreak Break(SourceSpan span, string? label, CoreExpr? value, SourceSpan? labelSpan = null) =>
+        new(Next(), span, label, value) { LabelSpan = labelSpan };
 
-    public CoreLabeled Labeled(SourceSpan span, CoreExpr entry, ImmutableArray<CoreJoin> joins) =>
-        new(Next(), span, entry, joins);
+    public CoreContinue Continue(SourceSpan span, string? label, SourceSpan? labelSpan = null) =>
+        new(Next(), span, label) { LabelSpan = labelSpan };
 
     public CoreProgram Program(CoreExpr body) => new(body, _nextNodeId);
 

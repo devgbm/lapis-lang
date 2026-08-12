@@ -30,18 +30,20 @@ public sealed class TypeChecker
     private readonly Stack<FunctionContext> _functions = new();
 
     /// <summary>
-    /// Rótulos visíveis no ponto corrente, um item por grupo de joins aninhado.
-    /// Vive fora do <see cref="Scope"/> porque rótulos são um espaço de nomes
-    /// separado do de valores: <c>label x</c> e <c>def x</c> convivem.
+    /// Pilha de <c>loop</c>s em checagem, do mais interno para o mais externo
+    /// (plano 26, M16). Vive fora do <see cref="Scope"/> porque rótulos de loop
+    /// são um espaço de nomes separado do de valores: <c>loop :x</c> e
+    /// <c>def x</c> convivem.
     /// </summary>
-    private List<ImmutableArray<string>> _labelGroups = [];
+    private Stack<LoopContext> _loops = new();
 
     /// <summary>
-    /// Rótulos de funções que envolvem a corrente. Não estão em escopo — um salto
-    /// não atravessa fronteira de função —, mas saber que existem é o que separa
-    /// "esse rótulo não existe" de "esse rótulo é de outra função".
+    /// Rótulos de loop de funções que envolvem a corrente. Não estão em escopo —
+    /// um <c>break</c>/<c>continue</c> não atravessa fronteira de função —, mas
+    /// saber que existem é o que separa "esse rótulo não existe" (<c>LAP0524</c>)
+    /// de "esse rótulo é de outra função" (<c>LAP0525</c>).
     /// </summary>
-    private readonly HashSet<string> _enclosingFunctionLabels = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _enclosingFunctionLoopLabels = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Membros declarados por <c>def T.m</c>, indexados pela
@@ -178,11 +180,12 @@ public sealed class TypeChecker
             CoreField n => CheckField(n, scope),
             CoreEnumDef n => CheckEnumDef(n, scope),
             CoreMatch n => CheckMatch(n, scope),
+            CoreIs n => CheckIs(n, scope),
             CoreTypeDef n => CheckTypeDef(n, scope),
             CoreConstruct n => CheckConstruct(n, scope),
-            CoreGoto n => CheckGoto(n),
-            CoreGotoIf n => CheckGotoIf(n, scope),
-            CoreLabeled n => CheckLabeled(n, scope),
+            CoreLoop n => CheckLoop(n, scope),
+            CoreBreak n => CheckBreak(n, scope),
+            CoreContinue n => CheckContinue(n),
             CoreAssign n => CheckAssign(n, scope),
             _ => throw InternalCompilerException.Unreachable(node, node.Span),
         };
@@ -300,12 +303,11 @@ public sealed class TypeChecker
 
         var valueReturns = ReturnAnalysis.DefinitelyReturns(node.Value);
 
-        // Código após um `return` no mesmo encadeamento é inalcançável — exceto o
-        // salto implícito que fecha um segmento: depois dele vem um `label`, que é
-        // alcançável por salto.
-        if (valueReturns
-            && node.Body is not CoreLiteral { Value: ConstUnit }
-            && node.Body is not CoreGoto { IsImplicit: true })
+        // Código após um `return` no mesmo encadeamento é inalcançável. Sem
+        // `goto`/`label` (plano 26, Q32) não há mais exceção a fazer aqui: a
+        // cadeia de `Let` é exatamente o que foi escrito, sem salto implícito
+        // nenhum a descontar.
+        if (valueReturns && node.Body is not CoreLiteral { Value: ConstUnit })
         {
             _diagnostics.ReportWarning(
                 DiagnosticCodes.UnreachableAfterReturn, node.Body.Span, "código inalcançável após 'return'");
@@ -466,11 +468,17 @@ public sealed class TypeChecker
 
         _functions.Push(new FunctionContext(returnType));
 
-        // Um `label` é local à função, como `return`: os grupos de fora saem de
-        // escopo aqui e só voltam quando o corpo termina.
-        var outerGroups = _labelGroups;
-        var hidden = outerGroups.SelectMany(g => g).Where(_enclosingFunctionLabels.Add).ToList();
-        _labelGroups = [];
+        // Um rótulo de loop é local à função, como `return`: os loops de fora
+        // saem de escopo aqui e só voltam quando o corpo termina. Só rótulos
+        // **nomeados** entram em `_enclosingFunctionLoopLabels` — um loop sem
+        // rótulo não tem como ser referenciado de dentro da função aninhada.
+        var outerLoops = _loops;
+        var hidden = outerLoops
+            .Where(l => l.Label is not null)
+            .Select(l => l.Label!)
+            .Where(_enclosingFunctionLoopLabels.Add)
+            .ToList();
+        _loops = new Stack<LoopContext>();
 
         try
         {
@@ -479,8 +487,8 @@ public sealed class TypeChecker
         finally
         {
             _functions.Pop();
-            _labelGroups = outerGroups;
-            _enclosingFunctionLabels.ExceptWith(hidden);
+            _loops = outerLoops;
+            _enclosingFunctionLoopLabels.ExceptWith(hidden);
         }
 
         // Spec §12: função Void pode cair no fim do corpo; as demais, não.
@@ -1229,126 +1237,127 @@ public sealed class TypeChecker
     // ------------------------------------------------------------ saltos
 
     /// <summary>
-    /// <c>Never</c>: nada depois de um salto executa, e o tipo bottom já se propaga
-    /// por <c>Let</c>, <c>If</c>, <c>Binary</c> e <c>Call</c> desde o M1 — é o mesmo
-    /// mecanismo de <c>return</c> (Q13), sem regra nova.
+    /// O tipo de um <c>loop</c> é a junção de todo <c>break</c> que o alcança
+    /// (plano 26 §26.5) — acumulada em <see cref="LoopContext.Type"/> por
+    /// <see cref="CheckBreak"/> enquanto o corpo é checado. Sem <c>break</c>
+    /// alcançável, o tipo é <c>Never</c>: o laço, se termina, só termina por
+    /// <c>return</c>/<c>throw</c> ou <c>break</c> de um laço externo.
     /// </summary>
-    private LapisType CheckGoto(CoreGoto node)
+    private LapisType CheckLoop(CoreLoop node, Scope scope)
     {
-        ResolveLabel(node.Label, node.LabelSpan);
+        var context = new LoopContext(node.Label);
+        _loops.Push(context);
+
+        try
+        {
+            CheckExpression(node.Body, scope.Child());
+        }
+        finally
+        {
+            _loops.Pop();
+        }
+
+        return context.Type ?? NeverType.Instance;
+    }
+
+    /// <summary>
+    /// <c>Never</c>, como <c>return</c>/<c>throw</c> (Q13) — nenhuma regra de tipo
+    /// nova. O efeito de verdade é lateral: junta <see cref="CoreBreak.Value"/> ao
+    /// acumulador do <see cref="LoopContext"/> que o rótulo (ou a ausência dele)
+    /// resolve, o que é o que dá ao <c>loop</c> o seu tipo.
+    /// </summary>
+    private LapisType CheckBreak(CoreBreak node, Scope scope)
+    {
+        var context = ResolveLoopLabel(node.Label, node.LabelSpan ?? node.Span);
+        var valueType = node.Value is null ? PrimitiveType.Void : CheckExpression(node.Value, scope);
+
+        if (context is not null && context.Type is not ErrorType)
+        {
+            if (context.Type is null)
+            {
+                context.Type = valueType;
+            }
+            else if (TypeRelations.Join(context.Type, valueType) is { } joined)
+            {
+                context.Type = joined;
+            }
+            else
+            {
+                _diagnostics.ReportError(
+                    DiagnosticCodes.IncompatibleBreakValues,
+                    node.Span,
+                    $"valores de 'break' no mesmo loop têm tipos incompatíveis: "
+                    + $"{context.Type.ToDisplayString()} e {valueType.ToDisplayString()}");
+                context.Type = ErrorType.Instance;
+            }
+        }
+
         return NeverType.Instance;
     }
 
     /// <summary>
-    /// <c>Void</c>, não <c>Never</c>: quando a condição é falsa, a execução segue.
+    /// <c>Never</c>, como <see cref="CheckBreak"/> — mas sem valor: um
+    /// <c>continue</c> reinicia a iteração, não contribui para o tipo do
+    /// <c>loop</c>.
     /// </summary>
-    private LapisType CheckGotoIf(CoreGotoIf node, Scope scope)
+    private LapisType CheckContinue(CoreContinue node)
     {
-        ResolveLabel(node.Label, node.LabelSpan);
-
-        var conditionType = CheckExpression(node.Condition, scope);
-
-        if (conditionType is not PrimitiveType { Kind: PrimitiveKind.Bool }
-            and not ErrorType and not NeverType)
-        {
-            _diagnostics.ReportError(
-                DiagnosticCodes.ConditionMustBeBool,
-                node.Condition.Span,
-                $"condição de 'goto' deve ser Bool, encontrado {conditionType.ToDisplayString()}");
-        }
-
-        return PrimitiveType.Void;
+        ResolveLoopLabel(node.Label, node.LabelSpan ?? node.Span);
+        return NeverType.Instance;
     }
 
     /// <summary>
-    /// O tipo do grupo é a junção da entrada com os corpos dos joins: são os
-    /// caminhos por onde o valor pode sair.
-    ///
-    /// Os rótulos entram em escopo <b>antes</b> de checar a entrada e continuam
-    /// visíveis dentro dos joins — é o que permite o salto para trás e o salto de
-    /// um join para outro.
+    /// O <see cref="LoopContext"/> que <paramref name="label"/> alcança — o
+    /// <c>loop</c> mais próximo quando <c>null</c>, ou o que declara aquele
+    /// rótulo. <c>null</c> quando o diagnóstico já foi reportado:
+    /// <c>LAP0523</c> (fora de <c>loop</c>), <c>LAP0524</c> (rótulo desconhecido)
+    /// ou <c>LAP0525</c> (rótulo de função externa).
     /// </summary>
-    private LapisType CheckLabeled(CoreLabeled node, Scope scope)
+    private LoopContext? ResolveLoopLabel(string? label, SourceSpan span)
     {
-        ReportDuplicateLabels(node);
-
-        _labelGroups.Add([.. node.Joins.Select(j => j.Name)]);
-
-        LapisType type;
-
-        try
+        if (label is null)
         {
-            type = CheckExpression(node.Entry, scope.Child());
-
-            foreach (var join in node.Joins)
+            if (_loops.Count > 0)
             {
-                var bodyType = CheckExpression(join.Body, scope.Child());
-                var joined = TypeRelations.Join(type, bodyType);
-
-                if (joined is null)
-                {
-                    _diagnostics.ReportError(
-                        DiagnosticCodes.IncompatibleBranches,
-                        join.Span,
-                        $"os caminhos do rótulo têm tipos incompatíveis: {type.ToDisplayString()} "
-                        + $"e {bodyType.ToDisplayString()}");
-                    return ErrorType.Instance;
-                }
-
-                type = joined;
+                return _loops.Peek();
             }
-        }
-        finally
-        {
-            _labelGroups.RemoveAt(_labelGroups.Count - 1);
+
+            _diagnostics.ReportError(
+                DiagnosticCodes.BreakOrContinueOutsideLoop, span, "'break'/'continue' fora de um 'loop'");
+            return null;
         }
 
-        return type;
-    }
-
-    private void ReportDuplicateLabels(CoreLabeled node)
-    {
-        var seen = new Dictionary<string, CoreJoin>(StringComparer.Ordinal);
-
-        foreach (var join in node.Joins)
+        foreach (var loop in _loops)
         {
-            if (seen.TryGetValue(join.Name, out var previous))
+            if (loop.Label == label)
             {
-                _diagnostics.ReportError(
-                    DiagnosticCodes.DuplicateLabel,
-                    join.NameSpan,
-                    $"o rótulo '{join.Name}' já foi declarado neste bloco",
-                    new DiagnosticNote("declaração anterior", previous.NameSpan));
-            }
-            else
-            {
-                seen[join.Name] = join;
-            }
-        }
-    }
-
-    private void ResolveLabel(string label, SourceSpan span)
-    {
-        foreach (var group in _labelGroups)
-        {
-            if (group.Contains(label))
-            {
-                return;
+                return loop;
             }
         }
 
-        if (_enclosingFunctionLabels.Contains(label))
+        if (_enclosingFunctionLoopLabels.Contains(label))
         {
             _diagnostics.ReportError(
-                DiagnosticCodes.LabelOutOfScope,
+                DiagnosticCodes.LoopLabelOutOfScope,
                 span,
                 $"o rótulo '{label}' pertence a uma função externa",
-                new DiagnosticNote("um salto não atravessa fronteira de função, assim como 'return'"));
-            return;
+                new DiagnosticNote("um 'break'/'continue' não atravessa fronteira de função, assim como 'return'"));
+            return null;
         }
 
-        _diagnostics.ReportError(
-            DiagnosticCodes.UnknownLabel, span, $"o rótulo '{label}' não existe");
+        _diagnostics.ReportError(DiagnosticCodes.UnknownLoopLabel, span, $"o rótulo '{label}' não existe");
+        return null;
+    }
+
+    /// <summary>
+    /// Contexto de um <c>loop</c> em checagem: o rótulo, se houver, e o
+    /// acumulador de tipo que <see cref="CheckBreak"/> preenche.
+    /// </summary>
+    private sealed class LoopContext(string? label)
+    {
+        public string? Label { get; } = label;
+
+        public LapisType? Type { get; set; }
     }
 
     private LapisType CheckBinary(CoreBinary node, Scope scope)
@@ -2412,6 +2421,169 @@ public sealed class TypeChecker
         }
 
         return coverage.Variants.Add(index);
+    }
+
+    /// <summary>
+    /// <c>e is Variante</c> / <c>e is Variante(x)</c> (plano 25, fecha Q23).
+    ///
+    /// Aqui é onde a variante é <b>resolvida</b>: o desugar só carregou o que
+    /// estava escrito, e quem sabe a qual enum ela pertence é o tipo do
+    /// escrutinado (§25.5). Um dono escrito (<c>e is Option.Some</c>) não
+    /// resolve nada — só é conferido contra o tipo, e é por isso que a forma
+    /// sem qualificação não precisa de regra própria nem tem como ser ambígua.
+    ///
+    /// O tipo do nó é o join dos ramos, como em <see cref="CheckIf"/>: no teste
+    /// puro os dois são literais e o join é <c>Bool</c>.
+    /// </summary>
+    private LapisType CheckIs(CoreIs node, Scope scope)
+    {
+        var scrutinee = CheckExpression(node.Scrutinee, scope);
+        var thenScope = scope.Child();
+
+        if (ResolveIsVariant(node, scrutinee) is { } resolved)
+        {
+            DeclareIsBinding(node, resolved.Definition, resolved.Variant, resolved.Arguments, thenScope);
+        }
+        else if (node.BindingName is not null)
+        {
+            // Sem variante resolvida não há tipo para a carga. Declarar o nome
+            // como ErrorType evita um LAP0201 em cascata por cima do erro real.
+            thenScope.Declare(new BindingInfo(
+                NextBindingId(),
+                node.BindingName,
+                ErrorType.Instance,
+                node.BindingSpan ?? node.Span,
+                BindingKind.Value)
+            {
+                FunctionDepth = _functions.Count,
+            });
+        }
+
+        var thenType = CheckExpression(node.Then, thenScope);
+        var elseType = CheckExpression(node.Else, scope.Child());
+
+        if (scrutinee is NeverType)
+        {
+            return NeverType.Instance;
+        }
+
+        var joined = TypeRelations.Join(thenType, elseType);
+
+        if (joined is null)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.IncompatibleBranches,
+                node.Span,
+                $"ramos de 'is' têm tipos incompatíveis: {thenType.ToDisplayString()} "
+                + $"e {elseType.ToDisplayString()}");
+
+            return ErrorType.Instance;
+        }
+
+        return joined;
+    }
+
+    /// <summary>
+    /// A variante que um <c>is</c> nomeia, resolvida pelo tipo do escrutinado.
+    /// Devolve <c>null</c> quando não há como decidir; o <c>LAP0732</c> já saiu.
+    /// </summary>
+    private (TypeDefinition Definition, VariantInfo Variant, ImmutableArray<GenericArgument> Arguments)?
+        ResolveIsVariant(CoreIs node, LapisType scrutinee)
+    {
+        if (scrutinee is ErrorType or NeverType)
+        {
+            return null;
+        }
+
+        if (scrutinee is not NamedType { Definition.Kind: TypeDefinitionKind.Enum } named)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.UnknownIsVariant,
+                node.VariantSpan,
+                $"'{node.VariantName}' não é variante de {scrutinee.ToDisplayString()}");
+
+            return null;
+        }
+
+        var definition = named.Definition;
+
+        // O dono escrito é conferido, não usado para resolver: quem manda é o
+        // tipo. `r is Option.Ok` sobre um `Result` é erro aqui, e não silêncio.
+        if (node.OwnerName is not null
+            && !string.Equals(node.OwnerName, definition.Name, StringComparison.Ordinal))
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.UnknownIsVariant,
+                node.VariantSpan,
+                $"'{node.OwnerName}.{node.VariantName}' não se aplica a {scrutinee.ToDisplayString()}");
+
+            return null;
+        }
+
+        var index = definition.IndexOfVariant(node.VariantName);
+
+        if (index < 0)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.UnknownIsVariant,
+                node.VariantSpan,
+                $"{definition.Name} não possui a variante '{node.VariantName}'");
+
+            return null;
+        }
+
+        return (definition, definition.Variants[index], named.Arguments);
+    }
+
+    /// <summary>
+    /// Declara a carga no escopo do ramo verdadeiro — o único lugar em que ela
+    /// existe (§25.3). <c>is</c> liga <b>um</b> valor: variante nulária é
+    /// <c>LAP0733</c> e variante de duas ou mais cargas é <c>LAP0734</c>, que
+    /// manda escrever o <c>match</c> — a fronteira deliberada entre as duas
+    /// construções (§25.5).
+    /// </summary>
+    private void DeclareIsBinding(
+        CoreIs node,
+        TypeDefinition definition,
+        VariantInfo variant,
+        ImmutableArray<GenericArgument> arguments,
+        Scope thenScope)
+    {
+        if (node.BindingName is null)
+        {
+            return;
+        }
+
+        if (variant.Payload.Length != 1)
+        {
+            _diagnostics.ReportError(
+                variant.Payload.IsEmpty
+                    ? DiagnosticCodes.IsVariantHasNoPayload
+                    : DiagnosticCodes.IsVariantHasMultiplePayloads,
+                node.BindingSpan ?? node.Span,
+                variant.Payload.IsEmpty
+                    ? $"a variante '{variant.Name}' não carrega valor"
+                    : $"a variante '{variant.Name}' carrega {variant.Payload.Length} valores; "
+                      + "escreva um padrão de 'match'");
+        }
+
+        // Os tipos da carga vêm da declaração e trazem os parâmetros do enum;
+        // substituir pelos argumentos da instância é o que faz `v` ser `Int` em
+        // `o is Some(v)` com `o: Option<Int>` — mesma conta de CheckVariantPattern.
+        var payload = variant.Payload.Length == 1
+            ? TypeSubstitution.Apply(
+                variant.Payload[0], BuildSubstitution(definition.TypeParameters, arguments))
+            : ErrorType.Instance;
+
+        thenScope.Declare(new BindingInfo(
+            NextBindingId(),
+            node.BindingName,
+            payload,
+            node.BindingSpan ?? node.Span,
+            BindingKind.Value)
+        {
+            FunctionDepth = _functions.Count,
+        });
     }
 
     /// <summary>O que os braços já cobriram, para exaustividade e alcançabilidade.</summary>

@@ -7,7 +7,7 @@ evaluation**.
 - **Extensão:** `.ls` · **CLI:** `lapis` · **Implementação:** C# / .NET 10
 - **Especificação:** [`spec/lapislang-0.2.md`](spec/lapislang-0.2.md)
 - **Planos de implementação:** [`plans/`](plans/README.md)
-- **Extensão implementada:** [macros, reflection e `goto`/`label`](spec/lapislang-macros-0.1.md)
+- **Extensão implementada:** [macros e reflection](spec/lapislang-macros-0.1.md)
 - **Extensão planejada:** [type members e extension methods](spec/lapislang-type-members-0.1.md)
 
 ```c
@@ -51,19 +51,20 @@ lapis hello.ls
 | **M13** — membros de tipo e atribuição a campo | ✅ concluído |
 | **M14** — métodos de instância e `self` | ✅ concluído |
 | **M15** — membros sobre tipos genéricos (`Result<?, ?>`) | ✅ concluído |
-| M16 — `goto`/`label` saem, `loop`/`break`/`continue` entram; `is` fecha Q23 | ⏳ próximo |
-| M17–M19 — PE: especialização, análise, equivalência | ⬜ |
+| **M16** — `goto`/`label` saem, `loop`/`break`/`continue` entram; `is` fecha Q23 | ✅ concluído |
+| M17–M19 — PE: especialização, análise, equivalência | ⏳ próximo |
 
-**1682 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
+**1778 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
 evaluator, partial evaluator e CLI — entre eles uma **suíte de conformidade** de
-202 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
+212 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
 spec é um arquivo, e o nome do teste que falha já é o arquivo a abrir.
 
 A linguagem já roda programas de verdade: funções de primeira classe com
 closures, `return` explícito com verificação de "retorna em todos os caminhos",
-spans com indexação checada em compilação, enums, `match` exaustivo, tipos definidos pelo
-usuário, membros de tipo, generics (inclusive const generics), `goto`/`label`,
-mutação com `var`,
+spans com indexação checada em compilação, enums, `match` exaustivo, `is` para
+testar variante e desembrulhar carga sem a cerimônia do `match`, tipos definidos
+pelo usuário, membros de tipo, generics (inclusive const generics),
+controle de fluxo estruturado (`loop`/`break`/`continue`), mutação com `var`,
 macros higiênicas com validação em tempo de compilação, reflection, e um prelude
 escrito na própria linguagem — laços inclusive.
 
@@ -122,38 +123,39 @@ print(scale<3>(5));    // 15
 print(twice<3>(5));    // 30
 ```
 
-`goto`/`label` (M6) dão controle de fluxo explícito — saída antecipada sem
-aninhamento, e um grafo de fluxo que o partial evaluator vai analisar. O desugar
-decompõe o bloco em blocos básicos: cada `label` abre um *join point*, e o
-segmento anterior é fechado com um salto implícito.
+`if`/`loop`/`break`/`continue` (M6, reestruturados no M16 — Q32) dão controle de
+fluxo estruturado — saída antecipada sem aninhamento com `if`/`return` puros, e
+laços que o partial evaluator analisa sem precisar de um grafo de *join points*.
+Um `if` sem chaves dispensa bloco quando o corpo é uma expressão só:
 
 ```c
+def valores = .[10, 20, 30];
+
 def buscar = fn(indice: Int) Int {
-    goto invalido if indice < 0;
-    goto invalido if indice > 2;
+    if indice < 0 { return -1; }
+    if indice > 2 { return -1; }
 
     match valores[indice] {
-        Result.Ok(v) => return v,
-        Result.Err(e) => return -1
+        Option.Some(v) => return v,
+        Option.None => return -1
     }
-
-    label invalido;
-    return -1;
 };
 ```
 
-Saltar para trás é permitido, e com isso a terminação deixa de ser garantida por
-construção: o evaluator conta saltos e aborta com `LAP0303` em vez de travar.
+Um `loop` sem `break` roda para sempre, e com isso a terminação deixa de ser
+garantida por construção: o evaluator conta iterações e aborta com `LAP0303` em
+vez de travar.
 
 Para um laço **avançar** falta uma peça, e é a decisão Q25: mutação com `var`.
 
 ```c
 var i = 0;
 
-label repete;
-i = i + 1;
-print(i);
-goto repete if i < 3;   // 1, 2, 3
+loop {
+    i = i + 1;
+    print(i);          // 1, 2, 3
+    if i < 3 { continue; } else { break; }
+}
 ```
 
 `def` continua definitivo; `var` pode ser reatribuído com `x = e;` — statement, não
@@ -197,11 +199,7 @@ expandidas entre o parser e o desugar:
 ```c
 macro unless
     match Expression:condition Block:body
-    expand {
-        goto done if condition;
-        body;
-        label done;
-    };
+    expand { if !condition { body; } };
 
 @unless pular {
     print("executou");
@@ -288,33 +286,59 @@ var i = 0;
 }
 ```
 
-`@while` são seis linhas de `prelude.ls` sobre `goto` e `label`. É a tese do
-sistema de macros em uma frase: **um laço, que em qualquer outra linguagem é
-trabalho de compilador, aqui é biblioteca.** E nada foi retirado do compilador
-para isso — `if` e `match` continuam onde estavam, com desestruturação de carga,
-que é justamente o que nenhuma macro faria com segurança (Q23). Um `@while`
-quebrado não tem como regredir um programa que já funcionava.
+`@while` são poucas linhas de `prelude.ls` sobre `if` e `loop` (reescrito no M16
+sobre a base nova — Q32). É a tese do sistema de macros em uma frase: **um
+laço, que em qualquer outra linguagem é trabalho de compilador, aqui é
+biblioteca.** E nada foi retirado do compilador para isso — `if` e `match`
+continuam onde estavam, com desestruturação de carga, que é justamente o que
+nenhuma macro faria com segurança (Q23). Um `@while` quebrado não tem como
+regredir um programa que já funcionava.
 
 O escopo se comporta como se esperaria: o corpo do laço é um escopo (o que ele
-declara não escapa), e um `var` declarado entre dois laços é visível no segundo.
-Só o que um `goto` **explícito** pode ter pulado continua invisível no destino —
-que é a única forma de o contrário ser mentira. `examples/control.ls` mostra os
-três casos.
+declara não escapa), e um `var` declarado entre dois laços é visível no
+segundo — cada `loop` é só mais um escopo léxico comum, sem nada de especial a
+dizer, diferente do antigo `goto`/`label` (plano 16, retirado no plano 26).
+`examples/control.ls` mostra os casos.
 
-O que falta: **fechar a linguagem** primeiro (M16), porque o partial evaluator
-precisa de um caso para cada construção, e escrevê-lo contra uma superfície que
-ainda cresce significa reabri-lo a cada milestone. O M16 tem duas partes: `is`
-fecha o último buraco conhecido — a construção que a Q23 pedia para ler a carga
-de uma variante com segurança —, e `goto`/`label` **saem** da linguagem, trocados
-por `loop`/`break`/`continue` estruturados (Q32). A troca não é cosmética: era
-a regra de escopo de `goto` que travava a especificação do `is` em primeiro
-lugar, e com blocos léxicos comuns no lugar de saltos a trava desaparece. Os
-membros sobre tipos genéricos
-já entraram (M15): `def Result<?, ?>.isOk` diz o alcance em vez de deduzi-lo, e o
-`?` curinga dissolveu a Q27 em vez de respondê-la. O **span** já entrou (M12): o tamanho no tipo tirou do partial
-evaluator o caso trivial de eliminação de bounds check e deixou com ele o
-interessante — provar `i < n` para um `i` derivado de laço. Depois o resto do PE (M17–M19):
-especialização de chamadas e eliminação de bounds check. O roteiro completo está em
+**`is`** (M16, fecha Q23) testa a variante do escrutinado e, opcionalmente,
+desembrulha a carga — o meio-termo entre `match` (completo, mas cerimônia
+demais para o caso de uma variante só) e nada:
+
+```c
+def unwrapOr = fn(result: Option<Int>, fallback: Int) Int {
+    if result is Some(value) {
+        return value;
+    }
+
+    return fallback;
+};
+```
+
+`is` **é primitiva da Core**, e não açúcar sobre `match` — a escolha que abre a
+saída do `match` (ver abaixo). A ligação (`Some(value)`) só ganha escopo em duas
+posições — condição de `if` e operando esquerdo de `&&` —, e fora delas `is`
+continua valendo como um `Bool` comum, sem ligar nada. A variante pode vir sem
+qualificação (`Some`, não `Option.Some`): quem resolve o dono é o **tipo do
+escrutinado**, que o checker já conhece; `match` continua exigindo a forma
+qualificada (Q3).
+
+As duas construções coexistem com papéis distintos: **`is` testa uma variante e
+não é exaustivo; `match` cobre todas e é** (Q6). E é essa divisão que dá a
+`match` um caminho de saída: o que o prende ao compilador não é mais "nenhuma
+macro lê carga de variante" — `is` resolveu isso —, é a exaustividade, que uma
+macro não sabe provar porque roda antes do checker e não conhece o tipo do
+escrutinado. Quando souber, `match` vira `@match` no prelude sobre uma cadeia de
+`if`/`is`, e `CoreMatch` sai da Core. A Q22 está encaminhada, não fechada.
+
+O que falta: o resto do **PE** (M17–M19) — especialização de chamadas e
+eliminação de bounds check —, agora sobre uma superfície que já fechou: era a
+regra de escopo do `goto` que travava a especificação do `is` em primeiro
+lugar, e o M16 resolveu as duas coisas juntas (Q32). Os membros sobre tipos
+genéricos já entraram (M15): `def Result<?, ?>.isOk` diz o alcance em vez de
+deduzi-lo, e o `?` curinga dissolveu a Q27 em vez de respondê-la. O **span** já
+entrou (M12): o tamanho no tipo tirou do partial evaluator o caso trivial de
+eliminação de bounds check e deixou com ele o interessante — provar `i < n`
+para um `i` derivado de laço. O roteiro completo está em
 [`plans/`](plans/README.md).
 
 ```bash

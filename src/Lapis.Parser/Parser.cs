@@ -114,16 +114,6 @@ public sealed class Parser
             return ParseMacroDeclaration();
         }
 
-        if (Current.Kind == TokenKind.GotoKeyword)
-        {
-            return ParseGotoStatement();
-        }
-
-        if (AtLabelStatement())
-        {
-            return ParseLabelStatement();
-        }
-
         if (Current.Kind == TokenKind.Bad)
         {
             // O lexer já reportou; consumir em silêncio evita erro duplo.
@@ -149,13 +139,31 @@ public sealed class Parser
     /// Expressões que terminam em bloco dispensam o <c>;</c> quando usadas como
     /// statement. Sem essa regra o próprio exemplo <c>abs</c> da spec §12 —
     /// <c>if x &lt; 0 { return -x; }</c> seguido de <c>return x;</c> — não parsearia.
+    ///
+    /// <c>if</c> não é mais sempre bloco (plano 26 §26.9): <c>Then</c>/<c>Else</c>
+    /// podem ser uma expressão qualquer. A regra passa a olhar o <b>último ramo
+    /// escrito</b> — <c>Else</c> quando existe, senão <c>Then</c> — e não é regra
+    /// nova, é a mesma de sempre ("o que fecha por último é bloco?") exercitada
+    /// pela primeira vez, porque antes o `if` sempre terminava em bloco por
+    /// construção.
     /// </summary>
-    private static bool IsBlockLike(Expression expression) =>
-        expression is BlockExpression or IfExpression or MatchExpression
+    private static bool IsBlockLike(Expression expression) => expression switch
+    {
+        BlockExpression or MatchExpression or LoopExpression => true,
+
+        // Um `if` nunca precisa de `;` externo, com chaves ou sem: o corpo com
+        // chaves se autotermina como sempre, e o corpo sem chaves consome o
+        // próprio `;` dentro de `ParseIfBody` — é o que deixa um `else` seguinte
+        // visível para `ParseIf` sem depender de quem chamou.
+        IfExpression => true,
+
         // Uma invocação que terminou em bloco dispensa `;` pelo mesmo motivo que
         // `if p { }` dispensa: `@unless c { }` é a forma que a macro define, e
         // exigir `;` ali contrariaria a sintaxe que ela escolheu (spec de macros §4).
-        || expression is MacroInvocation { Arguments: [.., { Kind: TokenKind.CloseBrace }] };
+        MacroInvocation { Arguments: [.., { Kind: TokenKind.CloseBrace }] } => true,
+
+        _ => false,
+    };
 
     /// <summary>
     /// <c>IDENT ("." IDENT)* "=" expressão ";"</c>. Não há ambiguidade a resolver:
@@ -609,91 +617,6 @@ public sealed class Parser
         };
     }
 
-    /// <summary>
-    /// <c>goto IDENT ("if" expressão)? ";"</c>.
-    ///
-    /// O <c>if</c> reaproveita <see cref="TokenKind.IfKeyword"/> sem ambiguidade:
-    /// o <c>goto</c> já determinou a produção.
-    /// </summary>
-    private Statement ParseGotoStatement()
-    {
-        var start = Current.Span.Start;
-        _tokens.Advance(); // 'goto'
-
-        var (label, labelSpan) = ParseLabelName();
-
-        Expression? condition = null;
-
-        if (_tokens.Match(TokenKind.IfKeyword))
-        {
-            condition = ParseExpression();
-        }
-
-        if (!ExpectSemicolon(start))
-        {
-            RecoverToStatementBoundary();
-        }
-
-        return new GotoStatement(label, condition)
-        {
-            Span = SpanFrom(start),
-            LabelSpan = labelSpan,
-        };
-    }
-
-    /// <summary>
-    /// <c>label</c> é palavra-chave <b>contextual</b>: só vale quando inicia um
-    /// statement e vem seguida de um identificador.
-    ///
-    /// Reservá-la quebraria programa válido — o exemplo da própria spec §13 usa
-    /// <c>label</c> como nome de campo (<c>type&lt;Label: Str, ...&gt; { label: Str; }</c>).
-    /// A ambiguidade não existe: dois identificadores seguidos nunca formam uma
-    /// expressão. <c>goto</c>, ao contrário, é reservada — ninguém a usa como nome,
-    /// e reservá-la é o que permite dizer "esperado um rótulo" em vez de deixar a
-    /// linha virar uma expressão malformada.
-    /// </summary>
-    private bool AtLabelStatement() =>
-        Current.Kind == TokenKind.Identifier
-        && Current.Text == "label"
-        && _tokens.Peek(1).Kind == TokenKind.Identifier;
-
-    private Statement ParseLabelStatement()
-    {
-        var start = Current.Span.Start;
-        _tokens.Advance(); // 'label'
-
-        var (label, labelSpan) = ParseLabelName();
-
-        if (!ExpectSemicolon(start))
-        {
-            RecoverToStatementBoundary();
-        }
-
-        return new LabelStatement(label)
-        {
-            Span = SpanFrom(start),
-            LabelSpan = labelSpan,
-        };
-    }
-
-    /// <summary>
-    /// Rótulos são identificadores comuns (spec §7). Vivem num espaço de nomes
-    /// separado do de valores, então <c>label x</c> e <c>def x</c> convivem.
-    /// </summary>
-    private (string Name, SourceSpan Span) ParseLabelName()
-    {
-        var token = Current;
-
-        if (token.Kind != TokenKind.Identifier)
-        {
-            Report(DiagnosticCodes.ExpectedIdentifier, token.Span, "esperado um rótulo");
-            return ("?", token.Span);
-        }
-
-        _tokens.Advance();
-        return (token.Text, token.Span);
-    }
-
     private bool ExpectSemicolon(int statementStart)
     {
         if (_tokens.Match(TokenKind.Semicolon))
@@ -768,6 +691,8 @@ public sealed class Parser
             {
                 TokenKind.ReturnKeyword => ParseReturn(),
                 TokenKind.ThrowKeyword => ParseThrow(),
+                TokenKind.BreakKeyword => ParseBreak(),
+                TokenKind.ContinueKeyword => ParseContinue(),
                 _ => ParseBinary(0),
             };
         }
@@ -806,13 +731,43 @@ public sealed class Parser
         return new ThrowExpression(value) { Span = SpanFrom(start) };
     }
 
+    /// <summary>
+    /// A precedência de <c>is</c> (plano 25 §25.7): mais forte que <c>&amp;&amp;</c>
+    /// (2), mais fraca que <c>==</c>/<c>!=</c> (4). Não é um valor de
+    /// <see cref="BinaryOperator"/> — <c>is</c> produz <see cref="IsExpression"/>,
+    /// não <see cref="BinaryExpression"/> — então mora aqui, e não em
+    /// <c>Operators.cs</c>.
+    /// </summary>
+    private const int IsPrecedence = 3;
+
     private Expression ParseBinary(int minPrecedence)
     {
         var left = ParseUnary();
         var comparisonSeen = false;
+        var isSeen = false;
 
-        while (TryGetBinaryOperator(Current.Kind, out var op))
+        while (true)
         {
+            if (Current.Kind == TokenKind.IsKeyword && IsPrecedence >= minPrecedence)
+            {
+                // `a is P is Q` não tem leitura: mesmo motivo de `a < b < c` — o
+                // segundo `is` teria um `Bool` à esquerda. Mesmo diagnóstico
+                // (§25.7), e a mesma recuperação: reporta e ainda assim parseia.
+                if (isSeen)
+                {
+                    Report(DiagnosticCodes.ChainedComparison, Current.Span, "'is' não encadeia; use parênteses");
+                }
+
+                isSeen = true;
+                left = ParseIsExpression(left);
+                continue;
+            }
+
+            if (!TryGetBinaryOperator(Current.Kind, out var op))
+            {
+                break;
+            }
+
             var precedence = op.Precedence();
 
             if (precedence < minPrecedence)
@@ -847,6 +802,111 @@ public sealed class Parser
         }
 
         return left;
+    }
+
+    /// <summary>
+    /// <c>scrutinee is is_pattern</c> (plano 25 §25.5). O <c>is</c> já foi visto
+    /// por <see cref="ParseBinary"/>, que só decide <b>se</b> consome; quem lê o
+    /// resto é este método.
+    /// </summary>
+    private Expression ParseIsExpression(Expression scrutinee)
+    {
+        var start = scrutinee.Span.Start;
+        _tokens.Advance(); // 'is'
+
+        var (ownerName, ownerSpan, ownerArguments, variantName, variantSpan) = ParseIsPattern();
+        var (bindingName, bindingSpan) = ParseIsBinding();
+
+        return new IsExpression(scrutinee, ownerName, ownerArguments, variantName, bindingName)
+        {
+            Span = SpanFrom(start),
+            VariantSpan = variantSpan,
+            OwnerSpan = ownerSpan,
+            BindingSpan = bindingSpan,
+        };
+    }
+
+    /// <summary>
+    /// <c>is_pattern = ( IDENT generic_args? "." )? IDENT</c> (plano 25 §25.5) —
+    /// só a parte do dono e da variante; a ligação entre parênteses é
+    /// <see cref="ParseIsBinding"/>.
+    ///
+    /// Não é <see cref="ParsePattern"/>: aquela produção já existe para
+    /// <c>match</c> e é mais rica (aninha, liga vários nomes). A diferença é
+    /// deliberada — <c>is</c> existe para o caso de uma ligação só, e o caso
+    /// completo já tem <c>match</c> (§25.5, LAP0734).
+    /// </summary>
+    private (string? OwnerName, SourceSpan? OwnerSpan, ImmutableArray<GenericArgumentSyntax> OwnerArguments,
+        string VariantName, SourceSpan VariantSpan) ParseIsPattern()
+    {
+        var firstToken = Current;
+
+        if (Current.Kind != TokenKind.Identifier)
+        {
+            Report(DiagnosticCodes.ExpectedIdentifier, Current.Span, "esperado o nome de uma variante após 'is'");
+            return (null, null, ImmutableArray<GenericArgumentSyntax>.Empty, "?", Current.Span);
+        }
+
+        _tokens.Advance();
+
+        var ownerArguments = Current.Kind == TokenKind.Less
+            ? ParseGenericArgumentList(typePosition: true)
+            : ImmutableArray<GenericArgumentSyntax>.Empty;
+
+        // Sem '.' (e sem genéricos, que só fazem sentido num dono escrito): o
+        // identificador já lido é a própria variante, sem dono — `e is Some`.
+        if (Current.Kind != TokenKind.Dot && ownerArguments.IsEmpty)
+        {
+            return (null, null, ownerArguments, firstToken.Text, firstToken.Span);
+        }
+
+        if (!_tokens.Match(TokenKind.Dot))
+        {
+            Report(DiagnosticCodes.UnexpectedToken, Current.Span, "esperado '.' após o dono da variante");
+        }
+
+        var variantToken = Current;
+
+        if (Current.Kind != TokenKind.Identifier)
+        {
+            Report(DiagnosticCodes.ExpectedIdentifier, Current.Span, "esperado o nome da variante após '.'");
+            return (firstToken.Text, firstToken.Span, ownerArguments, "?", Current.Span);
+        }
+
+        _tokens.Advance();
+
+        return (firstToken.Text, firstToken.Span, ownerArguments, variantToken.Text, variantToken.Span);
+    }
+
+    /// <summary><c>("(" IDENT ")")?</c> — a parte que liga a carga (plano 25 §25.5).</summary>
+    private (string? Name, SourceSpan? Span) ParseIsBinding()
+    {
+        if (!_tokens.Match(TokenKind.OpenParen))
+        {
+            return (null, null);
+        }
+
+        string? name = null;
+        SourceSpan? span = null;
+        var token = Current;
+
+        if (token.Kind == TokenKind.Identifier)
+        {
+            _tokens.Advance();
+            name = token.Text;
+            span = token.Span;
+        }
+        else
+        {
+            Report(DiagnosticCodes.ExpectedIdentifier, token.Span, "esperado um identificador para ligar a carga");
+        }
+
+        if (!_tokens.Match(TokenKind.CloseParen))
+        {
+            Report(DiagnosticCodes.UnexpectedToken, Current.Span, "esperado ')' após o nome da ligação");
+        }
+
+        return (name, span);
     }
 
     private Expression ParseUnary()
@@ -1089,6 +1149,9 @@ public sealed class Parser
 
             case TokenKind.IfKeyword:
                 return ParseIf();
+
+            case TokenKind.LoopKeyword:
+                return ParseLoop();
 
             case TokenKind.EnumKeyword:
                 return ParseEnum();
@@ -1914,14 +1977,6 @@ public sealed class Parser
             {
                 statements.Add(ParseMacroDeclaration());
             }
-            else if (Current.Kind == TokenKind.GotoKeyword)
-            {
-                statements.Add(ParseGotoStatement());
-            }
-            else if (AtLabelStatement())
-            {
-                statements.Add(ParseLabelStatement());
-            }
             else if (Current.Kind == TokenKind.Bad)
             {
                 _tokens.Advance();
@@ -2069,39 +2124,148 @@ public sealed class Parser
         _tokens.Advance(); // 'if'
 
         var condition = ParseExpression();
-
-        BlockExpression then;
-
-        if (Current.Kind == TokenKind.OpenBrace)
-        {
-            then = ParseBlock();
-        }
-        else
-        {
-            Report(DiagnosticCodes.UnexpectedToken, Current.Span, "esperado '{' após a condição do 'if'");
-            then = new BlockExpression([], null) { Span = Current.Span };
-        }
+        var then = ParseIfBody();
 
         Expression? elseBranch = null;
 
         if (_tokens.Match(TokenKind.ElseKeyword))
         {
-            if (Current.Kind == TokenKind.IfKeyword)
-            {
-                elseBranch = ParseIf();
-            }
-            else if (Current.Kind == TokenKind.OpenBrace)
-            {
-                elseBranch = ParseBlock();
-            }
-            else
-            {
-                Report(DiagnosticCodes.UnexpectedToken, Current.Span, "esperado '{' ou 'if' após 'else'");
-                elseBranch = ErrorExpr(Current.Span);
-            }
+            // `else if` encadeia sem chaves — a única exceção à regra de §26.9.
+            // Este `if` não é o `Then` de ninguém: é a continuação explícita do
+            // `else`, então não compete com outro `else` mais adiante por
+            // pertencimento (dangling-else). Cada `if` do encadeamento continua
+            // sujeito à mesma regra no próprio `Then`.
+            elseBranch = Current.Kind == TokenKind.IfKeyword ? ParseIf() : ParseIfBody();
         }
 
         return new IfExpression(condition, then, elseBranch) { Span = SpanFrom(start) };
+    }
+
+    /// <summary>
+    /// O corpo de um <c>if</c>/<c>else</c> fora da posição de encadeamento
+    /// (<c>if_body</c>, plano 26 §26.9): um bloco, ou qualquer expressão que
+    /// <b>não</b> seja outro <c>if</c> sem chaves.
+    ///
+    /// A exclusão é o que evita o dangling-else sem regra de precedência —
+    /// <c>if a if b c; else d;</c> é <c>LAP0527</c>; escrito com chaves
+    /// (<c>if a { if b c; } else d;</c>) o aninhamento continua livre, porque aí
+    /// não há ambiguidade nenhuma: o `}` já fechou o `if` de dentro.
+    /// </summary>
+    private Expression ParseIfBody()
+    {
+        if (Current.Kind == TokenKind.OpenBrace)
+        {
+            return ParseBlock();
+        }
+
+        if (Current.Kind == TokenKind.IfKeyword)
+        {
+            Report(
+                DiagnosticCodes.BareIfCannotHaveBareIfBody,
+                Current.Span,
+                "'if'/'else' sem chaves não pode ter 'if' como corpo direto; use chaves");
+        }
+
+        var start = Current.Span.Start;
+        var body = ParseExpression();
+
+        // Um corpo sem chaves precisa consumir o próprio `;` aqui — senão um
+        // `else` que vier a seguir fica escondido de `ParseIf` atrás dele (quem
+        // chama só olha o token atual depois que este método retorna). Um corpo
+        // que já se autotermina (bloco, outro `if` que já resolveu o seu) não
+        // passa por aqui ou já não tem `;` para consumir.
+        if (!IsBlockLike(body) && !_tokens.Match(TokenKind.Semicolon))
+        {
+            Report(DiagnosticCodes.ExpectedSemicolon, SpanFrom(start), "esperado ';' ao final da declaração");
+        }
+
+        return body;
+    }
+
+    /// <summary>
+    /// <c>loop (: IDENT)? bloco</c> (plano 26, M16). O rótulo é opcional — só
+    /// importa quando um <c>break</c>/<c>continue</c> de um laço aninhado precisa
+    /// alcançar este.
+    /// </summary>
+    private Expression ParseLoop()
+    {
+        var start = Current.Span.Start;
+        _tokens.Advance(); // 'loop'
+
+        var (label, labelSpan) = TryParseLoopLabel();
+        var body = ParseBlock();
+
+        return new LoopExpression(label, body) { Span = SpanFrom(start), LabelSpan = labelSpan };
+    }
+
+    /// <summary>
+    /// <c>break (: IDENT)? (","? expressão)?</c> (plano 26, M16). A vírgula entre
+    /// rótulo e valor evita <c>break :x valor;</c> parsear como <c>break :x</c>
+    /// seguido de uma expressão solta — sem ela, onde o rótulo termina e o valor
+    /// começa seria ambíguo de olhar.
+    /// </summary>
+    private Expression ParseBreak()
+    {
+        var start = Current.Span.Start;
+        _tokens.Advance(); // 'break'
+
+        var (label, labelSpan) = TryParseLoopLabel();
+
+        if (label is not null)
+        {
+            var value = _tokens.Match(TokenKind.Comma) ? ParseExpression() : null;
+            return new BreakExpression(label, value) { Span = SpanFrom(start), LabelSpan = labelSpan };
+        }
+
+        // Sem rótulo, o valor é opcional e não precisa de vírgula: `break;` e
+        // `break 5;` são as duas formas. Mesma lista de terminadores de
+        // `ParseReturn`.
+        var hasValue = Current.Kind is not (TokenKind.Semicolon or TokenKind.CloseBrace
+            or TokenKind.EndOfFile or TokenKind.Comma or TokenKind.CloseParen);
+
+        return new BreakExpression(null, hasValue ? ParseExpression() : null)
+        {
+            Span = SpanFrom(start),
+            LabelSpan = labelSpan,
+        };
+    }
+
+    /// <summary><c>continue (: IDENT)?</c> (plano 26, M16). Sem valor: reinicia a iteração, não sai do laço.</summary>
+    private Expression ParseContinue()
+    {
+        var start = Current.Span.Start;
+        _tokens.Advance(); // 'continue'
+
+        var (label, labelSpan) = TryParseLoopLabel();
+
+        return new ContinueExpression(label) { Span = SpanFrom(start), LabelSpan = labelSpan };
+    }
+
+    /// <summary>
+    /// <c>(":" IDENT)?</c> — o rótulo de <c>loop</c>/<c>break</c>/<c>continue</c>.
+    /// Vive no mesmo espaço de nomes separado que os rótulos de <c>label</c>
+    /// viviam (plano 16 §16.3, retirado): um <c>loop :x</c> e um <c>def x</c>
+    /// convivem sem colidir.
+    /// </summary>
+    private (string? Label, SourceSpan? Span) TryParseLoopLabel()
+    {
+        if (Current.Kind != TokenKind.Colon)
+        {
+            return (null, null);
+        }
+
+        _tokens.Advance(); // ':'
+
+        var token = Current;
+
+        if (token.Kind != TokenKind.Identifier)
+        {
+            Report(DiagnosticCodes.ExpectedIdentifier, token.Span, "esperado um rótulo após ':'");
+            return ("?", token.Span);
+        }
+
+        _tokens.Advance();
+        return (token.Text, token.Span);
     }
 
     // --------------------------------------------------------------- tipos

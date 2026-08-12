@@ -32,9 +32,9 @@ public static class SurfaceSExprPrinter
     }
 
     /// <summary>
-    /// Um statement isolado. Nem tudo é expressão — <c>def</c>, atribuição e
-    /// <c>goto</c> são statements de propósito —, e um teste sobre a forma deles
-    /// precisa de uma entrada própria.
+    /// Um statement isolado. Nem tudo é expressão — <c>def</c> e atribuição são
+    /// statements de propósito —, e um teste sobre a forma deles precisa de uma
+    /// entrada própria.
     /// </summary>
     public static string Print(Statement statement)
     {
@@ -79,20 +79,6 @@ public static class SurfaceSExprPrinter
                         : $"assign {assign.Name}.{string.Join(".", assign.Path)}");
                 PrintExpression(builder, assign.Value, indent + 1);
                 Close(builder, indent);
-                break;
-
-            case GotoStatement { Condition: null } jump:
-                Line(builder, indent, $"(goto {jump.Label})");
-                break;
-
-            case GotoStatement jump:
-                Open(builder, indent, $"goto-if {jump.Label}");
-                PrintExpression(builder, jump.Condition!, indent + 1);
-                Close(builder, indent);
-                break;
-
-            case LabelStatement label:
-                Line(builder, indent, $"(label {label.Label})");
                 break;
 
             case MacroDeclaration macro:
@@ -214,6 +200,34 @@ public static class SurfaceSExprPrinter
                 Close(builder, indent);
                 break;
 
+            case LoopExpression n:
+                Open(builder, indent, n.Label is null ? "loop" : $"loop :{n.Label}");
+                PrintExpression(builder, n.Body, indent + 1);
+                Close(builder, indent);
+                break;
+
+            case BreakExpression { Label: null, Value: null }:
+                Line(builder, indent, "(break)");
+                break;
+
+            case BreakExpression { Label: not null, Value: null } n:
+                Line(builder, indent, $"(break :{n.Label})");
+                break;
+
+            case BreakExpression n:
+                Open(builder, indent, n.Label is null ? "break" : $"break :{n.Label}");
+                PrintExpression(builder, n.Value!, indent + 1);
+                Close(builder, indent);
+                break;
+
+            case ContinueExpression { Label: null }:
+                Line(builder, indent, "(continue)");
+                break;
+
+            case ContinueExpression n:
+                Line(builder, indent, $"(continue :{n.Label})");
+                break;
+
             case ReturnExpression n:
                 if (n.Value is null)
                 {
@@ -298,6 +312,14 @@ public static class SurfaceSExprPrinter
                     Line(builder, indent + 1, $"(variant {variant.Name}{payload})");
                 }
 
+                Close(builder, indent);
+                break;
+
+            case IsExpression n:
+                var owner = n.OwnerName is null ? string.Empty : $"{n.OwnerName}{PrintGenericArguments(n.OwnerTypeArguments)}.";
+                var binding = n.BindingName is null ? string.Empty : $" ({n.BindingName})";
+                Open(builder, indent, $"is {owner}{n.VariantName}{binding}");
+                PrintExpression(builder, n.Scrutinee, indent + 1);
                 Close(builder, indent);
                 break;
 

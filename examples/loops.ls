@@ -5,20 +5,16 @@
 // função**. Nenhuma closure captura `var`, então não há aliasing — e a pergunta
 // "captura por valor ou por referência?" nem chega a ser feita.
 //
-// É a peça que faltava para `goto` para trás servir de laço. O corpo de um join
-// roda sempre no ambiente do grupo, o mesmo em toda volta; com bindings
-// imutáveis nada mudava entre iterações e o laço só parava pelo orçamento de
-// saltos. Um `var` declarado antes do rótulo é o slot que atravessa as voltas.
+// É a peça que faltava para `loop` servir de laço de verdade (plano 26 — Q32,
+// que substituiu `goto`/`label` por `loop`/`break`/`continue`). O corpo de um
+// `loop` roda sempre no mesmo escopo léxico, o mesmo em toda volta; com
+// bindings imutáveis nada mudava entre iterações e o laço só parava pelo
+// orçamento de iterações (LAP0303). Um `var` declarado antes do `loop` é o slot
+// que atravessa as voltas.
 //
-// Aqui as declarações vêm todas antes do primeiro `label` por clareza, não por
-// obrigação: rótulos que não saltam um para o outro formam grupos aninhados, e
-// um `var` escrito entre dois laços é visível no segundo. O que continua
-// invisível é o que um `goto` **explícito** pode ter pulado — ver
-// `tests/conformance/eval/mutation/scope_across_joins_with_jump.ls`.
-//
-// Este arquivo escreve os laços **à mão**, com `goto` e `label`, para mostrar a
-// forma. O `@while` do prelude gera exatamente isto; `examples/control.ls` tem a
-// versão que se escreve no dia a dia.
+// Este arquivo escreve os laços **à mão**, com `loop`/`break`/`continue`, para
+// mostrar a forma. O `@while` do prelude gera exatamente isto; `examples/
+// control.ls` tem a versão que se escreve no dia a dia.
 //
 // Saída esperada:
 //   1
@@ -35,16 +31,18 @@ var n = 1;
 var total = 0;
 var k = 0;
 
-label conta;
-i = i + 1;
-print(i);
-goto conta if i < 3;
+loop {
+    i = i + 1;
+    print(i);
+    if i < 3 { continue; } else { break; }
+}
 
 // Somatório de 1 a 10 — exatamente a forma que `@while` gera por macro.
-label somando;
-soma = soma + n;
-n = n + 1;
-goto somando if n <= 10;
+loop {
+    soma = soma + n;
+    n = n + 1;
+    if n <= 10 { continue; } else { break; }
+}
 
 print(soma);
 
@@ -54,12 +52,13 @@ print(soma);
 // `Int` direto — ver `examples/spans.ls`.
 //
 // `valores.length` é `3` em compilação, porque o tamanho está no tipo.
-label percorre;
-match valores[k] {
-    Option.Some(v) => { total = total + v; },
-    Option.None => { print("fora dos limites"); }
+loop {
+    match valores[k] {
+        Option.Some(v) => { total = total + v; },
+        Option.None => { print("fora dos limites"); }
+    }
+    k = k + 1;
+    if k < valores.length { continue; } else { break; }
 }
-k = k + 1;
-goto percorre if k < valores.length;
 
 print(total);

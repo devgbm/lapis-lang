@@ -63,7 +63,8 @@ def TypeInfo = type {
 // ---------------------------------------------------------------- controle
 //
 // As construções de controle que a LapisLang **não tem**, escritas na própria
-// linguagem sobre `goto` e `label` (spec de macros §12, plano 20).
+// linguagem sobre `if` e `loop` (spec de macros §12, plano 20; base trocada de
+// `goto`/`label` para `loop`/`break` no plano 26 — Q32).
 //
 // É a demonstração mais forte da tese do sistema de macros: um laço, que em
 // qualquer outra linguagem é trabalho de compilador, aqui é uma declaração de
@@ -71,8 +72,9 @@ def TypeInfo = type {
 // continuam onde estavam —, então não há como um `@while` quebrado regredir um
 // programa que já funcionava.
 //
-// Os rótulos que estas macros introduzem são higienizados: dois `@while` no mesmo
-// bloco não colidem, e um `label top` do usuário não é o `top` daqui.
+// O rótulo que `@while` introduziria não é mais necessário — `loop` sem rótulo
+// já é o laço mais próximo — mas a higiene continua valendo para tudo que a
+// macro liga (`def`, `var`): dois `@while` no mesmo bloco não colidem.
 //
 // O corpo vai entre chaves — `{ body; }`, e não `body;` — de propósito. Uma
 // captura de bloco escrita nua é **colada** no lugar, e o que ela declara
@@ -81,30 +83,27 @@ def TypeInfo = type {
 
 macro unless
     match Expression:condition Block:body
-    expand {
-        goto done if condition;
-        { body; }
-        label done;
-    };
+    expand { if !condition { body; } };
 
-// A razão de `goto` poder saltar para trás (plano 16), e o primeiro programa
-// LapisLang capaz de não terminar — daí o orçamento de saltos e o `LAP0303`.
+// A razão de `loop` poder ter progresso (antes, de `goto` poder saltar para
+// trás — plano 16), e o primeiro programa LapisLang capaz de não terminar —
+// daí o orçamento de iterações e o `LAP0303`.
 //
 // Só passou a iterar de verdade com `var` (Q25): antes da mutação nada mudava
 // entre as voltas, então `condition` valia o mesmo sempre e o laço ou não rodava
 // ou não parava.
 //
-// Um `var` declarado **depois** de um `label` vive dentro daquele join. Por isso
-// as declarações que o laço lê ficam antes da invocação, e não dentro do corpo:
+// O corpo de um `loop` é um escopo léxico só, reavaliado a cada volta. Um `var`
+// declarado **dentro** dele seria recriado a cada passagem — por isso as
+// declarações que o laço lê ficam antes da invocação, e não dentro do corpo:
 //
 //     var i = 0;
 //     @while i < 3 { i = i + 1; }
+//
+// A posição de `condition` — ramo verdadeiro de um `if` — não é acidente: é a
+// posição 1 da regra de escopo do `is` (plano 25 §25.3). `@while e is Some(v)
+// { usa(v); }` liga `v` dentro do corpo de graça, sem nada especial aqui nem
+// em `is`.
 macro while
     match Expression:condition Block:body
-    expand {
-        label top;
-        goto done if !condition;
-        { body; }
-        goto top;
-        label done;
-    };
+    expand { loop { if condition { body; } else { break; } } };

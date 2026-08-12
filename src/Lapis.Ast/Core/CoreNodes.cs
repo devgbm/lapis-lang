@@ -386,10 +386,19 @@ public sealed record CoreLiteralPattern(ConstantValue Value) : CorePattern;
 public sealed record CoreArm(CorePattern Pattern, CoreExpr Body, SourceSpan Span);
 
 /// <summary>
-/// <c>Match</c> permanece como primitiva da Core: desugará-lo exigiria primitivas
-/// <c>enum_tag</c> e <c>enum_payload</c>, aumentando o runtime — contra a spec §58
-/// ("runtime mínimo"). Um plano futuro pode inverter isso sem afetar nada acima
-/// do desugar.
+/// <c>Match</c> segue primitiva da Core — <b>por ora</b>.
+///
+/// O que ele tem e <see cref="CoreIs"/> não tem é a <b>exaustividade</b>
+/// (Q6/<c>LAP0262</c>): <c>match</c> é expressão e precisa produzir valor em toda
+/// execução, e provar que os braços cobrem o enum exige saber o tipo do
+/// escrutinado — coisa que uma macro, rodando antes do checker sobre a Surface,
+/// não sabe. É o único motivo de ele continuar aqui (Q22).
+///
+/// O plano é sair: quando o sistema de macros souber provar exaustividade,
+/// <c>match</c> vira <c>@match</c> no prelude, expandindo para uma cadeia de
+/// <c>if</c>/<c>is</c> — que é exatamente a razão de <see cref="CoreIs"/> ser
+/// primitiva em vez de açúcar sobre este nó. Até lá as duas formas coexistem:
+/// <c>is</c> testa uma variante e não é exaustivo, <c>match</c> cobre todas e é.
 /// </summary>
 public sealed class CoreMatch(
     int nodeId,
@@ -402,73 +411,107 @@ public sealed class CoreMatch(
     public ImmutableArray<CoreArm> Arms { get; } = arms;
 }
 
-/// <summary>Salto incondicional. Tipo <c>Never</c>: nada depois dele executa.</summary>
-public sealed class CoreGoto(int nodeId, SourceSpan span, string label) : CoreExpr(nodeId, span)
+/// <summary>
+/// <c>e is Variante</c> / <c>e is Variante(x)</c> (plano 25, fecha Q23):
+/// testar a variante de um enum e, quando há ligação, desembrulhar a carga.
+///
+/// <b>Por que carrega os dois ramos.</b> Um nó que só produzisse <c>Bool</c>
+/// deixaria a ligação de <c>x</c> num nó <i>irmão</i> do teste, e dar escopo a
+/// ela exigiria análise de dominância — a saída que a Q23 recusou por peso. Com
+/// <see cref="Then"/> e <see cref="Else"/> aqui dentro, a ligação e a prova
+/// nascem juntas (não existe posição em que <c>x</c> esteja em escopo e a
+/// variante seja outra) e o escrutinado é avaliado <b>uma vez</b>.
+///
+/// A forma sem ligação é o mesmo nó com ramos literais:
+/// <c>e is Some</c> ⇒ <c>Is(e, Some, então: true, senão: false)</c>.
+///
+/// <see cref="OwnerName"/> é o enum <b>escrito</b> (<c>e is Option.Some</c>) ou
+/// <c>null</c> quando omitido: quem resolve a variante é o checker, a partir do
+/// tipo do escrutinado (§25.5) — escrito, o dono só é conferido. Os argumentos
+/// genéricos do dono (<c>Result&lt;Int, ?&gt;.Ok</c>) não chegam até aqui: os
+/// tipos da carga vêm da instância real do escrutinado, como em <c>match</c>.
+/// </summary>
+public sealed class CoreIs(
+    int nodeId,
+    SourceSpan span,
+    CoreExpr scrutinee,
+    string? ownerName,
+    string variantName,
+    string? bindingName,
+    CoreExpr then,
+    CoreExpr otherwise) : CoreExpr(nodeId, span)
 {
-    public string Label { get; } = label;
+    public CoreExpr Scrutinee { get; } = scrutinee;
 
-    public SourceSpan LabelSpan { get; init; } = span;
+    public string? OwnerName { get; } = ownerName;
 
-    /// <summary>
-    /// Verdadeiro quando o salto é o que o desugar insere ao fechar um segmento,
-    /// e não algo que alguém escreveu (plano 16 §16.4, regra 1).
-    ///
-    /// A distinção importa em dois lugares: o printer omite o salto implícito (é
-    /// a inversa exata da decomposição) e <c>LAP0273</c> não o trata como código
-    /// inalcançável — depois de um <c>return</c> vem um <c>label</c>, que é
-    /// perfeitamente alcançável por salto.
-    /// </summary>
-    public bool IsImplicit { get; init; }
+    public string VariantName { get; } = variantName;
+
+    /// <summary>O nome ligado à carga no ramo verdadeiro, ou <c>null</c> no teste puro.</summary>
+    public string? BindingName { get; } = bindingName;
+
+    public CoreExpr Then { get; } = then;
+
+    public CoreExpr Else { get; } = otherwise;
+
+    public SourceSpan VariantSpan { get; init; } = span;
+
+    public SourceSpan? BindingSpan { get; init; }
 }
 
 /// <summary>
-/// Salto condicional. É <b>primitivo</b>, e não açúcar para
-/// <c>If(cond, Goto(L), ())</c>, porque uma macro de controle construída sobre
-/// <c>goto</c> não pode depender do <c>if</c> da linguagem — a construção seria
-/// circular (plano 16 §16.2).
+/// <c>loop { ... }</c> (plano 26, M16). Um escopo léxico só, com uma única forma
+/// de entrar — é o que substitui o grupo de join points que <c>goto</c>/<c>label</c>
+/// precisavam (Q32): não há predecessor nenhum a considerar além deste.
+///
+/// <see cref="Label"/> existe só para <c>break</c>/<c>continue</c> de um <c>loop</c>
+/// aninhado alcançarem este — sem ele, os dois sempre visam o laço mais próximo.
 /// </summary>
-public sealed class CoreGotoIf(
+public sealed class CoreLoop(
     int nodeId,
     SourceSpan span,
-    string label,
-    CoreExpr condition) : CoreExpr(nodeId, span)
+    string? label,
+    CoreExpr body) : CoreExpr(nodeId, span)
 {
-    public string Label { get; } = label;
+    public string? Label { get; } = label;
 
-    public CoreExpr Condition { get; } = condition;
+    public CoreExpr Body { get; } = body;
 
-    public SourceSpan LabelSpan { get; init; } = span;
-}
-
-/// <summary>Um destino de salto dentro de um <see cref="CoreLabeled"/>.</summary>
-public sealed record CoreJoin(string Name, CoreExpr Body, SourceSpan Span)
-{
-    public SourceSpan NameSpan { get; init; } = Span;
+    public SourceSpan? LabelSpan { get; init; }
 }
 
 /// <summary>
-/// Grupo de join points: avalia <see cref="Entry"/> e, se ela terminar em salto
-/// para um dos <see cref="Joins"/>, avalia aquele corpo — que por sua vez pode
-/// saltar de novo.
+/// <c>break;</c>, <c>break e;</c>, opcionalmente rotulado. Tipo <c>Never</c> —
+/// mesma mecânica de <c>return</c>/<c>throw</c> (Q13): não há regra de tipo nova,
+/// só mais um nó na lista que já sabe propagar <c>Never</c>.
 ///
-/// Join points, e não saltos de verdade, porque a Core não tem nó <c>Block</c>
-/// (Q10): "pular para a instrução 7" não quer dizer nada numa cadeia de
-/// <c>Let</c>. É a forma que compiladores funcionais usam há décadas para casar
-/// fluxo não estruturado com escopo léxico — e é o que mantém substituição e
-/// inlining textuais no partial evaluator.
-///
-/// Com salto para trás os joins podem se referenciar mutuamente: o grafo deixa
-/// de ser um DAG, mas a estrutura não muda.
+/// O tipo do <see cref="CoreLoop"/> que este <c>break</c> alcança é a junção de
+/// todo <c>break</c> (<see cref="Value"/> ausente conta como <c>Void</c>) que o
+/// alcança sem atravessar um <c>loop</c> aninhado sem rótulo — plano 26 §26.5.
 /// </summary>
-public sealed class CoreLabeled(
+public sealed class CoreBreak(
     int nodeId,
     SourceSpan span,
-    CoreExpr entry,
-    ImmutableArray<CoreJoin> joins) : CoreExpr(nodeId, span)
+    string? label,
+    CoreExpr? value) : CoreExpr(nodeId, span)
 {
-    public CoreExpr Entry { get; } = entry;
+    public string? Label { get; } = label;
 
-    public ImmutableArray<CoreJoin> Joins { get; } = joins;
+    public CoreExpr? Value { get; } = value;
+
+    public SourceSpan? LabelSpan { get; init; }
+}
+
+/// <summary>
+/// <c>continue;</c>, opcionalmente rotulado. Tipo <c>Never</c>, como
+/// <see cref="CoreBreak"/> — mas sem valor: um <c>continue</c> reinicia a
+/// iteração, não sai do laço, então não contribui para o tipo do <c>loop</c>.
+/// </summary>
+public sealed class CoreContinue(int nodeId, SourceSpan span, string? label) : CoreExpr(nodeId, span)
+{
+    public string? Label { get; } = label;
+
+    public SourceSpan? LabelSpan { get; init; }
 }
 
 /// <summary>Um arquivo <c>.ls</c> inteiro reduzido a uma única expressão.</summary>

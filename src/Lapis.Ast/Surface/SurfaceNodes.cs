@@ -76,26 +76,6 @@ public sealed record AssignStatement(string Name, Expression Value) : Statement
     public ImmutableArray<SourceSpan> PathSpans { get; init; } = [];
 }
 
-/// <summary>
-/// <c>goto L;</c> ou <c>goto L if e;</c>.
-///
-/// É <c>Statement</c>, não <c>Expression</c>: um salto não produz valor, e
-/// mantê-lo fora da gramática de expressão elimina <c>def x = goto L;</c> sem
-/// precisar de regra (plano 16 §"Por que Statement e não Expression").
-/// </summary>
-public sealed record GotoStatement(string Label, Expression? Condition) : Statement
-{
-    public required SourceSpan LabelSpan { get; init; }
-}
-
-/// <summary>
-/// <c>label L;</c> — o destino de um <c>goto</c>, local à função que o contém.
-/// </summary>
-public sealed record LabelStatement(string Label) : Statement
-{
-    public required SourceSpan LabelSpan { get; init; }
-}
-
 // ------------------------------------------------------------------ macros
 
 /// <summary>
@@ -207,7 +187,48 @@ public sealed record BinaryExpression(BinaryOperator Operator, Expression Left, 
 
 public sealed record BlockExpression(ImmutableArray<Statement> Statements, Expression? Tail) : Expression;
 
-public sealed record IfExpression(Expression Condition, BlockExpression Then, Expression? Else) : Expression;
+/// <summary>
+/// <c>if c { ... }</c>, ou <c>if c e;</c> (plano 26 §26.9, M16).
+///
+/// <c>Then</c>/<c>Else</c> deixaram de ser sempre <see cref="BlockExpression"/>:
+/// um <c>if</c> sem chaves aceita qualquer expressão, **exceto** outro
+/// <c>if</c> sem chaves — é o que evita o dangling-else sem precisar de regra
+/// de precedência (LAP0527). A Core não sabe a diferença: <c>CoreIf.Then</c>
+/// sempre foi <c>CoreExpr</c>.
+/// </summary>
+public sealed record IfExpression(Expression Condition, Expression Then, Expression? Else) : Expression;
+
+/// <summary>
+/// <c>loop { ... }</c>, opcionalmente rotulado (<c>loop :fora { ... }</c>) para
+/// que um <c>break</c>/<c>continue</c> de um laço aninhado o alcance (plano 26,
+/// M16). É <c>Expression</c>, não <c>Statement</c>: com <c>break</c> carregando
+/// valor, <c>def x = loop { ... break 5; };</c> precisa fazer sentido.
+/// </summary>
+public sealed record LoopExpression(string? Label, BlockExpression Body) : Expression
+{
+    public SourceSpan? LabelSpan { get; init; }
+}
+
+/// <summary>
+/// <c>break;</c>, <c>break 5;</c>, <c>break :fora;</c> ou <c>break :fora, 5;</c>
+/// (plano 26, M16). O rótulo vem antes do valor, e o marcador <c>:</c> é o que
+/// evita a ambiguidade entre "rótulo" e "valor" — os dois são identificador ou
+/// expressão na mesma posição gramatical sem ele.
+/// </summary>
+public sealed record BreakExpression(string? Label, Expression? Value) : Expression
+{
+    public SourceSpan? LabelSpan { get; init; }
+}
+
+/// <summary>
+/// <c>continue;</c> ou <c>continue :fora;</c> (plano 26, M16). Sem valor: um
+/// <c>continue</c> reinicia a iteração, não sai do laço — não há o que devolver
+/// ao lugar que perguntou pelo tipo do <c>loop</c>.
+/// </summary>
+public sealed record ContinueExpression(string? Label) : Expression
+{
+    public SourceSpan? LabelSpan { get; init; }
+}
 
 public sealed record ReturnExpression(Expression? Value) : Expression;
 
@@ -286,6 +307,39 @@ public sealed record MemberExpression(Expression Target, string Name) : Expressi
 public sealed record MatchExpression(
     Expression Scrutinee,
     ImmutableArray<MatchArm> Arms) : Expression;
+
+/// <summary>
+/// <c>e is Variante</c> ou <c>e is Variante(v)</c> — testar a variante do
+/// escrutinado e, opcionalmente, desembrulhar a carga (plano 25, fecha Q23).
+///
+/// Não existe nó equivalente na Core: é açúcar sobre <c>match</c> (§25.2). A
+/// ligação (<see cref="BindingName"/> não nulo) só produz escopo nas duas
+/// posições da §25.3 — condição de <c>if</c> e operando esquerdo de
+/// <c>&amp;&amp;</c> —, reconhecidas pelo desugar antes de descer para esta
+/// expressão; em qualquer outra posição é <c>LAP0730</c>.
+///
+/// <see cref="OwnerName"/> é nulo quando a variante vem sem qualificação
+/// (<c>e is Some</c>) — o enum é inferido pelo desugar a partir de quem
+/// declara essa variante (§25.5), e <c>LAP0732</c> cobre tanto o nome
+/// desconhecido quanto a ambiguidade entre dois enums com a mesma variante.
+/// <see cref="OwnerTypeArguments"/> é aceito pela gramática (<c>Result&lt;Int,
+/// ?&gt;.Ok(v)</c>) mas não é validado contra o escrutinado nesta primeira
+/// implementação — os tipos da carga continuam vindo da instância real, como
+/// em <c>match</c>.
+/// </summary>
+public sealed record IsExpression(
+    Expression Scrutinee,
+    string? OwnerName,
+    ImmutableArray<GenericArgumentSyntax> OwnerTypeArguments,
+    string VariantName,
+    string? BindingName) : Expression
+{
+    public required SourceSpan VariantSpan { get; init; }
+
+    public SourceSpan? OwnerSpan { get; init; }
+
+    public SourceSpan? BindingSpan { get; init; }
+}
 
 /// <summary>Declaração de tipo. Não tem nome próprio: o nome vem do <c>def</c> (spec §14).</summary>
 public sealed record TypeExpression(

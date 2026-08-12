@@ -26,7 +26,7 @@ implementação.
 | Q19 | macro é declaração nomeada, não valor ligado por `def` | ✅ decidido |
 | Q20 | `@match` compara variantes; sem `enumTag`/`enumPayload` | 🅿️ estacionada com `@match` |
 | Q21 | `constraint` roda na própria LapisLang, no mesmo evaluator | ✅ decidido |
-| Q22 | `if` e `match` **continuam** no compilador; `@while` entra no prelude | ✅ decidido |
+| Q22 | `if` e `match` continuam no compilador; `match` sai quando macro souber exaustividade | 🔄 encaminhada |
 | Q23 | `is`: construção de linguagem para ler carga de variante com segurança | ✅ decidido · plano 25 |
 | Q24 | `goto` pode saltar para trás; fim da terminação por construção | ⚠️ revertida pela Q32 |
 | Q25 | mutação com `var`; closure não captura `var` | ✅ decidido · implementado |
@@ -605,7 +605,7 @@ Runtime, `PreludeLoader` carga no Cli): `Lapis.Macros` declara uma interface
 
 ---
 
-## Q22 ✅ — `if` e `match` continuam no compilador
+## Q22 🔄 — `if` e `match` continuam no compilador (`match`, por ora)
 
 **Problema.** Se `@if` e `@match` funcionarem, `if`/`match` viram macros do prelude
 e deixam de ser keywords. Todo programa passa a escrever `@if`.
@@ -632,12 +632,33 @@ some se a substituição for parcial.
 - `if` e `match` seguem palavras reservadas; `CoreIf` e `CoreMatch` seguem na Core;
 - a desestruturação por padrão (`Result.Ok(value) => ...`) segue sendo como se lê
   uma carga;
-- o saldo de palavras reservadas passa a ser **só de entrada**: `macro`,
-  `constraint`, `expand`, `goto`, `label`, `throw`. Nada sai;
 - o plano 20 deixa de retirar nada, e nenhum programa existente muda de
   comportamento.
 
-**Volta à mesa** quando Q23 tiver resposta.
+**Voltou à mesa com a Q23 (M16), e a decisão foi partida ao meio.**
+
+A Q23 respondeu a metade que era dela: `is` é primitiva da Core (plano 25 §25.2),
+então uma macro construída sobre ele **não** depende mais do `match`. O
+argumento "nenhuma macro lê carga de variante" caiu.
+
+O que sobrou, e que é o único motivo de `match` continuar aqui, é a
+**exaustividade** (Q6/`LAP0262`). `match` é expressão e precisa produzir valor em
+toda execução; provar que os braços cobrem o enum exige saber o tipo do
+escrutinado, e uma macro roda **antes** do checker, sobre a Surface. Um `@match`
+expandindo para `if e is A(x) { … } else if e is B(y) { … } else { ??? }` não tem
+o que pôr naquele `else`: `throw` é compile-time (`LAP0507`), abortar
+reintroduziria o caminho de falha em runtime que a §30 proíbe, e deixar o checker
+reconhecer a forma expandida seria `match` no compilador com outro nome.
+
+**Estado atual:** as duas construções coexistem, com papéis distintos —
+`is` testa uma variante e **não** é exaustivo; `match` cobre todas e é.
+
+**Volta à mesa** quando o sistema de macros souber provar exaustividade. Aí
+`match` vira `@match` no prelude e `CoreMatch` sai da Core; `CoreIs` fica.
+
+> O argumento de que "o plano 14 passaria a ter duas formas de controle a
+> entender" não vale mais nessa direção: uma cadeia de `if`/`is` usa `CoreIf`,
+> que o PE já trata, e faz `CoreMatch` desaparecer. É uma forma a **menos**.
 
 ---
 
@@ -674,8 +695,16 @@ juntas**: não existe posição em que `value` esteja em escopo e a variante sej
 outra. Não há análise de fluxo, e não há caminho de runtime para o caso falso — há
 ausência de escopo.
 
-`is` é açúcar sobre `match` — nenhum nó novo na Core —, o que mantém a Q22
-intacta: o plano 14 continua com uma forma de controle a entender.
+`is` é **primitiva da Core** (`CoreIs`, plano 25 §25.2), e não açúcar sobre
+`match`. A primeira implementação (M16) o fez como açúcar e foi substituída:
+daquele jeito a Q22 ficava circular — `match` seria insubstituível porque seu
+substituto estava definido em termos dele. Como primitiva, `is` é justamente o
+que dá à Q22 uma saída; o que ainda falta lá é a exaustividade.
+
+O nó carrega os dois ramos (`Is(e, V, x?, então, senão)`) e não só um `Bool`:
+com a ligação num nó irmão do teste, dar-lhe escopo exigiria análise de
+dominância — a saída recusada acima. Dentro do nó, a ligação e a prova continuam
+nascendo juntas.
 
 Uma restrição vem junto: a ligação só vale onde o desugar consegue lhe dar escopo —
 condição de `if` e operando esquerdo de `&&` (`LAP0730`).
