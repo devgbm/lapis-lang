@@ -67,6 +67,15 @@ public sealed class CoreLet(
     public bool IsMutable { get; init; }
 
     public SourceSpan NameSpan { get; init; } = span;
+
+    /// <summary>
+    /// O span do tipo dono, quando o <c>Let</c> veio de <c>def T.m = e;</c>.
+    ///
+    /// Existe para o diagnóstico apontar o certo: <c>LAP0704</c> fala do
+    /// <b>dono</b>, e um circunflexo sob o nome do membro seria um caret
+    /// contradizendo a própria mensagem.
+    /// </summary>
+    public SourceSpan? OwnerSpan { get; init; }
 }
 
 /// <summary>
@@ -89,9 +98,25 @@ public sealed class CoreAssign(
     public CoreExpr Value { get; } = value;
 
     public SourceSpan NameSpan { get; init; } = span;
+
+    /// <summary>
+    /// Campos percorridos a partir de <see cref="Name"/> — vazio na forma simples.
+    ///
+    /// <c>u.name = e</c> <b>não</b> muda o struct no lugar: reconstrói o valor e
+    /// reatribui o slot (plano 21 §21.3b). Com isso todo <c>Value</c> continua
+    /// imutável, a única coisa mutável continua sendo o slot do ambiente, e não há
+    /// aliasing para o partial evaluator modelar.
+    /// </summary>
+    public ImmutableArray<string> Path { get; init; } = [];
+
+    public ImmutableArray<SourceSpan> PathSpans { get; init; } = [];
 }
 
-public sealed record CoreParameter(string Name, TypeSyntax Type, SourceSpan Span);
+/// <summary>
+/// Parâmetro de uma função. <see cref="Type"/> é <c>null</c> só para <c>self</c>
+/// (plano 22 §22.1) — o tipo dele vem do dono do membro, e não da sintaxe.
+/// </summary>
+public sealed record CoreParameter(string Name, TypeSyntax? Type, SourceSpan Span);
 
 /// <summary>Parâmetro genérico declarado: <c>T</c> ou <c>N: Int</c> (Q1).</summary>
 public sealed record CoreTypeParameter(string Name, TypeSyntax? ConstType, SourceSpan Span)

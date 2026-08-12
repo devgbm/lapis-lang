@@ -212,13 +212,75 @@ public sealed class Evaluator
             return value;
         }
 
-        if (!environment.TryAssign(node.Name, value.Value))
+        var assigned = value.Value;
+
+        // `u.endereco.rua = e;` — **atualização funcional**, não mutação no lugar
+        // (plano 21 §21.3b): o struct é reconstruído de dentro para fora e o slot
+        // recebe o valor novo.
+        //
+        // É o que preserva tudo o que a Q25 comprou: todo `Value` continua
+        // imutável, a única coisa mutável continua sendo o slot do ambiente, e não
+        // há aliasing para o partial evaluator modelar. O preço é semântica de
+        // valor, e é observável — `def b = a; a.name = "y";` deixa `b` com o valor
+        // antigo.
+        if (!node.Path.IsEmpty)
+        {
+            if (!environment.TryLookup(node.Name, out var current))
+            {
+                throw new InternalCompilerException(
+                    $"atribuição a '{node.Name}', que não existe no ambiente", node.Span);
+            }
+
+            assigned = Rebuild(current, node.Path, 0, assigned, node.Span);
+        }
+
+        if (!environment.TryAssign(node.Name, assigned))
         {
             throw new InternalCompilerException(
                 $"atribuição a '{node.Name}', que não existe no ambiente");
         }
 
         return Completion.Normal(VoidValue.Instance);
+    }
+
+    /// <summary>
+    /// O valor de <paramref name="target"/> com o campo em
+    /// <c>path[index..]</c> trocado por <paramref name="replacement"/>.
+    ///
+    /// Recursivo porque o caminho pode ser aninhado, e cada nível reconstrói o seu
+    /// próprio struct: nenhum valor existente é alterado.
+    /// </summary>
+    private static Value Rebuild(
+        Value target,
+        ImmutableArray<string> path,
+        int index,
+        Value replacement,
+        SourceSpan span)
+    {
+        if (index >= path.Length)
+        {
+            return replacement;
+        }
+
+        if (target is not StructValue instance)
+        {
+            throw new InternalCompilerException(
+                "atribuição a campo de valor que não é instância de type; "
+                + "o checker deveria ter rejeitado", span);
+        }
+
+        var field = instance.Definition.IndexOfField(path[index]);
+
+        if (field < 0)
+        {
+            throw new InternalCompilerException(
+                $"campo '{path[index]}' não existe em '{instance.Definition.Name}'; "
+                + "o checker deveria ter rejeitado", span);
+        }
+
+        var inner = Rebuild(instance.Fields[field], path, index + 1, replacement, span);
+
+        return instance with { Fields = instance.Fields.SetItem(field, inner) };
     }
 
     private Completion EvaluateLambda(CoreLambda node, Environment environment)
@@ -590,6 +652,21 @@ public sealed class Evaluator
                 : span;
         }
 
+        // `T.m` — membro de tipo (plano 21 §21.6). O alvo é o **tipo**, e um tipo
+        // não carrega valor nenhum: o membro vive no ambiente sob o nome sintético
+        // que o desugar emitiu, e ler o nome é tudo o que há para fazer.
+        if (_program.ResolutionOf<MemberResolution>(node) is { } member)
+        {
+            if (!environment.TryLookup(member.SyntheticName, out var value))
+            {
+                throw new InternalCompilerException(
+                    $"membro '{MemberNames.ToDisplayString(member.SyntheticName)}' "
+                    + "não existe no ambiente", node.Span);
+            }
+
+            return Completion.Normal(value);
+        }
+
         // Acesso a campo de instância: precisa avaliar o alvo.
         if (_program.ResolutionOf<FieldResolution>(node) is { } field)
         {
@@ -759,7 +836,31 @@ public sealed class Evaluator
             return Completion.Normal(EvaluateReflect(reflect, node));
         }
 
-        // O callee é avaliado antes dos argumentos; argumentos da esquerda para a direita.
+        // `user.hello(x)` — o receptor é avaliado **uma vez**, e entra como
+        // argumento 0 (plano 22 §22.2, §22.4).
+        //
+        // É o erro clássico de desugaring de método: reescrever para
+        // `User#hello(user)` duplicaria a expressão do receptor, e
+        // `proximo().hello()` chamaria `proximo()` duas vezes. Aqui ela é avaliada
+        // no lugar em que está escrita, e o valor é passado adiante.
+        var receiver = _program.ResolutionOf<CallResolution>(node)?.Receiver;
+        Value? self = null;
+
+        if (receiver is not null)
+        {
+            var evaluatedReceiver = Evaluate(receiver.Expression, environment);
+
+            if (!evaluatedReceiver.IsNormal)
+            {
+                return evaluatedReceiver;
+            }
+
+            self = evaluatedReceiver.Value;
+        }
+
+        // O callee é avaliado antes dos argumentos; argumentos da esquerda para a
+        // direita. Para um membro, avaliar o callee é ler um nome — o alvo do
+        // `CoreField` não é tocado, que é o que impede a dupla avaliação.
         var callee = Evaluate(node.Callee, environment);
 
         if (!callee.IsNormal)
@@ -767,7 +868,12 @@ public sealed class Evaluator
             return callee;
         }
 
-        var arguments = ImmutableArray.CreateBuilder<Value>(node.Arguments.Length);
+        var arguments = ImmutableArray.CreateBuilder<Value>(node.Arguments.Length + (self is null ? 0 : 1));
+
+        if (self is not null)
+        {
+            arguments.Add(self);
+        }
 
         foreach (var argument in node.Arguments)
         {

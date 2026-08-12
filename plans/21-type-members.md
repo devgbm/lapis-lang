@@ -1,7 +1,7 @@
 # Plano 21 — Type members: declaração, membros estáticos e valores
 
 **Projeto:** `Lapis.Ast`, `Lapis.Parser`, `Lapis.Desugar`, `Lapis.TypeChecker`, `Lapis.Evaluator`
-**Milestone:** M15
+**Milestone:** M13
 **Spec:** [`lapislang-type-members-0.1.md`](../spec/lapislang-type-members-0.1.md) §2, §4, §5, §6, §7
 **Depende de:** 04 (parser), 05 (desugar), 06 (checker), 08 (evaluator), 17 (macros)
 
@@ -18,8 +18,8 @@ tipo, resolvidos em tempo de compilação, sem nó novo na Core.
 chamada por `Tipo.membro`, colisão com variante de enum, ausência de overload.
 
 **Fica de fora:** `self` e métodos de instância (plano 22); extensions genéricas
-(plano 23); reflection sobre membros (plano 24); mutação de campo (spec §9 — não
-entra em plano nenhum).
+(plano 23); reflection sobre membros — `reflect(T)` continua descrevendo campos e
+variantes, não membros.
 
 ---
 
@@ -277,11 +277,65 @@ ganho.
 
 ## Critérios de conclusão
 
-- [ ] `def T.m = e;` para valor e para função sem `self`.
-- [ ] `T.m` e `T.m(...)` resolvidos pelo checker, com `LAP0701`–`LAP0705`.
-- [ ] **Zero nós novos na Core** e nenhuma fase de lowering.
-- [ ] Variante de enum e membro convivendo sem precedência silenciosa.
-- [ ] `mutavel.campo = e;` funcionando por atualização funcional, com semântica de
+- [x] `def T.m = e;` para valor e para função sem `self`.
+- [x] `T.m` e `T.m(...)` resolvidos pelo checker, com `LAP0701`–`LAP0705`.
+- [x] **Zero nós novos na Core** e nenhuma fase de lowering.
+- [x] Variante de enum e membro convivendo sem precedência silenciosa.
+- [x] `mutavel.campo = e;` funcionando por atualização funcional, com semântica de
       valor testada (`def b = a` não vê a mudança).
-- [ ] `def fixa.campo = e;` respondendo `LAP0206` em vez de `LAP0102`.
-- [ ] Zero alteração de expectativa em qualquer teste anterior.
+- [x] `def fixa.campo = e;` respondendo `LAP0206` em vez de `LAP0102`.
+- [x] Zero alteração de expectativa em qualquer teste anterior.
+
+---
+
+## O que a implementação mudou no plano
+
+### O separador do nome sintético não podia ser `@`
+
+O plano dizia para usar `@`, "o mesmo da higiene de macro, e pela mesma razão".
+A razão está certa — um caractere não lexável em identificador impede colisão com
+nome escrito pelo usuário — mas a escolha estava errada: o lexer **absorve**
+`nome@<dígitos>` como um identificador só, que é o que faz uma marca de expansão
+sobreviver ao round-trip do printer. Os dois esquemas dividiriam o mesmo espaço, e
+`temp@1` passou a ser lido como o membro `1` do tipo `temp` — o que quebrou a
+higiene de macro em dois lugares ao mesmo tempo.
+
+O separador virou `#`. Separadores distintos tornam a sobreposição impossível em
+vez de improvável.
+
+### `CoreLet` precisou do span do dono
+
+`LAP0704` fala do **dono** — "'x' não é um tipo declarado" —, e o `CoreLet` só
+carregava o span do nome do membro. O caret apareceria sob `m` numa mensagem sobre
+`x`, contradizendo a própria mensagem. `CoreLet.OwnerSpan` existe só para isso.
+
+### O partial evaluator matava os membros
+
+Não estava previsto, e é o mesmo defeito que o M12 achou em outra posição: o uso
+de um membro é um `CoreField` cujo `Name` é só `hello`, então o nome sintético
+`User#hello` não aparece em lugar nenhum da árvore. `FreeVariables` não o contava,
+o `Let` do membro virava código morto, e o residual citava um membro que não
+existia mais.
+
+A conta passou a somar `T#m` sempre que um `CoreField` tem alvo nomeado. É
+sintática e **sobre-aproxima** de propósito: `u.name` sobre uma instância também
+soma `u#name`, que não é binding de ninguém. Um nome livre a mais só faz um `Let`
+sobreviver sem necessidade; um a menos apaga código vivo.
+
+E quando o valor não é conhecido, o que sobrevive no residual é o próprio acesso
+`User.grita` — não uma referência ao nome sintético, que não é lexável.
+
+### E derrubou um bug de aliasing que já existia desde o M7
+
+O caso de conformidade de atribuição a campo não sobreviveu à equivalência, e a
+causa não era do M13.
+
+O especializador substitui uma "referência trivial" — `def copia = u;` vira `u` em
+todo uso. Isso vale enquanto `u` for imutável. Com `u` sendo `var`, `copia` é um
+**instantâneo** e `u` é um slot: uma atribuição posterior a `u` muda o que a
+substituição faz `copia` valer. `def copia = u; u = 2; print(copia);` já imprimia
+`1` no evaluator e `2` no residual — desde o M7, sem nenhum programa do corpus
+para mostrar.
+
+`def b = a; a.campo = e;` é a forma que finalmente o trouxe. A substituição passou
+a exigir que o **referenciado** seja imutável.

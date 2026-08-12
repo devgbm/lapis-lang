@@ -36,6 +36,18 @@ public sealed record DefStatement(string Name, TypeSyntax? Annotation, Expressio
     /// à parte.
     /// </summary>
     public bool IsMutable { get; init; }
+
+    /// <summary>
+    /// O tipo dono, quando a declaração é <c>def T.m = ...</c> (plano 21).
+    ///
+    /// É <see cref="TypeSyntax"/> e não <c>string</c> porque as extensions
+    /// genéricas (plano 23) precisarão de <c>Result&lt;T&gt;.isOk</c>, e mudar a
+    /// forma depois custaria reabrir parser, desugar e checker. No M13 só um nome
+    /// sem argumentos é aceito; o resto é <c>LAP0704</c>.
+    /// </summary>
+    public TypeSyntax? Owner { get; init; }
+
+    public SourceSpan? OwnerSpan { get; init; }
 }
 
 public sealed record ExpressionStatement(Expression Expression) : Statement;
@@ -50,6 +62,18 @@ public sealed record ExpressionStatement(Expression Expression) : Statement;
 public sealed record AssignStatement(string Name, Expression Value) : Statement
 {
     public required SourceSpan NameSpan { get; init; }
+
+    /// <summary>
+    /// Os campos percorridos em <c>u.endereco.rua = e;</c> (plano 21 §21.3b).
+    ///
+    /// Vazio na forma simples. O receptor é sempre um <b>nome</b>, nunca uma
+    /// expressão qualquer: <c>proximo().name = x</c> mutaria um temporário que
+    /// ninguém mais vê.
+    /// </summary>
+    public ImmutableArray<string> Path { get; init; } = [];
+
+    /// <summary>Um span por segmento de <see cref="Path"/>, para o diagnóstico apontar o certo.</summary>
+    public ImmutableArray<SourceSpan> PathSpans { get; init; } = [];
 }
 
 /// <summary>
@@ -293,7 +317,16 @@ public sealed record ErrorExpression : Expression;
 
 // ----------------------------------------------------------------- partes
 
-public sealed record ParameterSyntax(string Name, TypeSyntax Type) : SurfaceNode;
+/// <summary>
+/// <c>x: Int</c> — ou <c>self</c>, sem anotação.
+///
+/// <see cref="Type"/> é anulável por causa de <c>self</c> e de mais nada: é a
+/// única exceção à exigência de anotar parâmetro (spec §26), e o tipo dele vem do
+/// dono do membro (plano 22 §22.1). Fora de um <c>def T.m</c>, um parâmetro sem
+/// anotação continua sendo erro — só que agora é <c>LAP0712</c>, dito pelo
+/// checker, que é quem sabe onde a função está.
+/// </summary>
+public sealed record ParameterSyntax(string Name, TypeSyntax? Type) : SurfaceNode;
 
 public sealed record VariantSyntax(string Name, ImmutableArray<TypeSyntax> Payload) : SurfaceNode;
 

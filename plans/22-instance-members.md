@@ -1,7 +1,7 @@
 # Plano 22 — Métodos de instância e `self`
 
 **Projeto:** `Lapis.TypeChecker`, `Lapis.Evaluator`, `Lapis.Ast`
-**Milestone:** M16
+**Milestone:** M14
 **Spec:** [`lapislang-type-members-0.1.md`](../spec/lapislang-type-members-0.1.md) §3, §5
 **Depende de:** 21 (type members)
 
@@ -159,8 +159,54 @@ depois do checker. É a mesma razão de member resolution ser type checking (pla
 
 ## Critérios de conclusão
 
-- [ ] `fn(self)` recebendo o tipo dono, com `self` **não** reservada.
-- [ ] `receptor.m(args)` resolvido pelo tipo estático, receptor no argumento 0.
-- [ ] `LAP0710`/`LAP0711` separando as duas formas de acesso.
-- [ ] Receptor avaliado exatamente uma vez.
-- [ ] Zero alteração de expectativa em qualquer teste anterior.
+- [x] `fn(self)` recebendo o tipo dono, com `self` **não** reservada.
+- [x] `receptor.m(args)` resolvido pelo tipo estático, receptor no argumento 0.
+- [x] `LAP0710`/`LAP0711` separando as duas formas de acesso.
+- [x] Receptor avaliado exatamente uma vez.
+- [x] Zero alteração de expectativa em qualquer teste anterior.
+
+---
+
+## O que a implementação mudou no plano
+
+### O receptor não entra na árvore, entra na resolução
+
+§22.2 propunha uma `MemberCallResolution` com o receptor dentro. Ficou como um
+campo opcional da `CallResolution` que já existia, e a diferença importa: uma
+resolução só para chamada por instância significaria duas resoluções possíveis
+num `CoreCall`, e o evaluator teria de perguntar as duas. Assim ele lê uma, e o
+receptor é `null` no caso comum.
+
+O que **não** mudou é a razão de fundo: o receptor não pode ser reescrito para
+dentro de `CoreCall.Arguments`, porque a reescrita precisaria do tipo dele — que
+só existe no checker. É a mesma razão de member resolution ser type checking, e é
+o que mantém o receptor avaliado uma vez.
+
+### `CoreParameter.Type` teve de ficar anulável
+
+Não estava previsto. `self` é o único parâmetro sem anotação, e representá-lo com
+um tipo sintético (`?`) faria o checker distinguir "não anotado" de "anotado com
+um nome inválido" por comparação de string. Anulável diz a mesma coisa no tipo,
+e os três printers ganharam o caso — que é justamente o que faz um membro de
+instância sobreviver ao round-trip.
+
+### A tabela de membros vazou para o `FreeVariables`
+
+Terceira vez que o mesmo defeito aparece, e a última posição em que ele cabia.
+
+Em `u.saudar()` o dono é o **tipo de `u`**, e a árvore não carrega isso: o
+`CoreField` tem `Name = "saudar"` e um alvo que é a variável `u`. A leitura
+sintática do M13 somava `u#saudar`, que não é binding de ninguém, e o `Let` do
+membro morria.
+
+`FreeVariables` passou a receber a `TypedProgram` e a ler a `MemberResolution`,
+que diz o nome exato. Sem a tabela — o PE pode rodar sobre o próprio residual sem
+re-checar — a resposta é conservadora: um nome de membro nunca é dado como
+livre-de-uso. Errar para o lado de manter o binding custa uma linha no residual;
+errar para o outro apaga código vivo.
+
+### Dono genérico ainda não aceita `self`
+
+`def Caixa<T>.ler = fn(self)` exigiria dizer quais argumentos `self` carrega, e é
+exatamente o que o plano 23 resolve. Até lá, `LAP0295` — o mesmo código de
+"genérico precisa de argumentos" —, porque a causa é a mesma.

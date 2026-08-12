@@ -1,7 +1,7 @@
 # Plano 23 — Extensions genéricas e especializadas
 
 **Projeto:** `Lapis.Ast`, `Lapis.TypeChecker`
-**Milestone:** M17
+**Milestone:** M15
 **Spec:** [`lapislang-type-members-0.1.md`](../spec/lapislang-type-members-0.1.md) §8.1
 **Depende de:** 21 (type members), 22 (instância), 04 (generics)
 

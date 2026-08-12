@@ -99,6 +99,10 @@ public sealed class RoundTripTests : DesugarTestBase
     [InlineData("var x = 1;")]
     [InlineData("var x: Int = 1;")]
     [InlineData("var x = 1;\nx = 2;")]
+    [InlineData("def T = type { a: Int; };\ndef T.m = 1;")]
+    [InlineData("def T = type { a: Int; };\ndef T.m: Int = 1;")]
+    [InlineData("var u = x;\nu.a = 1;")]
+    [InlineData("var u = x;\nu.a.b = 1;")]
     [InlineData("var i = 0;\nlabel repete;\ni = i + 1;\ngoto repete if i < 3;")]
     [InlineData("def f = fn() Int { var x = 1; x = 2; return x; };")]
     public void PrintThenReparse_ProducesTheSameCore(string source)

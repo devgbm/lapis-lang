@@ -31,12 +31,29 @@ public static class SurfaceSExprPrinter
         return builder.ToString().TrimEnd();
     }
 
+    /// <summary>
+    /// Um statement isolado. Nem tudo é expressão — <c>def</c>, atribuição e
+    /// <c>goto</c> são statements de propósito —, e um teste sobre a forma deles
+    /// precisa de uma entrada própria.
+    /// </summary>
+    public static string Print(Statement statement)
+    {
+        var builder = new StringBuilder();
+        PrintStatement(builder, statement, 0);
+        return builder.ToString().TrimEnd();
+    }
+
     private static void PrintStatement(StringBuilder builder, Statement statement, int indent)
     {
         switch (statement)
         {
             case DefStatement def:
-                Open(builder, indent, $"{(def.IsMutable ? "var" : "def")} {def.Name}");
+                Open(
+                    builder,
+                    indent,
+                    def.Owner is null
+                        ? $"{(def.IsMutable ? "var" : "def")} {def.Name}"
+                        : $"def {PrintType(def.Owner)}.{def.Name}");
 
                 if (def.Annotation is not null)
                 {
@@ -54,7 +71,12 @@ public static class SurfaceSExprPrinter
                 break;
 
             case AssignStatement assign:
-                Open(builder, indent, $"assign {assign.Name}");
+                Open(
+                    builder,
+                    indent,
+                    assign.Path.IsEmpty
+                        ? $"assign {assign.Name}"
+                        : $"assign {assign.Name}.{string.Join(".", assign.Path)}");
                 PrintExpression(builder, assign.Value, indent + 1);
                 Close(builder, indent);
                 break;
@@ -207,7 +229,9 @@ public static class SurfaceSExprPrinter
                 break;
 
             case FunctionExpression n:
-                var parameters = string.Join(" ", n.Parameters.Select(p => $"({p.Name} {PrintType(p.Type)})"));
+                var parameters = string.Join(
+                    " ",
+                    n.Parameters.Select(p => p.Type is null ? $"({p.Name})" : $"({p.Name} {PrintType(p.Type)})"));
                 var returnType = n.ReturnType is null ? "Void" : PrintType(n.ReturnType);
                 Open(builder, indent, $"fn{PrintTypeParameters(n.TypeParameters)} ({parameters}) {returnType}");
                 PrintExpression(builder, n.Body, indent + 1);

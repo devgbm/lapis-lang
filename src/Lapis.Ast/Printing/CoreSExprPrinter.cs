@@ -47,7 +47,9 @@ public static class CoreSExprPrinter
             case CoreLambda n:
                 var parameters = string.Join(
                     " ",
-                    n.Parameters.Select(p => $"({p.Name} {SurfaceSExprPrinter.PrintType(p.Type)})"));
+                    n.Parameters.Select(p => p.Type is null
+                        ? $"({p.Name})"
+                        : $"({p.Name} {SurfaceSExprPrinter.PrintType(p.Type)})"));
                 var returnType = n.ReturnType is null ? "Void" : SurfaceSExprPrinter.PrintType(n.ReturnType);
                 Open(builder, indent, $"{tag}lambda{PrintTypeParameters(n.TypeParameters)} ({parameters}) {returnType}");
                 PrintExpression(builder, n.Body, indent + 1, ids);
@@ -201,7 +203,12 @@ public static class CoreSExprPrinter
                 break;
 
             case CoreAssign n:
-                Open(builder, indent, $"{tag}assign {n.Name}");
+                Open(
+                    builder,
+                    indent,
+                    n.Path.IsEmpty
+                        ? $"{tag}assign {n.Name}"
+                        : $"{tag}assign {n.Name}.{string.Join(".", n.Path)}");
                 PrintExpression(builder, n.Value, indent + 1, ids);
                 Close(builder, indent);
                 break;

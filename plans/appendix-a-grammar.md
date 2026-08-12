@@ -17,9 +17,9 @@ statement      = def_statement
                | macro_declaration
                | expr_statement ;
 
-def_statement  = ( "def" | "var" ) IDENT ( ":" type )? "=" expression ";" ;
+def_statement  = ( "def" | "var" ) IDENT ( "." IDENT )? ( ":" type )? "=" expression ";" ;
 
-assign_statement = IDENT "=" expression ";" ;
+assign_statement = IDENT ( "." IDENT )* "=" expression ";" ;
 
 goto_statement = "goto" IDENT ( "if" expression )? ";" ;
 
@@ -46,6 +46,15 @@ def abs = fn(x: Int) Int {
 A regra é a mesma do Rust e não introduz ambiguidade: dentro de um bloco, a
 decisão entre "cauda" e "statement" continua sendo tomada pelo token seguinte
 (`}` ⇒ cauda).
+
+**`def T.m = e;`** declara um membro do tipo `T` (plano 21). A desambiguação é de
+um token: depois do primeiro identificador, `.` significa membro e `:` ou `=`
+significa `def` comum. Um membro é definitivo — `var T.m` é `LAP0705`.
+
+**`x.a.b = e;`** atribui a um campo. O receptor é sempre um **nome**, nunca uma
+expressão qualquer: `f().x = e` mutaria um temporário que ninguém mais vê, e por
+isso `f()` nem entra na produção. A mutabilidade segue o binding, não a forma do
+alvo — num `def` a mesma escrita é `LAP0206`, e não um erro de sintaxe.
 
 ---
 
@@ -144,7 +153,8 @@ struct.
 ```ebnf
 fn_expr        = "fn" generic_params? "(" param_list? ")" type? block ;
 param_list     = param ( "," param )* ","? ;
-param          = IDENT ":" type ;
+param          = IDENT ":" type
+               | "self" ;                    (* só no 1º de um `def T.m` — plano 22 *)
 
 type_expr      = "type" generic_params? "{" field_decl* "}" ;
 field_decl     = IDENT ":" type ";" ;
@@ -154,6 +164,16 @@ variant        = IDENT ( "(" type ( "," type )* ")" )? ;
 ```
 
 O tipo de retorno de `fn` é opcional; ausente ⇒ `Void` (spec §6).
+
+**`self` sem anotação** é a única exceção à exigência de anotar parâmetro (spec
+§26), e o gatilho é a **ausência de anotação**, não o nome: `fn(self: Str)` é um
+parâmetro comum, e o membro volta a ser estático. O parser aceita a forma em
+qualquer posição; quem decide se ela é legítima é o checker (`LAP0712`), porque só
+ele sabe se a função é o valor de um `def T.m`.
+
+**`self` não é palavra reservada.** `def self = 1;` continua válido, e um
+parâmetro chamado `self` numa função comum é um parâmetro chamado `self` — mesma
+decisão de `label` ser contextual.
 
 ---
 

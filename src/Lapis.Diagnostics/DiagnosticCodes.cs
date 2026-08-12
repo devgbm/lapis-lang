@@ -127,6 +127,30 @@ public static class DiagnosticCodes
     public const string ReflectExpectsType = "LAP0601";
     public const string TypeNotDeclaredYet = "LAP0602";
 
+    // LAP070x — membros de tipo (plano 21)
+    public const string UnknownMember = "LAP0701";
+    public const string DuplicateMember = "LAP0702";
+    public const string MemberShadowsVariant = "LAP0703";
+    public const string MemberOwnerMustBeAType = "LAP0704";
+    public const string MemberCannotBeVar = "LAP0705";
+
+    // LAP0706 está reservado, não emitido. Ele cobriria "atribuição qualificada é
+    // proibida" — regra que chegou a ser escrita e que o autor corrigiu:
+    // `varInstance.name = "x"` **é** válido, porque a mutabilidade segue o binding
+    // e não a forma do alvo. O número não é reciclado.
+    public const string QualifiedAssignmentReserved = "LAP0706";
+
+    /// <summary>
+    /// O alvo de uma atribuição existe no tipo, mas é membro e não campo da
+    /// instância. "Campo desconhecido" (<c>LAP0250</c>) seria mentira.
+    /// </summary>
+    public const string AssignToMember = "LAP0707";
+
+    // LAP071x — membros de instância (plano 22)
+    public const string MemberRequiresInstance = "LAP0710";
+    public const string MemberIsStatic = "LAP0711";
+    public const string SelfOutsideMember = "LAP0712";
+
     // LAP03xx — Execução
     //
     // LAP0301 (divisão por zero) foi aposentado: a divisão inteira por zero passou

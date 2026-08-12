@@ -56,17 +56,27 @@ public sealed class Desugarer
 
             seen ??= new Dictionary<string, DefStatement>(StringComparer.Ordinal);
 
-            if (seen.TryGetValue(def.Name, out var previous))
+            // A chave é o nome **sintético**: `def hello` e `def User.hello` são
+            // símbolos distintos, porque o segundo só é alcançável através de um
+            // tipo. Dois `def User.create` continuam colidindo, e o diagnóstico é
+            // o LAP0702, mais específico que "já foi definido".
+            var key = NameOf(def);
+
+            if (seen.TryGetValue(key, out var previous))
             {
+                var isMember = def.Owner is not null;
+
                 _diagnostics.ReportError(
-                    DiagnosticCodes.DuplicateDefinition,
+                    isMember ? DiagnosticCodes.DuplicateMember : DiagnosticCodes.DuplicateDefinition,
                     def.NameSpan,
-                    $"'{def.Name}' já foi definido neste escopo",
-                    new DiagnosticNote("definição anterior", previous.NameSpan));
+                    isMember
+                        ? $"o membro '{def.Name}' de '{MemberNames.Split(key)!.Value.Owner}' já foi declarado"
+                        : $"'{def.Name}' já foi definido neste escopo",
+                    new DiagnosticNote("declaração anterior", previous.NameSpan));
             }
             else
             {
-                seen[def.Name] = def;
+                seen[key] = def;
             }
         }
     }
@@ -107,13 +117,14 @@ public sealed class Desugarer
         {
             DefStatement def => _factory.Let(
                 def.Span,
-                def.Name,
+                NameOf(def),
                 def.Annotation,
                 DesugarExpression(def.Value),
                 rest,
                 isSynthetic: false,
                 def.NameSpan,
-                def.IsMutable),
+                def.IsMutable,
+                def.OwnerSpan),
 
             ExpressionStatement expression => _factory.Let(
                 expression.Span,
@@ -435,8 +446,26 @@ public sealed class Desugarer
         return terminator;
     }
 
+    /// <summary>
+    /// O nome com que a declaração vive na Core. Um membro de tipo leva o nome
+    /// sintético (plano 21 §21.4); o resto leva o próprio nome.
+    ///
+    /// O desugar não resolve nada aqui — ele só nomeia. Se `Owner` não é um tipo
+    /// declarado, quem reclama é o checker, que é quem sabe.
+    /// </summary>
+    private static string NameOf(DefStatement def) =>
+        def.Owner is NamedTypeSyntax { Arguments.IsEmpty: true } owner
+            ? MemberNames.Of(owner.Name, def.Name)
+            : def.Name;
+
     private CoreExpr DesugarAssign(AssignStatement node) =>
-        _factory.Assign(node.Span, node.Name, DesugarExpression(node.Value), node.NameSpan);
+        _factory.Assign(
+            node.Span,
+            node.Name,
+            DesugarExpression(node.Value),
+            node.NameSpan,
+            node.Path,
+            node.PathSpans);
 
     private CoreExpr DesugarGoto(GotoStatement node) =>
         node.Condition is null
