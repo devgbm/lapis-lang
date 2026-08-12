@@ -34,6 +34,7 @@ public enum TokenKind
     ExpandKeyword,
     ConstraintKeyword,
     ThrowKeyword,
+    IsKeyword,
 
     // delimitadores
     OpenParen,
@@ -134,6 +135,7 @@ public static class TokenKindExtensions
         TokenKind.ExpandKeyword => "'expand'",
         TokenKind.ConstraintKeyword => "'constraint'",
         TokenKind.ThrowKeyword => "'throw'",
+        TokenKind.IsKeyword => "'is'",
         TokenKind.At => "'@'",
         TokenKind.Question => "'?'",
         TokenKind.OpenParen => "'('",

@@ -308,6 +308,39 @@ public sealed record MatchExpression(
     Expression Scrutinee,
     ImmutableArray<MatchArm> Arms) : Expression;
 
+/// <summary>
+/// <c>e is Variante</c> ou <c>e is Variante(v)</c> — testar a variante do
+/// escrutinado e, opcionalmente, desembrulhar a carga (plano 25, fecha Q23).
+///
+/// Não existe nó equivalente na Core: é açúcar sobre <c>match</c> (§25.2). A
+/// ligação (<see cref="BindingName"/> não nulo) só produz escopo nas duas
+/// posições da §25.3 — condição de <c>if</c> e operando esquerdo de
+/// <c>&amp;&amp;</c> —, reconhecidas pelo desugar antes de descer para esta
+/// expressão; em qualquer outra posição é <c>LAP0730</c>.
+///
+/// <see cref="OwnerName"/> é nulo quando a variante vem sem qualificação
+/// (<c>e is Some</c>) — o enum é inferido pelo desugar a partir de quem
+/// declara essa variante (§25.5), e <c>LAP0732</c> cobre tanto o nome
+/// desconhecido quanto a ambiguidade entre dois enums com a mesma variante.
+/// <see cref="OwnerTypeArguments"/> é aceito pela gramática (<c>Result&lt;Int,
+/// ?&gt;.Ok(v)</c>) mas não é validado contra o escrutinado nesta primeira
+/// implementação — os tipos da carga continuam vindo da instância real, como
+/// em <c>match</c>.
+/// </summary>
+public sealed record IsExpression(
+    Expression Scrutinee,
+    string? OwnerName,
+    ImmutableArray<GenericArgumentSyntax> OwnerTypeArguments,
+    string VariantName,
+    string? BindingName) : Expression
+{
+    public required SourceSpan VariantSpan { get; init; }
+
+    public SourceSpan? OwnerSpan { get; init; }
+
+    public SourceSpan? BindingSpan { get; init; }
+}
+
 /// <summary>Declaração de tipo. Não tem nome próprio: o nome vem do <c>def</c> (spec §14).</summary>
 public sealed record TypeExpression(
     ImmutableArray<TypeParameterSyntax> TypeParameters,

@@ -315,6 +315,14 @@ public static class SurfaceSExprPrinter
                 Close(builder, indent);
                 break;
 
+            case IsExpression n:
+                var owner = n.OwnerName is null ? string.Empty : $"{n.OwnerName}{PrintGenericArguments(n.OwnerTypeArguments)}.";
+                var binding = n.BindingName is null ? string.Empty : $" ({n.BindingName})";
+                Open(builder, indent, $"is {owner}{n.VariantName}{binding}");
+                PrintExpression(builder, n.Scrutinee, indent + 1);
+                Close(builder, indent);
+                break;
+
             case MatchExpression n:
                 Open(builder, indent, "match");
                 PrintExpression(builder, n.Scrutinee, indent + 1);

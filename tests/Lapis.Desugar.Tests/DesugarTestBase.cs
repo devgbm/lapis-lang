@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Lapis.Ast.Core;
 using Lapis.Ast.Printing;
 using Lapis.Diagnostics;
@@ -18,6 +19,20 @@ public abstract class DesugarTestBase
 
         diagnostics.HasErrors.ShouldBeFalse();
         return program;
+    }
+
+    /// <summary>Para diagnósticos que o próprio desugar reporta (plano 25 — <c>is</c>).</summary>
+    protected static ImmutableArray<string> CompileCodes(string source)
+    {
+        var diagnostics = new DiagnosticBag();
+        var file = Parser.Parser.Parse(SourceText.From(source), diagnostics);
+
+        diagnostics.HasErrors.ShouldBeFalse(
+            $"erro de parse: {string.Join(", ", diagnostics.Select(d => d.Code))}");
+
+        Desugarer.Desugar(file, diagnostics);
+
+        return [.. diagnostics.Select(d => d.Code)];
     }
 
     protected static string Print(string source) => CoreSExprPrinter.Print(Compile(source));

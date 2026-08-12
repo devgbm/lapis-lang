@@ -270,6 +270,26 @@ public sealed class ExpansionTests : MacroTestBase
     public void Hygiene_FreeReferencesAreNotRenamed() =>
         Expand(Log + "@log 1;").ShouldNotContain("print@");
 
+    /// <summary>
+    /// A ligação de um `is` introduzido pela macro também é higienizada (plano
+    /// 25) — duas invocações não colidem, do mesmo jeito que o rótulo de `loop`.
+    /// </summary>
+    [Fact]
+    public void Hygiene_IsBindingsAreRenamed()
+    {
+        var expanded = Expand("""
+            macro unwrap
+                match Expression:e
+                expand { if e is Some(value) { value } else { 0 } };
+
+            @unwrap a;
+            @unwrap b;
+            """);
+
+        expanded.ShouldContain("value@1");
+        expanded.ShouldContain("value@2");
+    }
+
     // -------------------------------------------------------- compile time
 
     /// <summary>

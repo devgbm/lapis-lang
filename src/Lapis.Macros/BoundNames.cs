@@ -95,6 +95,17 @@ internal static class BoundNames
                 }
 
                 break;
+
+            // A ligação de `is` também é do `expand`, como o rótulo de `loop`
+            // acima (plano 25).
+            case IsExpression n:
+                if (n.BindingName is not null)
+                {
+                    names.Add(n.BindingName);
+                }
+
+                Collect(n.Scrutinee, names);
+                break;
         }
     }
 

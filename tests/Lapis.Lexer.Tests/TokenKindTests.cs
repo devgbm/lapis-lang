@@ -17,6 +17,7 @@ public sealed class TokenKindTests : LexerTestBase
     [InlineData("loop", TokenKind.LoopKeyword)]
     [InlineData("break", TokenKind.BreakKeyword)]
     [InlineData("continue", TokenKind.ContinueKeyword)]
+    [InlineData("is", TokenKind.IsKeyword)]
     public void Keywords_AreRecognized(string source, TokenKind expected) =>
         Single(source).Kind.ShouldBe(expected);
 
@@ -33,6 +34,8 @@ public sealed class TokenKindTests : LexerTestBase
     [InlineData("loops")]
     [InlineData("breakpoint")]
     [InlineData("continuation")]
+    [InlineData("island")]
+    [InlineData("isSomething")]
     public void NearKeywords_AreIdentifiers(string source) =>
         Single(source).Kind.ShouldBe(TokenKind.Identifier);
 

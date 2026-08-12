@@ -174,6 +174,19 @@ public static class DiagnosticCodes
     // declarando para quais instâncias dele o membro vale.
     public const string MemberOwnerArity = "LAP0722";
 
+    // LAP073x — `is` (plano 25, M16, fecha Q23). `is` desugara para `match`
+    // (zero nós novos na Core), e por isso estes diagnósticos saem do desugar,
+    // não do checker — o mesmo lugar de LAP0202 (redefinição no mesmo bloco),
+    // outra checagem puramente sintática.
+    //
+    // LAP0731 fica reservado, não emitido: cobriria "a ligação não atravessa um
+    // `goto`" (plano 25 §25.4 original), situação que deixou de existir quando
+    // a Q32 (plano 26) derrubou `goto`/`label`. Não reciclado.
+    public const string IsBindingRequiresIfOrAnd = "LAP0730";
+    public const string UnknownIsVariant = "LAP0732";
+    public const string IsVariantHasNoPayload = "LAP0733";
+    public const string IsVariantHasMultiplePayloads = "LAP0734";
+
     // LAP03xx — Execução
     //
     // LAP0301 (divisão por zero) foi aposentado: a divisão inteira por zero passou

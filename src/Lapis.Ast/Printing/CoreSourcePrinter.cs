@@ -444,7 +444,11 @@ public static class CoreSourcePrinter
     private enum Precedence
     {
         Lowest = 0,
-        Unary = 7,
-        Postfix = 8,
+
+        // Acima do maior valor de BinaryOperator.Precedence() (7, Multiply/Divide
+        // — plano 25 §25.7 abriu um degrau para 'is' no meio da tabela), para que
+        // `context > Precedence.Unary` continue certo em qualquer combinação.
+        Unary = 8,
+        Postfix = 9,
     }
 }

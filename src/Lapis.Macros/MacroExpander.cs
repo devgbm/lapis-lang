@@ -363,6 +363,9 @@ public sealed class MacroExpander
                     Arms = [.. n.Arms.Select(a => a with { Body = RewriteExpression(a.Body, depth) })],
                 };
 
+            case IsExpression n:
+                return n with { Scrutinee = RewriteExpression(n.Scrutinee, depth) };
+
             case ConstructExpression n:
                 return n with
                 {

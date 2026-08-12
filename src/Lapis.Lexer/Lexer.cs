@@ -34,6 +34,7 @@ public sealed class Lexer
         ["expand"] = TokenKind.ExpandKeyword,
         ["constraint"] = TokenKind.ConstraintKeyword,
         ["throw"] = TokenKind.ThrowKeyword,
+        ["is"] = TokenKind.IsKeyword,
     };
 
     private readonly SourceText _source;

@@ -13,6 +13,29 @@
 > predecessores que motivava a regra. O texto abaixo já reflete isso — a nota
 > serve para quem procura a versão antiga.
 
+> **Nota de implementação (M16).** Duas decisões tomadas ao codificar este
+> plano, que o texto original não previa:
+>
+> 1. **`LAP0730`–`LAP0734` saem do desugar, não do checker.** O plano supunha
+>    que resolver dono/aridade de uma variante exigisse tipo — e por isso
+>    "pertenceriam" ao checker. Na prática, o desugar já faz uma varredura
+>    puramente sintática dos `def X = enum { ... }` visíveis (o mesmo espírito
+>    de `ReportDuplicateDefinitions`) mais as variantes do prelúdio (passadas
+>    de fora, já resolvidas — `Pipeline.KnownVariantsOf`), e resolve dono e
+>    aridade **antes** de montar o `CoreMatch`. Duas variantes de nomes iguais
+>    em enums diferentes sem dono escrito é `LAP0732` (ambíguo), pelo mesmo
+>    motivo que "não existe" é `LAP0732`. O ganho: o checker não precisa saber
+>    que um `CoreMatch` veio de `is` — ele vê o `match` de sempre, com
+>    `EnumName` já preenchido, e usa exatamente `CheckVariantPattern` sem
+>    nenhum caso novo.
+> 2. **Os argumentos genéricos do dono não são validados contra o
+>    escrutinado.** `Result<Int, ?>.Ok(v)` é aceito pela gramática e não
+>    reporta erro — mas, como em `match`, os tipos da carga vêm da instância
+>    real do escrutinado, não do que o padrão escreveu. `Is_WithWrongGenericOwner`
+>    (a lista de testes abaixo) não tem caso: validar essa concordância exigiria
+>    uma checagem que `match` nunca teve, e ficou fora desta rodada. Registrado
+>    aqui, não como pendência silenciosa.
+
 ---
 
 ## Objetivo

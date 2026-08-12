@@ -60,16 +60,24 @@ public static class OperatorExtensions
     public static bool IsEquality(this BinaryOperator op) =>
         op is BinaryOperator.Equal or BinaryOperator.NotEqual;
 
-    /// <summary>Precedência do plano 04 §4.2. Maior liga mais forte.</summary>
+    /// <summary>
+    /// Precedência do plano 04 §4.2, com o degrau do <c>is</c> (plano 25 §25.7)
+    /// aberto entre <c>&amp;&amp;</c> e <c>==</c>/<c>!=</c> — <c>is</c> não é um
+    /// <see cref="BinaryOperator"/> (produz <c>IsExpression</c>, não
+    /// <c>BinaryExpression</c>), então o valor 3 não aparece neste enum; é o
+    /// <c>Parser</c> que o usa (<c>IsPrecedence</c>) para intercalar corretamente.
+    /// Maior liga mais forte.
+    /// </summary>
     public static int Precedence(this BinaryOperator op) => op switch
     {
         BinaryOperator.OrElse => 1,
         BinaryOperator.AndAlso => 2,
-        BinaryOperator.Equal or BinaryOperator.NotEqual => 3,
+        // 3 = 'is' (fora deste enum; ver Parser.IsPrecedence)
+        BinaryOperator.Equal or BinaryOperator.NotEqual => 4,
         BinaryOperator.Less or BinaryOperator.Greater
-            or BinaryOperator.LessOrEqual or BinaryOperator.GreaterOrEqual => 4,
-        BinaryOperator.Add or BinaryOperator.Subtract => 5,
-        BinaryOperator.Multiply or BinaryOperator.Divide => 6,
+            or BinaryOperator.LessOrEqual or BinaryOperator.GreaterOrEqual => 5,
+        BinaryOperator.Add or BinaryOperator.Subtract => 6,
+        BinaryOperator.Multiply or BinaryOperator.Divide => 7,
         _ => throw new ArgumentOutOfRangeException(nameof(op)),
     };
 }

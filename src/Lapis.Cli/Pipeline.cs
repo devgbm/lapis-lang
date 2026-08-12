@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using Lapis.Ast.Core;
 using Lapis.Ast.Surface;
 using Lapis.Ast.Typed;
+using Lapis.Ast.Types;
 using Lapis.Diagnostics;
 using Lapis.Evaluator;
 using Lapis.Lexer;
@@ -108,7 +109,7 @@ public static class Pipeline
             return Result(diagnostics, tokens, surface, compileContext: constraints.Context);
         }
 
-        var core = Desugar.Desugarer.Desugar(surface, diagnostics);
+        var core = Desugar.Desugarer.Desugar(surface, diagnostics, KnownVariantsOf(scope));
 
         if (stopAfter == PipelineStage.Desugar || diagnostics.HasErrors)
         {
@@ -126,6 +127,23 @@ public static class Pipeline
 
         return Result(diagnostics, tokens, surface, core, typed, evaluation, constraints.Context);
     }
+
+    /// <summary>
+    /// As variantes do prelúdio, para o desugar resolver o dono implícito de um
+    /// <c>is</c> sem qualificação (plano 25 §25.5) — <c>Option.Some</c>,
+    /// <c>Result.Ok</c> e companhia, sem que o usuário precise escrevê-los.
+    ///
+    /// Público porque quem monta a Core fora deste orquestrador — os testes que
+    /// rodam <c>Desugarer.Desugar</c> direto, sem passar pelo <c>Pipeline</c> —
+    /// precisa da mesma lista para exercitar a forma sem qualificação contra o
+    /// prelude de verdade.
+    /// </summary>
+    public static IEnumerable<Desugar.Desugarer.KnownVariant> KnownVariantsOf(PreludeScope scope) =>
+        from binding in scope.Bindings
+        where binding.Type is MetaType { Definition.Kind: TypeDefinitionKind.Enum }
+        let definition = ((MetaType)binding.Type).Definition
+        from variant in definition.Variants
+        select new Desugar.Desugarer.KnownVariant(definition.Name, variant.Name, variant.Payload.Length);
 
     private static CompilationResult Result(
         DiagnosticBag diagnostics,

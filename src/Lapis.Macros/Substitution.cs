@@ -191,6 +191,17 @@ internal sealed class Substitution
                     Span = _invocation,
                 };
 
+            // A ligação de `is` também é introduzida pela macro, e higieniza-se
+            // como o rótulo de `loop` acima: duas invocações que ligam a mesma
+            // carga não podem colidir (plano 25).
+            case IsExpression n:
+                return n with
+                {
+                    Scrutinee = ApplyExpression(n.Scrutinee),
+                    BindingName = n.BindingName is null ? null : Rename(n.BindingName),
+                    Span = _invocation,
+                };
+
             case ConstructExpression n:
                 return n with
                 {

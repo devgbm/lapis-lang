@@ -731,13 +731,43 @@ public sealed class Parser
         return new ThrowExpression(value) { Span = SpanFrom(start) };
     }
 
+    /// <summary>
+    /// A precedência de <c>is</c> (plano 25 §25.7): mais forte que <c>&amp;&amp;</c>
+    /// (2), mais fraca que <c>==</c>/<c>!=</c> (4). Não é um valor de
+    /// <see cref="BinaryOperator"/> — <c>is</c> produz <see cref="IsExpression"/>,
+    /// não <see cref="BinaryExpression"/> — então mora aqui, e não em
+    /// <c>Operators.cs</c>.
+    /// </summary>
+    private const int IsPrecedence = 3;
+
     private Expression ParseBinary(int minPrecedence)
     {
         var left = ParseUnary();
         var comparisonSeen = false;
+        var isSeen = false;
 
-        while (TryGetBinaryOperator(Current.Kind, out var op))
+        while (true)
         {
+            if (Current.Kind == TokenKind.IsKeyword && IsPrecedence >= minPrecedence)
+            {
+                // `a is P is Q` não tem leitura: mesmo motivo de `a < b < c` — o
+                // segundo `is` teria um `Bool` à esquerda. Mesmo diagnóstico
+                // (§25.7), e a mesma recuperação: reporta e ainda assim parseia.
+                if (isSeen)
+                {
+                    Report(DiagnosticCodes.ChainedComparison, Current.Span, "'is' não encadeia; use parênteses");
+                }
+
+                isSeen = true;
+                left = ParseIsExpression(left);
+                continue;
+            }
+
+            if (!TryGetBinaryOperator(Current.Kind, out var op))
+            {
+                break;
+            }
+
             var precedence = op.Precedence();
 
             if (precedence < minPrecedence)
@@ -772,6 +802,111 @@ public sealed class Parser
         }
 
         return left;
+    }
+
+    /// <summary>
+    /// <c>scrutinee is is_pattern</c> (plano 25 §25.5). O <c>is</c> já foi visto
+    /// por <see cref="ParseBinary"/>, que só decide <b>se</b> consome; quem lê o
+    /// resto é este método.
+    /// </summary>
+    private Expression ParseIsExpression(Expression scrutinee)
+    {
+        var start = scrutinee.Span.Start;
+        _tokens.Advance(); // 'is'
+
+        var (ownerName, ownerSpan, ownerArguments, variantName, variantSpan) = ParseIsPattern();
+        var (bindingName, bindingSpan) = ParseIsBinding();
+
+        return new IsExpression(scrutinee, ownerName, ownerArguments, variantName, bindingName)
+        {
+            Span = SpanFrom(start),
+            VariantSpan = variantSpan,
+            OwnerSpan = ownerSpan,
+            BindingSpan = bindingSpan,
+        };
+    }
+
+    /// <summary>
+    /// <c>is_pattern = ( IDENT generic_args? "." )? IDENT</c> (plano 25 §25.5) —
+    /// só a parte do dono e da variante; a ligação entre parênteses é
+    /// <see cref="ParseIsBinding"/>.
+    ///
+    /// Não é <see cref="ParsePattern"/>: aquela produção já existe para
+    /// <c>match</c> e é mais rica (aninha, liga vários nomes). A diferença é
+    /// deliberada — <c>is</c> existe para o caso de uma ligação só, e o caso
+    /// completo já tem <c>match</c> (§25.5, LAP0734).
+    /// </summary>
+    private (string? OwnerName, SourceSpan? OwnerSpan, ImmutableArray<GenericArgumentSyntax> OwnerArguments,
+        string VariantName, SourceSpan VariantSpan) ParseIsPattern()
+    {
+        var firstToken = Current;
+
+        if (Current.Kind != TokenKind.Identifier)
+        {
+            Report(DiagnosticCodes.ExpectedIdentifier, Current.Span, "esperado o nome de uma variante após 'is'");
+            return (null, null, ImmutableArray<GenericArgumentSyntax>.Empty, "?", Current.Span);
+        }
+
+        _tokens.Advance();
+
+        var ownerArguments = Current.Kind == TokenKind.Less
+            ? ParseGenericArgumentList(typePosition: true)
+            : ImmutableArray<GenericArgumentSyntax>.Empty;
+
+        // Sem '.' (e sem genéricos, que só fazem sentido num dono escrito): o
+        // identificador já lido é a própria variante, sem dono — `e is Some`.
+        if (Current.Kind != TokenKind.Dot && ownerArguments.IsEmpty)
+        {
+            return (null, null, ownerArguments, firstToken.Text, firstToken.Span);
+        }
+
+        if (!_tokens.Match(TokenKind.Dot))
+        {
+            Report(DiagnosticCodes.UnexpectedToken, Current.Span, "esperado '.' após o dono da variante");
+        }
+
+        var variantToken = Current;
+
+        if (Current.Kind != TokenKind.Identifier)
+        {
+            Report(DiagnosticCodes.ExpectedIdentifier, Current.Span, "esperado o nome da variante após '.'");
+            return (firstToken.Text, firstToken.Span, ownerArguments, "?", Current.Span);
+        }
+
+        _tokens.Advance();
+
+        return (firstToken.Text, firstToken.Span, ownerArguments, variantToken.Text, variantToken.Span);
+    }
+
+    /// <summary><c>("(" IDENT ")")?</c> — a parte que liga a carga (plano 25 §25.5).</summary>
+    private (string? Name, SourceSpan? Span) ParseIsBinding()
+    {
+        if (!_tokens.Match(TokenKind.OpenParen))
+        {
+            return (null, null);
+        }
+
+        string? name = null;
+        SourceSpan? span = null;
+        var token = Current;
+
+        if (token.Kind == TokenKind.Identifier)
+        {
+            _tokens.Advance();
+            name = token.Text;
+            span = token.Span;
+        }
+        else
+        {
+            Report(DiagnosticCodes.ExpectedIdentifier, token.Span, "esperado um identificador para ligar a carga");
+        }
+
+        if (!_tokens.Match(TokenKind.CloseParen))
+        {
+            Report(DiagnosticCodes.UnexpectedToken, Current.Span, "esperado ')' após o nome da ligação");
+        }
+
+        return (name, span);
     }
 
     private Expression ParseUnary()
