@@ -51,7 +51,7 @@ lapis hello.ls
 | **M13** — membros de tipo e atribuição a campo | ✅ concluído |
 | **M14** — métodos de instância e `self` | ✅ concluído |
 | **M15** — membros sobre tipos genéricos (`Result<?, ?>`) | ✅ concluído |
-| M16 — `is`: testar variante e desembrulhar carga | ⏳ próximo |
+| M16 — `goto`/`label` saem, `loop`/`break`/`continue` entram; `is` fecha Q23 | ⏳ próximo |
 | M17–M19 — PE: especialização, análise, equivalência | ⬜ |
 
 **1682 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
@@ -301,11 +301,15 @@ Só o que um `goto` **explícito** pode ter pulado continua invisível no destin
 que é a única forma de o contrário ser mentira. `examples/control.ls` mostra os
 três casos.
 
-O que falta: **fechar a linguagem** primeiro (M16) — o `is` —, porque o partial
-evaluator precisa de um caso para cada construção, e escrevê-lo contra uma
-superfície que ainda cresce significa reabri-lo a cada milestone. Com ele, o
-último buraco conhecido da superfície fecha: `is` é a construção que a Q23 pedia
-para ler a carga de uma variante com segurança. Os membros sobre tipos genéricos
+O que falta: **fechar a linguagem** primeiro (M16), porque o partial evaluator
+precisa de um caso para cada construção, e escrevê-lo contra uma superfície que
+ainda cresce significa reabri-lo a cada milestone. O M16 tem duas partes: `is`
+fecha o último buraco conhecido — a construção que a Q23 pedia para ler a carga
+de uma variante com segurança —, e `goto`/`label` **saem** da linguagem, trocados
+por `loop`/`break`/`continue` estruturados (Q32). A troca não é cosmética: era
+a regra de escopo de `goto` que travava a especificação do `is` em primeiro
+lugar, e com blocos léxicos comuns no lugar de saltos a trava desaparece. Os
+membros sobre tipos genéricos
 já entraram (M15): `def Result<?, ?>.isOk` diz o alcance em vez de deduzi-lo, e o
 `?` curinga dissolveu a Q27 em vez de respondê-la. O **span** já entrou (M12): o tamanho no tipo tirou do partial
 evaluator o caso trivial de eliminação de bounds check e deixou com ele o

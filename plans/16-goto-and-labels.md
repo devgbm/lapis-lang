@@ -1,8 +1,19 @@
 # Plano 16 — `goto` e `label`
 
+> **⚠️ SUPERADO pela Q32 e pelo [plano 26](26-structured-control-flow.md).**
+> `goto`/`label` saem da linguagem; `if`/`loop`/`break`/`continue` entram no
+> lugar. A razão está na Q32 (Apêndice C): o único uso real de `goto`/`label` no
+> corpus era o padrão de laço e o padrão de desvio condicional, e o segundo já
+> era redundante com o `if`/`else` que a linguagem tem desde o M3.
+>
+> Este plano fica como registro histórico — é a razão de join points terem
+> existido, e o que a implementação aprendeu com eles (a seção final, "laço com
+> progresso") é parte do argumento da Q32. Nada abaixo desta nota descreve a
+> linguagem atual.
+
 **Projeto:** `Lapis.Ast`, `Lapis.Parser`, `Lapis.Desugar`, `Lapis.TypeChecker`, `Lapis.Evaluator`
-**Milestone:** M6
-**Spec:** [`lapislang-macros-0.1.md` §10](../spec/lapislang-macros-0.1.md)
+**Milestone:** M6 — retirado no plano 26
+**Spec:** [`lapislang-macros-0.1.md` §10](../spec/lapislang-macros-0.1.md) *(seção substituída)*
 **Depende de:** 02, 04, 05, 06, 08 (M1–M4 concluídos)
 
 ---

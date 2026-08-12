@@ -215,14 +215,17 @@ Não são diagnósticos de compilação: são relatados na saída de execução 
 |---|---|---|
 | ~~`LAP0301`~~ | — | **aposentado** (Q9): a divisão inteira por zero produz o maior `Int`, então a operação é total |
 | `LAP0302` | abort | profundidade de chamada excedida (limite {0}) |
-| `LAP0303` | abort | limite de saltos excedido (limite {0}) |
+| `LAP0303` | abort | limite de iterações excedido (limite {0}) |
 | `LAP0304` | abort | span de {0} elementos excede o limite de {1} |
 
-`LAP0303` chegou com o `goto` para trás (M6). Até o M4 todo programa terminava por
-construção — sem recursão (Q8) e sem laços; `goto` para trás acaba com isso, e este
-é o diagnóstico que troca um travamento por uma mensagem. O orçamento é do
-**programa inteiro** (1.000.000 de saltos), não de cada laço: é o que torna "todo
-programa termina ou reporta `LAP0303`" uma propriedade verificável.
+`LAP0303` chegou com o `goto` para trás (M6) e continua com `loop` (plano 26,
+Q32) — mesmo código, mesmo espírito, mecanismo mais simples por baixo: a
+mensagem trocou "saltos" por "iterações" porque não há mais salto na linguagem,
+mas o que ela diz não mudou. Até o M4 todo programa terminava por
+construção — sem recursão (Q8) e sem laços; laço com progresso acaba com isso, e
+este é o diagnóstico que troca um travamento por uma mensagem. O orçamento é do
+**programa inteiro** (1.000.000 de iterações), não de cada laço: é o que torna
+"todo programa termina ou reporta `LAP0303`" uma propriedade verificável.
 
 `LAP0304` é o mesmo raciocínio aplicado à quantidade de `.[T; inicial; n]` (plano
 24): um span pedido grande demais termina com diagnóstico em vez de travar a
@@ -235,19 +238,18 @@ programa que compila num que não compila, só por dobrar a expressão do tamanh
 | Código | Severidade | Mensagem |
 |---|---|---|
 | `LAP0730` | error | a ligação de `is` só vale em condição de `if` ou à esquerda de `&&` |
-| `LAP0731` | error | a ligação de `is` não atravessa um salto |
+| ~~`LAP0731`~~ | — | **retirado, não reciclado** (Q32): existia para "a ligação não atravessa um salto"; sem `goto`, a situação não acontece mais |
 | `LAP0732` | error | `'{0}'` não é variante de {1} |
 | `LAP0733` | error | a variante `'{0}'` não carrega valor |
 | `LAP0734` | error | a variante `'{0}'` carrega {1} valores; escreva um padrão de `match` |
 
-`LAP0730` e `LAP0731` são a **regra de escopo** da ligação, e não limitações de
-implementação. `e is Some(v)` produz um `Bool`, e um `Bool` vai a qualquer lugar —
-a ligação, não. As duas posições permitidas são aquelas em que o desugar consegue
-dar escopo a `v` traduzindo para `match`.
-
-`LAP0731` em particular é a mesma regra do `var` declarado entre um `goto` e o seu
-rótulo: o destino é alcançável sem passar pela ligação, então ela não pode existir
-lá. Ver `tests/conformance/eval/mutation/scope_across_joins_with_jump.ls`.
+`LAP0730` é a **regra de escopo** da ligação, e não limitação de implementação.
+`e is Some(v)` produz um `Bool`, e um `Bool` vai a qualquer lugar — a ligação,
+não. As duas posições permitidas (condição de `if`, operando esquerdo de `&&`)
+são aquelas em que o desugar consegue dar escopo a `v` traduzindo para `match`.
+Não há mais uma terceira restrição para "atravessar um salto": `goto`/`label`
+saíram (plano 26), e um bloco léxico (`if`, `loop`) não tem o problema de
+múltiplos predecessores que `LAP0731` existia para recusar.
 
 `LAP0732` repete a mensagem de `LAP0251` de propósito — é o mesmo erro visto de
 outro lugar. `LAP0734` é a fronteira com `match`: `is` liga **um** valor, e a forma
@@ -255,22 +257,40 @@ completa já tem casa.
 
 ---
 
-## LAP052x — `goto` e `label` (implementado, M6)
+## LAP052x — `goto`/`label` (retirado) e controle de fluxo estruturado (plano 26, M16)
+
+`goto`/`label` saíram da linguagem (Q32). Os códigos abaixo ficam **retirados e
+não reciclados** — mesma regra de `LAP0301`/`LAP0706`:
 
 | Código | Severidade | Mensagem |
 |---|---|---|
-| `LAP0520` | error | o rótulo `'{0}'` não existe |
-| `LAP0521` | error | o rótulo `'{0}'` pertence a uma função externa |
-| `LAP0522` | error | o rótulo `'{0}'` já foi declarado neste bloco |
+| ~~`LAP0520`~~ | — | **retirado** — era "o rótulo `'{0}'` não existe" |
+| ~~`LAP0521`~~ | — | **retirado** — era "o rótulo `'{0}'` pertence a uma função externa" |
+| ~~`LAP0522`~~ | — | **retirado** — era "o rótulo `'{0}'` já foi declarado neste bloco" |
 
-`LAP0521` existe para não responder "não existe" a quem escreveu um rótulo que
-existe: um `label` é local à função, como `return`, e a diferença entre "esse nome
-não é rótulo de nada" e "esse rótulo é de outra função" é a diferença entre um erro
-de digitação e um mal-entendido sobre escopo.
+No lugar, `loop`/`break`/`continue` (plano 26) preenchem o resto da família —
+que já estava livre (ver a nota abaixo):
 
-A condição de `goto ... if ...` usa `LAP0230`, o mesmo do `if` — é a mesma exigência.
+| Código | Severidade | Mensagem |
+|---|---|---|
+| `LAP0523` | error | `'break'`/`'continue'` fora de um `loop` |
+| `LAP0524` | error | o rótulo `'{0}'` não existe |
+| `LAP0525` | error | o rótulo `'{0}'` pertence a uma função externa |
+| `LAP0526` | error | valores de `break` no mesmo loop têm tipos incompatíveis: `{0}` e `{1}` |
+| `LAP0527` | error | `if`/`else` sem chaves não pode ter `if` como corpo direto; use chaves |
 
----
+`LAP0524`/`LAP0525` repetem a separação que `LAP0520`/`LAP0521` já faziam para
+`label`: "esse rótulo não é de laço nenhum" e "esse rótulo é de outra função" são
+enganos diferentes, e um `loop` continua local à função, como `return` — mesma
+razão de sempre.
+
+**Não há diagnóstico de rótulo de `loop` duplicado.** `label` exigia unicidade
+porque o mecanismo de agrupamento em joins (plano 16 §16.5) precisava dela;
+`loop` não tem grupo, e um `loop :x` aninhado dentro de outro `loop :x` apenas
+sombreia — a mesma permissividade que qualquer `def` já tem.
+
+A condição de `if` (e, por extensão, a de dentro de um `loop`) usa `LAP0230`, que
+não muda — nunca foi específico de `goto`, sempre foi do `if`.
 
 ## LAP04xx — Partial Evaluator
 
@@ -323,13 +343,14 @@ registro. Um nome de macro é único no arquivo, como um `def` no mesmo bloco.
 
 ### Controle de fluxo
 
-`LAP0520`–`LAP0522` saíram da proposta: estão implementados (M6) e documentados
-acima, na seção "LAP052x — `goto` e `label`".
+`LAP0520`–`LAP0522` saíram da proposta: foram implementados no M6 e retirados no
+plano 26 (Q32) — documentados acima, na seção "LAP052x — `goto`/`label`
+(retirado) e controle de fluxo estruturado".
 
-`LAP0523` em diante estão **livres**: foram esboçados para a leitura de carga por
-campo, que Q23 descartou por ser insegura. Como nunca chegaram a ser publicados —
-não há implementação —, os números voltam ao pool. A construção que Q23 vier a
-definir alocará os seus.
+`LAP0523`–`LAP0527` **já estão alocados**: eram livres (esboçados para a leitura
+de carga por campo, que a Q23 descartou por insegura, e nunca publicados), e o
+plano 26 os reaproveitou para `loop`/`break`/`continue` — documentado na mesma
+seção acima. `LAP0528` em diante seguem livres.
 
 ---
 
@@ -460,9 +481,10 @@ continuar valendo sem escrever `Result<?, ?>.ok`.
 - Notas (`DiagnosticNote`) são usadas para: sugestão de nome próximo
   (`LAP0201`), local da definição anterior (`LAP0202`), lista de variantes
   faltantes (`LAP0262`) e local do `return` esperado (`LAP0272`).
-- **Códigos aposentados nunca são reciclados.** `LAP0203`, `LAP0296`, `LAP0297` e
-  `LAP0301` saíram por causa de decisões do apêndice C e seus números ficam
-  permanentemente vagos. Aposentado significa **sem constante** em
+- **Códigos aposentados nunca são reciclados.** `LAP0203`, `LAP0296`, `LAP0297`,
+  `LAP0301`, `LAP0520`–`LAP0522` e `LAP0731` saíram por causa de decisões do
+  apêndice C e seus números ficam permanentemente vagos. Aposentado significa
+  **sem constante** em
   `DiagnosticCodes`: fica só o comentário com o número e o motivo, para que
   ninguém volte a emiti-lo por engano.
 - **Todo código com constante precisa de um caso de conformidade** que o produza

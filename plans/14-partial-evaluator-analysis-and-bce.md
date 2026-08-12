@@ -8,11 +8,16 @@ e aos testes de §54–§55.
 
 ---
 
-> **Laços, a partir do M6.** O `goto` para trás (Q24) traz laços para a linguagem, e
-> com eles o fim da terminação por construção. Especializar um laço não é como
-> especializar um `If`: exige *widening* ou combustível, sob pena de o próprio
-> partial evaluator não terminar. Este plano precisa ser revisitado com isso em mãos
-> antes de começar.
+> **Laços, agora via `loop`/`break`/`continue` (plano 26, Q32).** Até o M6 a
+> linguagem terminava por construção; o `goto` para trás trazia laços (Q24), e o
+> M16 trocou o mecanismo por controle estruturado sem mudar essa consequência —
+> um `loop` com progresso ainda não termina por construção. Especializar um laço
+> não é como especializar um `If`: exige *widening* ou combustível, sob pena de o
+> próprio partial evaluator não terminar. "Provar `i < n` para um `i` derivado de
+> laço" (a análise que este plano quer) passa a ser sobre um `var` mutado dentro
+> de um `CoreLoop` — um escopo léxico só, mais fácil de seguir do que o grafo de
+> joins que `goto`/`label` produziam. Este plano precisa ser revisitado com isso
+> em mãos antes de começar.
 
 
 ## Objetivo

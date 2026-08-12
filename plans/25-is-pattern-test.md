@@ -1,9 +1,17 @@
 # Plano 25 — `is`: testar variante e desembrulhar carga
 
 **Projeto:** `Lapis.Lexer`, `Lapis.Parser`, `Lapis.Desugar`, `Lapis.TypeChecker`
-**Milestone:** M16
+**Milestone:** M16 (com o plano 26)
 **Spec:** revisão da spec §22 — fecha **Q22** e **Q23**
 **Depende de:** 03 (lexer), 04 (parser), 05 (desugar), 06 (checker), 23 (curinga)
+
+> **Revisado pela Q32.** A versão original deste plano tinha uma restrição a
+> mais — a ligação de `is` não atravessa um `goto` (§25.4 antiga, `LAP0731`) —
+> porque `goto`/`label` ainda existiam. A Q32 os derrubou (plano 26), e a
+> restrição não tem mais o que proteger: `is` só aparece dentro de blocos
+> léxicos comuns, e um bloco léxico não tem o problema de múltiplos
+> predecessores que motivava a regra. O texto abaixo já reflete isso — a nota
+> serve para quem procura a versão antiga.
 
 ---
 
@@ -81,14 +89,19 @@ def b = e is Some(v);      // e `v` vale onde, depois disto?
 print(v);                  // aqui? em que estado?
 ```
 
-> **A ligação só é permitida onde o desugar consegue lhe dar escopo.** São três
-> posições, e são exatamente as três em que a forma tem leitura óbvia:
+> **A ligação só é permitida onde o desugar consegue lhe dar escopo.** São duas
+> posições, e são exatamente as duas em que a forma tem leitura óbvia:
 >
 > 1. condição de `if` → liga no ramo verdadeiro;
-> 2. operando esquerdo de `&&` → liga no operando direito e adiante;
-> 3. condição de `goto ... if` → **ver §25.4**.
+> 2. operando esquerdo de `&&` → liga no operando direito e adiante.
 >
 > Em qualquer outra posição, `is` com ligação é `LAP0730`.
+>
+> Não há uma terceira posição para `goto ... if` — o plano 26 derrubou `goto`.
+> Um `loop` não precisa de posição própria: o padrão é escrever a condição na
+> posição 1, dentro do corpo do laço (`loop { if e is Some(v) { usa(v); } else
+> { break; } }`), que já é coberta. É a mesma posição que `@while` novo usa
+> (plano 26), e é por isso que `@while e is Some(v) { ... }` liga `v` de graça.
 
 A forma **sem** ligação (`e is Some`) é um `Bool` como outro qualquer, e vai onde
 `Bool` vai.
@@ -104,45 +117,28 @@ match bRes {
 }
 ```
 
-### 25.4 `goto L if e is Some(value)` — onde eu divirjo do exemplo
+### 25.4 O problema que motivou esta pergunta, e como ele deixou de existir
 
-O autor escreveu esta forma. **Recomendo recusar a ligação aqui**, e a razão não é
-implementação — é a regra que o M11 já estabeleceu.
+A versão original desta seção discutia `goto L if e is Some(value)`: um `label`
+é alcançável de vários lugares (é um join point por definição), o *fall-through*
+alcança `L` sem nunca ter ligado `value`, e não havia resposta boa sem parâmetro
+em join point ou análise de dominância — as duas saídas que a Q23 já tinha
+recusado por peso.
 
-Um `label` é um join point, alcançável de vários lugares. O corpo dele roda no
-ambiente do grupo. É por isso que um `var` declarado entre um `goto` e o seu
-rótulo **não** está em escopo no destino: o salto pode ter pulado a declaração
-(ver `tests/conformance/eval/mutation/scope_across_joins_with_jump.ls`).
-
-`value` tem exatamente esse problema, e pior: mesmo que só um `goto` alcance `L`,
-o *fall-through* também alcança, e por ele `value` nunca foi ligado. Fazer a
-ligação existir ali exigiria uma das duas coisas que este projeto já recusou:
-
-- **parâmetros em join point** — muda `CoreLabeled`, o evaluator e o PE, para uma
-  forma que `if` já cobre;
-- **análise de dominância** — que é a terceira saída da Q23, recusada porque
-  "fazer a segurança de uma construção básica depender de análise de fluxo é peso
-  demais".
-
-Então:
+A Q32 (Apêndice C) resolveu isso na raiz: `goto`/`label` saem da linguagem
+(plano 26). Sem join point, a pergunta "quem mais chega aqui sem ter ligado
+`value`" não faz sentido — todo lugar onde `is` pode ligar (`if`, `&&`) é um
+bloco léxico de entrada única. O que a forma antiga queria dizer se escreve
+direto:
 
 ```c
-goto fim if e is None;              // ok — sem ligação
-goto fim if e is Some(value);       // LAP0731
-```
-
-E o que a segunda queria dizer se escreve com a primeira regra:
-
-```c
-if e is Some(value) {
-    // `value` aqui, seguro
-    goto fim;
+loop {
+    if e is Some(value) {
+        // `value` aqui, seguro
+        break;
+    }
 }
 ```
-
-**É a única divergência do que o autor escreveu, e vale confirmar.** Se a intenção
-for mesmo ligar através do salto, o custo é parâmetro em join point, e isso é uma
-milestone própria — não um detalhe deste plano.
 
 ### 25.5 O padrão
 
@@ -205,11 +201,14 @@ encadeamento.
 
 ```text
 LAP0730  a ligação de 'is' só vale em condição de 'if' ou à esquerda de '&&'
-LAP0731  a ligação de 'is' não atravessa um salto
 LAP0732  '{0}' não é variante de {1}
 LAP0733  a variante '{0}' não carrega valor
 LAP0734  a variante '{0}' carrega {1} valores; escreva um padrão de 'match'
 ```
+
+`LAP0731` fica **retirado e não reciclado** (existia para "a ligação não
+atravessa um salto" — ver §25.4). Sem `goto`, a situação que ele descrevia não
+acontece mais; o número não volta ao pool, mesma regra de `LAP0301`/`LAP0706`.
 
 `LAP0732` reusa a mensagem de `LAP0251` de propósito: é o mesmo erro visto de
 outro lugar.
@@ -241,9 +240,8 @@ if e is Some(v) { v + 1 } else { 0 }                    // com `is`
 ### Por que não `if let`
 
 `if let e = Some(v)` (Rust) amarra a construção ao `if`. `is` é uma expressão
-booleana, então serve a `&&` e a `goto ... if` sem sintaxe nova para cada
-posição — e o preço é a regra de escopo da §25.3, que precisa ser dita de
-qualquer jeito.
+booleana, então serve a `if` e a `&&` sem sintaxe nova para cada posição — e o
+preço é a regra de escopo da §25.3, que precisa ser dita de qualquer jeito.
 
 ---
 
@@ -257,7 +255,7 @@ qualquer jeito.
 | `Is_Qualified` | `e is Option.None` | idem |
 | `Is_UnknownVariant` | `e is Nada` | `LAP0732` |
 | `Is_OnNonEnum` | `1 is Some` | erro de tipo |
-| `Is_InGotoCondition` | `goto L if e is None;` | compila |
+| `Is_InLoopBody` | `loop { if e is None { break; } }` | compila |
 | `Is_DoesNotChain` | `a is P is Q` | `LAP0114` |
 
 ### Ligação e escopo
@@ -269,7 +267,8 @@ qualquer jeito.
 | `Bind_NotAfterTheIf` | `print(v);` depois | `LAP0201` |
 | `Bind_InRightOfAnd` | `e is Some(v) && v == 1` | compila |
 | `Bind_InPlainDef` | `def b = e is Some(v);` | `LAP0730` |
-| `Bind_InGoto` | `goto L if e is Some(v);` | `LAP0731` |
+| `Bind_InLoopViaIf` | `loop { if e is Some(v) { usa(v); break; } else { break; } }` | compila; `v` visível só no ramo verdadeiro |
+| `Bind_InWhileCondition` | `@while e is Some(v) { usa(v); }` | `v` visível no corpo, a cada volta |
 | `Bind_NullaryVariant` | `e is None(v)` | `LAP0733` |
 | `Bind_MultiPayload` | variante de 2 cargas | `LAP0734` |
 | `Bind_Shadows` | `v` já existe fora | sombreia, sem diagnóstico |
@@ -301,14 +300,14 @@ qualquer jeito.
 
 ## Perguntas ao autor
 
-1. **§25.4** — `goto L if e is Some(value)` recusa a ligação. Confirma, ou a
-   intenção é mesmo ligar através do salto (o que pede parâmetro em join point,
-   milestone própria)?
+A pergunta original sobre `goto L if e is Some(value)` (§25.4) não precisa mais
+de resposta — a Q32 derrubou `goto`, e a situação que a pergunta descrevia não
+existe mais. Ficam as duas que eram independentes dela:
 
-2. **Carga nomeada na declaração.** Os exemplos escrevem
+1. **Carga nomeada na declaração.** Os exemplos escrevem
    `enum<T> { Some(T value), None }` e `Ok(Tval value); Fail(Terr error);` — com
    **nome** na carga e `;` como separador. Hoje é `Some(T)` separado por `,`.
    É mudança pretendida ou escrita solta? Nenhuma das duas features precisa dela.
 
-3. **Ordem em parâmetro.** `fn<T>(T value)` aparece nos exemplos; hoje é
+2. **Ordem em parâmetro.** `fn<T>(T value)` aparece nos exemplos; hoje é
    `fn<T>(value: T)`. Mesma pergunta.

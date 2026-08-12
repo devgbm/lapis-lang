@@ -12,8 +12,6 @@ program        = statement* EOF ;
 
 statement      = def_statement
                | assign_statement
-               | goto_statement
-               | label_statement
                | macro_declaration
                | expr_statement ;
 
@@ -22,17 +20,35 @@ member_owner   = IDENT generic_args? "." ;      (* `def Result<?, ?>.isOk` — M
 
 assign_statement = IDENT ( "." IDENT )* "=" expression ";" ;
 
-goto_statement = "goto" IDENT ( "if" expression )? ";" ;
-
-label_statement = "label" IDENT ";" ;
-
 expr_statement = block_like_expression ";"?      (* ponto-e-vírgula opcional *)
                | expression ";" ;
 ```
 
+`goto_statement`/`label_statement` saíram desta gramática (plano 26, Q32):
+`goto`/`label` não existem mais. `loop`/`break`/`continue` entram como
+**expressões** (`loop_expr`/`break_expr`/`continue_expr`, A.6-bis), não como
+statements novos — é a diferença de fundo com `goto`/`label`, que nunca
+produziam valor.
+
 **Expressões que terminam em bloco dispensam o `;`.** `block_like_expression` é
-`block`, `if_expr` e `match_expr`. Sem essa regra o próprio exemplo `abs` da
-spec §12 não parsearia:
+`block`, `match_expr`, `loop_expr` — e `if_expr`, **quando o último ramo escrito
+é um bloco** (plano 26 §26.9). Antes do plano 26, `if_expr` sempre terminava em
+bloco (`Then`/`Else` eram sempre `{ }`) e a regra valia sem exceção; agora que
+`Then`/`Else` podem ser uma expressão qualquer, a regra passa a depender da
+forma escrita:
+
+```c
+if c { a; }             // bloco — dispensa ';'
+if c a;                  // expressão simples — exige ';'
+if c { a; } else b;      // último ramo (else) é expressão simples — exige ';'
+if c a; else { b; }      // último ramo (else) é bloco — dispensa ';'
+```
+
+Não é regra nova: é a mesma condição de sempre ("o token seguinte é `}`? cauda"),
+só que agora `if_expr` de fato a exercita, porque antes do plano 26 o caso
+"`Then`/`Else` não é bloco" não existia.
+
+Sem essa regra o próprio exemplo `abs` da spec §12 não parsearia:
 
 ```c
 def abs = fn(x: Int) Int {
@@ -129,6 +145,9 @@ primary        = INT | FLOAT | STRING | "true" | "false"
                | type_expr
                | enum_expr
                | if_expr
+               | loop_expr
+               | break_expr
+               | continue_expr
                | match_expr ;
 
 span_literal   = span_list | span_repeat ;
@@ -146,7 +165,12 @@ span_repeat    = "." "[" type ";" expression ";" expression "]" ;   (* .[Int; 0;
    um IDENT parseia como os dois. Depois do `;` a forma está fixada, e os erros
    passam a ser reportados em vez de engolidos. *)
 
-if_expr        = "if" expression block ( "else" ( block | if_expr ) )? ;
+if_expr        = "if" expression if_body ( "else" if_body )? ;
+if_body        = block | non_if_expression ;   (* plano 26 §26.9: sem chaves, não pode ser outro `if` — LAP0527, evita dangling-else *)
+
+loop_expr      = "loop" ( ":" IDENT )? block ;                  (* plano 26 *)
+break_expr     = "break" ( ":" IDENT )? expression? ;            (* plano 26 — rótulo antes do valor: `break :fora, 5;` *)
+continue_expr  = "continue" ( ":" IDENT )? ;                     (* plano 26 — sem valor: não sai do laço *)
 
 match_expr     = "match" expression "{" match_arm ( "," match_arm )* ","? "}" ;
 match_arm      = pattern "=>" expression ;
@@ -170,10 +194,10 @@ ambíguo como um `Red` solto em posição de expressão seria. `match` continua
 exigindo a forma qualificada.
 
 A **ligação** só é permitida onde o desugar consegue lhe dar escopo — condição de
-`if` e operando esquerdo de `&&` —, e **não atravessa um salto**: em
-`goto L if e is Some(v);` o destino é alcançável sem passar pela ligação, que é a
-mesma razão de um `var` declarado entre o salto e o rótulo não estar em escopo
-lá.
+`if` e operando esquerdo de `&&`. Não há mais uma terceira posição a excluir: a
+versão anterior desta nota falava de `goto L if e is Some(v);` não ligar através
+do salto (plano 16), mas `goto`/`label` saíram da linguagem (plano 26, Q32) — sem
+salto, não há "atravessar" a considerar.
 
 Note que a condição de `if` e o escrutinado de `match` usam `expression` sem
 restrição alguma. Isso é possível porque a construção de `type` começa com `.`
@@ -206,8 +230,9 @@ qualquer posição; quem decide se ela é legítima é o checker (`LAP0712`), po
 ele sabe se a função é o valor de um `def T.m`.
 
 **`self` não é palavra reservada.** `def self = 1;` continua válido, e um
-parâmetro chamado `self` numa função comum é um parâmetro chamado `self` — mesma
-decisão de `label` ser contextual.
+parâmetro chamado `self` numa função comum é um parâmetro chamado `self` — a
+mesma ideia por trás de `label` ter sido contextual enquanto existiu (plano 16,
+retirado no plano 26).
 
 ---
 
@@ -429,9 +454,6 @@ primitivo se chama `Str` desde a 0.2.
 A repetição de **grupo** (`(Identifier:a Type:b)*`) existe para itens compostos e é
 o que evita inventar categorias sob medida para cada macro.
 
-`goto`/`label` saíram desta seção: estão implementados (M6) e vivem em A.1, junto
-dos demais statements.
-
 ---
 
 ## A.11 Precedência resumida
@@ -453,9 +475,20 @@ dos demais statements.
 ## A.12 Palavras reservadas
 
 ```text
-def  var  fn  type  enum  return  true  false  if  else  match  goto
+def  var  fn  type  enum  return  true  false  if  else  match
+loop  break  continue
 macro  expand  constraint  throw  is
 ```
+
+`goto`/`label` saíram (plano 26, Q32) — deixar de reservar uma palavra só amplia
+o conjunto de programas válidos, nunca quebra um existente, então a retirada não
+tem custo (o oposto de reservar `is`, que precisava de medição). `loop`, `break`
+e `continue` entram, e são reservadas de verdade — não contextuais como `label`
+era —, pela mesma razão de `throw`: cada uma inicia uma posição sintática
+inequívoca (§A.4, §A.1), e tratá-las como contextual só trocaria um diagnóstico
+exato ("`break` fora de um `loop`") por uma expressão malformada. Custo medido:
+zero — nenhuma das três aparece como identificador em `.ls` nenhum do
+repositório.
 
 `is` entra no M16 (plano 25): `e is Some(v)` testa a variante e liga a carga. É
 reservada por decisão do autor; um `is` contextual seria possível — depois de uma
@@ -471,13 +504,10 @@ seguido de dígitos — é o sufixo de higiene que a expansão produz (`temp@1`)
 atribuição é **statement**: `=` nunca aparece em posição de expressão, então
 `if (x = 1)` não existe e não há como confundir `=` com `==`.
 
-`label` **não** é reservada: é palavra-chave **contextual**, só reconhecida quando
-inicia um statement e vem seguida de um identificador. Reservá-la quebraria
-programa válido — o exemplo da própria spec §13 usa `label` como nome de campo
-(`type<Label: Str, ...> { label: Str; }`) — e a ambiguidade não existe, porque dois
-identificadores seguidos nunca formam expressão. `goto` é reservada de verdade:
-ninguém a usa como nome, e reservá-la é o que permite dizer "esperado um rótulo"
-em vez de deixar a linha virar uma expressão malformada.
+`label` e `goto` **saíram da linguagem** (plano 26, Q32) — o parágrafo acima
+descrevia por que um era contextual e o outro reservado; fica só o registro de
+que a distinção existiu e por quê, porque a mesma pergunta volta para `loop` (a
+resposta é a mesma de `goto`: reservada de verdade, ver §A.12).
 
 `throw` é reservada de verdade, apesar de só ser **válida** dentro de um
 `constraint`: onde ela vale é pergunta do checker (`LAP0507`), não do lexer, e
@@ -489,8 +519,8 @@ silêncio.
 `match` é reaproveitada dentro de `macro`, onde inicia uma regra — sem ambiguidade,
 porque ali só pode ser isso.
 
-`if` aparece também em `goto ... if ...`, o salto condicional a partir do qual
-`@unless` e `@while` são construídos.
+`if` aparece também dentro de `loop`, onde `@unless` e `@while` são construídos
+(plano 26) — `goto ... if ...` saiu junto com `goto`.
 
 
 `Int`, `Float`, `Bool`, `Str`, `Void`, `Result`, `ContextError`,

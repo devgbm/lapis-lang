@@ -56,21 +56,24 @@ critérios de conclusão satisfeitos.
 | # | Plano | Projeto | Milestone |
 |---|---|---|---|
 | 12 | [Partial Evaluator — núcleo](12-partial-evaluator-core.md) | `Lapis.PartialEvaluator` | M7 ✅ |
-| 13 | [Partial Evaluator — especialização](13-partial-evaluator-specialization.md) | `Lapis.PartialEvaluator` | M16 |
-| 14 | [Partial Evaluator — análise e BCE](14-partial-evaluator-analysis-and-bce.md) | `Lapis.PartialEvaluator` | M17 |
-| 15 | [Ferramentas de pesquisa e tracing](15-research-tooling-and-tracing.md) | `Lapis.Cli` | M17 |
+| 13 | [Partial Evaluator — especialização](13-partial-evaluator-specialization.md) | `Lapis.PartialEvaluator` | M17 |
+| 14 | [Partial Evaluator — análise e BCE](14-partial-evaluator-analysis-and-bce.md) | `Lapis.PartialEvaluator` | M18 |
+| 15 | [Ferramentas de pesquisa e tracing](15-research-tooling-and-tracing.md) | `Lapis.Cli` | M18 |
 
 ### Metaprogramação (proposta)
 
-Especificação: [`../spec/lapislang-macros-0.1.md`](../spec/lapislang-macros-0.1.md).
-Q19, Q21, Q22 e Q24 decididas. **Q23** — a construção de linguagem para ler carga de
-variante com segurança — foi **adiada**, e com ela `@if`/`@match` saíram do escopo:
-`if` e `match` continuam no compilador. Detalhes no
-[Apêndice C](appendix-c-decisions.md).
+Especificação: [`../spec/lapislang-macros-0.1.md`](../spec/lapislang-macros-0.1.md)
+— §10 (`goto`/`label`) está **desatualizada**: descreve a construção que o
+plano 26 retirou. Q19, Q21, Q22 decididas. **Q23** — a construção de linguagem
+para ler carga de variante com segurança — tinha ficado **adiada** com
+`@if`/`@match` fora de escopo (`if`/`match` continuam no compilador); **decidida**
+depois com `is` (plano 25). **Q24** foi **revertida pela Q32** — `goto` não
+salta mais para trás porque não existe mais; o plano 16 abaixo é histórico.
+Detalhes no [Apêndice C](appendix-c-decisions.md).
 
 | # | Plano | Projeto | Milestone |
 |---|---|---|---|
-| 16 | [`goto` e `label`](16-goto-and-labels.md) | `Lapis.Ast` … `Lapis.Evaluator` | M6 ✅ |
+| 16 | [`goto` e `label`](16-goto-and-labels.md) — ⚠️ superado pelo plano 26 | `Lapis.Ast` … `Lapis.Evaluator` | M6 ⚠️ |
 | 17 | [Macro engine](17-macro-engine.md) | `Lapis.Macros` | M8 ✅ |
 | 18 | [`constraint`, `throw` e contexto](18-compile-time-evaluation.md) | `Lapis.Macros` + `Lapis.Cli` | M9 ✅ |
 | 19 | [Reflection](19-reflection.md) | `Lapis.Runtime` + `Lapis.TypeChecker` | M10 ✅ |
@@ -80,13 +83,17 @@ variante com segurança — foi **adiada**, e com ela `@if`/`@match` saíram do 
 
 Especificação: [`../spec/lapislang-type-members-0.1.md`](../spec/lapislang-type-members-0.1.md).
 **Q26** decidida — member resolution é type checking, não uma fase própria, e é
-isso que torna a feature barata: a Core não ganha nó nenhum. **Q27** — se uma
-extension genérica pode casar o receptor contra o padrão do dono — está **aberta e
-bloqueia o plano 23**. **Q28** (`arr[i] = v`) está aberta e não bloqueia nada.
+isso que torna a feature barata: a Core não ganha nó nenhum. **Q27** decidida —
+extension genérica casa o receptor contra o padrão do dono, com `?` curinga em
+vez de parâmetro nomeado. **Q28** (`arr[i] = v`) está aberta e não bloqueia nada.
+**Q32** decidida — `goto`/`label` saem, `loop`/`break`/`continue` entram (plano
+26), o que dissolve a restrição de escopo que travava a especificação do `is`
+(plano 25).
 
 Mutabilidade segue o **binding**: `mutavel.campo = e` vale quando o binding é
 `var`, e é açúcar para reconstruir o valor e reatribuir o slot. Todo `Value`
-continua imutável e não há aliasing — Q25 intacta.
+continua imutável e não há aliasing — Q25 intacta, e é a mesma mutação que dá
+progresso a um `loop` (plano 26) como antes dava a um `goto` para trás.
 
 A sequência primitiva vira **span**, com o tamanho no tipo (`[Int;3]`) e
 construção `.[1, 2, 3]` — o mesmo ponto de `.User { }`. `Array` e `List` virão como
@@ -100,6 +107,7 @@ concatenação faz sentido.
 | 21 | [Type members](21-type-members.md) | `Lapis.Parser` … `Lapis.Evaluator` | M13 |
 | 22 | [Métodos de instância e `self`](22-instance-members.md) | `Lapis.TypeChecker` + `Lapis.Evaluator` | M14 |
 | 23 | [Membros sobre tipos genéricos](23-generic-extensions.md) | `Lapis.TypeChecker` | M15 |
+| 26 | [Controle de fluxo estruturado — `if`/`loop`/`break`/`continue`](26-structured-control-flow.md) | `Lapis.Ast` … `Lapis.PartialEvaluator` | M16 |
 | 25 | [`is`: testar variante e desembrulhar carga](25-is-pattern-test.md) | `Lapis.Parser` + `Lapis.Desugar` + `Lapis.TypeChecker` | M16 |
 
 ### Apêndices normativos
@@ -123,7 +131,7 @@ concatenação faz sentido.
 | **M3** ✅ | Enums, match, tipos | `enum`, `match` exaustivo, `type` + construção + acesso a campo | 02, 04, 05, 06, 08 |
 | **M4** ✅ | Generics | `fn<T>` escritos pelo programador, sempre com argumentos explícitos (Q7) + const generics | 02, 04, 06, 08 |
 | **M5** ✅ | Conformidade | suíte golden `tests/conformance/**/*.ls`, `examples/` executando, subcomandos e flags do CLI | 10, 11 |
-| **M6** ✅ | `goto`/`label` | controle de fluxo explícito; `GotoForm_EquivalentToIf` verde | 16 |
+| **M6** ⚠️ | `goto`/`label` | controle de fluxo explícito; `GotoForm_EquivalentToIf` verde — **retirado no M16** (Q32, plano 26) | 16 |
 | **M7** ✅ | PE núcleo | constant folding, propagação, dead code, `lapis pe` | 12 |
 | **M8** ✅ | Macro engine | `@unless`, `@square` expandindo; `lapis expand` | 17 |
 | **M9** ✅ | Compile time | `@post` com deduplicação de rota; `throw` e contexto | 18 |
@@ -133,7 +141,7 @@ concatenação faz sentido.
 | **M13** ✅ | Type members | `def User.create`, `User.defaultAge`, `mutavel.campo = e` | 21 |
 | **M14** ✅ | Métodos de instância | `user.hello()` ≡ chamar a função com `user` no argumento 0 | 22 |
 | **M15** ✅ | Membros sobre genéricos | `def Result<?, ?>.isOk` — Q27 decidida | 23 |
-| **M16** | `is` | `e is Some(v)` — Q23 fechada, sem nó novo na Core | 25 |
+| **M16** | Controle estruturado + `is` | `goto`/`label` saem; `loop`/`break`/`continue`/`if` sem chaves entram (Q32); `e is Some(v)` — Q23 fechada, sem nó novo na Core | 26, 25 |
 | **M17** | PE especialização | beta reduction, inlining, especialização de funções | 13 |
 | **M18** | PE análise | range analysis, bounds-check elimination, `lapis pe --trace` | 14, 15 |
 | **M19** | Equivalência | property-based: `eval(P,S) ≡ eval(PE(P,S),S)` | 11, 14 |
@@ -150,7 +158,11 @@ O PE não é uma fase isolada — ele precisa de um caso para **cada construçã
 `Effects.IsPure`, `FreeVariables` e `PartialEvaluator.Specialize` foram tocados no
 M6 (`goto`), no M9 (`throw`) e no M10 (`reflect`); cada construção nova é uma
 tripla dessas, e um esquecimento não aparece como erro de compilação, aparece como
-programa residual errado.
+programa residual errado. O M16 toca a mesma tripla de novo — trocando os casos
+de `goto`/`label` pelos de `loop`/`break`/`continue` (plano 26) —, e é a prova de
+que fechar a superfície antes do M17 continua valendo: melhor pagar essa troca
+agora do que depois que os planos 13/14 tiverem construído em cima da forma
+antiga.
 
 Escrever o PE contra uma superfície que ainda cresce significa reabri-lo a cada
 milestone. Com a linguagem fechada, ele é escrito uma vez, e a suíte de
@@ -164,7 +176,12 @@ semântica.
 **Com M15 e M16 a superfície fecha.** A **Q23** — ler a carga de uma variante com
 segurança — era o último buraco conhecido, e a decisão do autor a resolveu com
 `is` (plano 25). A **Q27**, que bloqueava o plano 23, foi dissolvida pelo `?`
-curinga em vez de respondida.
+curinga em vez de respondida. E a **Q32**, encontrada ao especificar `is`
+(a ligação não tinha resposta boa atravessando um `goto`), dissolveu a pergunta
+de outro jeito: derrubando `goto`/`label` e trocando por controle estruturado
+(plano 26) — o M6 é o único milestone anterior que este roteiro reabre, e é
+reaberto **antes** do partial evaluator tocar nele, que é o momento mais barato
+que essa troca ia ter.
 
 **Por que as macros vêm antes do partial evaluator** (decisão do autor), e por que
 o **M7 é a exceção**:

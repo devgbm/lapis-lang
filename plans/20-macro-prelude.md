@@ -1,9 +1,17 @@
 # Plano 20 — Macros de controle no prelude
 
+> **O corpo de `@unless`/`@while` mudou no M16 (plano 26, Q32).** Este plano
+> descreve a versão sobre `goto`/`label`, implementada no M11. `goto`/`label`
+> saíram da linguagem; o plano 26 reescreve as duas macros sobre `if`/`loop`/
+> `break`, com o mesmo comportamento observável — o que muda é só o mecanismo
+> por baixo. O raciocínio abaixo sobre escopo e sobre por que `@if`/`@match`
+> não viram macro continua valendo; os trechos de código com `goto`/`label`
+> ficam como registro histórico.
+
 **Projeto:** `Lapis.Runtime` (`prelude.ls`)
-**Milestone:** M11
+**Milestone:** M11 — corpo das macros reescrito no M16
 **Spec:** [`lapislang-macros-0.1.md` §12](../spec/lapislang-macros-0.1.md)
-**Depende de:** 16 (goto/label), 17 (macro engine), 18 (constraint), 19 (reflection)
+**Depende de:** 16 (goto/label, superado pelo 26), 17 (macro engine), 18 (constraint), 19 (reflection)
 
 ---
 

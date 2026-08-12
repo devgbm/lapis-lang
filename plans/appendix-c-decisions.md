@@ -27,13 +27,21 @@ implementação.
 | Q20 | `@match` compara variantes; sem `enumTag`/`enumPayload` | 🅿️ estacionada com `@match` |
 | Q21 | `constraint` roda na própria LapisLang, no mesmo evaluator | ✅ decidido |
 | Q22 | `if` e `match` **continuam** no compilador; `@while` entra no prelude | ✅ decidido |
-| Q23 | construção de linguagem para ler carga de variante com segurança | ⏳ adiada, com requisito escrito |
-| Q24 | `goto` pode saltar para trás; fim da terminação por construção | ✅ decidido |
-| Q25 | mutação com `var`; closure não captura `var` | ✅ decidido |
+| Q23 | `is`: construção de linguagem para ler carga de variante com segurança | ✅ decidido · plano 25 |
+| Q24 | `goto` pode saltar para trás; fim da terminação por construção | ⚠️ revertida pela Q32 |
+| Q25 | mutação com `var`; closure não captura `var` | ✅ decidido · implementado |
+| Q26 | resolução de membro é type checking, sem nó novo na Core | ✅ decidido · implementado |
+| Q27 | extension genérica casa receptor contra padrão, com `?` curinga | ✅ decidido · implementado |
+| Q28 | `arr[i] = v` | ⏳ aberta, sem bloquear nada |
+| Q29 | `[T;N]` é atribuível a `[T;?]` | ✅ decidido · implementado |
+| Q30 | aritmética de tamanho no tipo | ⏳ adiada com razão |
+| Q31 | indexação devolve `Option`, não `Result` | ✅ decidido · implementado |
+| Q32 | derrubar `goto`/`label`; controle estruturado com `if`/`loop`/`break`/`continue` | ✅ decidido · plano 26 |
 
-**A spec 0.2 precisa ser atualizada** em quatro pontos por causa destas decisões:
+**A spec 0.2 precisa ser atualizada** em cinco pontos por causa destas decisões:
 §15/§16/§22 (variantes qualificadas), §44 (tokens `!`, `&&`, `\|\|`), §14/§24
-(sintaxe de construção) e §25/§26 (divisão por zero). Detalhes em cada entrada.
+(sintaxe de construção), §25/§26 (divisão por zero) e §10 da spec de macros
+(`goto`/`label` saem, `loop`/`break`/`continue` entram). Detalhes em cada entrada.
 
 ---
 
@@ -669,14 +677,16 @@ ausência de escopo.
 `is` é açúcar sobre `match` — nenhum nó novo na Core —, o que mantém a Q22
 intacta: o plano 14 continua com uma forma de controle a entender.
 
-Duas restrições vêm junto, e a segunda diverge do exemplo original do autor:
+Uma restrição vem junto: a ligação só vale onde o desugar consegue lhe dar escopo —
+condição de `if` e operando esquerdo de `&&` (`LAP0730`).
 
-- a ligação só vale onde o desugar consegue lhe dar escopo: condição de `if` e
-  operando esquerdo de `&&` (`LAP0730`);
-- a ligação **não atravessa um salto** (`LAP0731`). É a mesma regra do `var`
-  declarado entre um `goto` e o seu rótulo: o destino é alcançável sem passar pela
-  ligação. Permitir exigiria parâmetro em join point ou dominância — e dominância
-  é justamente a terceira saída que esta questão recusou.
+> **Atualização com a Q32.** A formulação original tinha uma segunda restrição —
+> "a ligação não atravessa um salto" (`LAP0731`) — pela mesma razão do `var`
+> declarado entre um `goto` e o seu rótulo. Com `goto`/`label` derrubados, a
+> restrição não tem mais o que proteger: `is` só aparece dentro de blocos léxicos
+> comuns (`if`, `loop`), e um bloco léxico não tem o problema de múltiplos
+> predecessores que motivava a regra. `LAP0731` fica reservado, não emitido —
+> ver Q32 e o plano 25 revisado.
 
 **O requisito, sem projetar a solução:**
 
@@ -694,7 +704,11 @@ construção só. E Q20 sai do estacionamento.
 
 ---
 
-## Q24 ✅ — `goto` pode saltar para trás
+## Q24 ⚠️ — `goto` pode saltar para trás *(revertida pela Q32)*
+
+> **Esta decisão foi revertida.** `goto`/`label` saem da linguagem — ver **Q32**.
+> A seção abaixo fica como registro histórico: é a razão de `goto` ter existido, e
+> o que ela ensinou (a terceira linha da tabela) é parte do argumento da Q32.
 
 **Problema.** Salto para trás permite laços — e permite programas que não terminam.
 Até o M4 a linguagem não tinha recursão (Q8) nem laços, então **todo programa
@@ -776,7 +790,12 @@ closure enxerga um desses.
 - **O tipo do `var` é o da declaração e não muda:** uma atribuição que não cabe é
   `LAP0210`.
 
-### A restrição de escopo entre joins, e como ela encolheu
+### A restrição de escopo entre joins, e como ela encolheu *(histórico — ver Q32)*
+
+> Esta subseção descreve o mecanismo de escopo de `goto`/`label`, retirado pela
+> **Q32**. `loop`/`break`/`continue` não têm join point nenhum — o corpo de um
+> `loop` é um bloco léxico comum, e a pergunta que esta subseção resolve não
+> chega a existir. Fica como registro do raciocínio que levou até lá.
 
 A formulação original desta seção era: uma declaração feita **depois** de um
 `label` vive dentro daquele join, um join não enxerga os bindings de outro, e
@@ -939,6 +958,69 @@ tem o seu — e `IndexError` fica sem nenhum, o que abre a pergunta de aposentá
 > caso de `[T;?]` e de índice dinâmico; `[T;N]` com índice constante devolve `T`
 > direto, e o índice fora dos limites vira `LAP0244` em compilação. `IndexError`
 > saiu do prelude.
+
+## Q32 ✅ — Derrubar `goto`/`label`; controle estruturado
+
+**Problema.** A §25.4 do plano 25 travou em `goto L if e is Some(value)`: o destino
+de um salto pode ter outros predecessores que não passam pela ligação de `is`, e a
+regra de escopo do M11 (nenhum binding atravessa um `goto` explícito) existe
+precisamente para recusar esse caso. As saídas eram todas caras — parâmetro em
+join point, ou dominância, e a Q23 já tinha recusado dominância pelo mesmo motivo
+("peso demais para o que se ganha").
+
+**A pergunta certa não era "como fazer o binding atravessar o salto".** Era: por
+que existe um salto para o binding atravessar?
+
+**Levantamento do que `goto`/`label` realmente serviam.** Todo caso do corpus é
+uma de duas formas — o padrão de laço (`@while`) ou o padrão de desvio condicional
+(`@unless`) — mais os testes que demonstram o mecanismo cru em si. E a segunda
+forma já era redundante: `if`/`else` existe como expressão estruturada desde o M3
+(`IfExpression(Condition, Then, Else?)`, `Else` opcional), então `@unless` nunca
+precisou de `goto` — sempre foi `if !condition { body }` escrito por um caminho
+mais longo.
+
+**✅ Decidido pelo autor: `goto`/`label` saem da linguagem.** No lugar:
+
+```c
+if <condição> <expressão | bloco> (else <expressão | bloco>)?
+
+loop (: rótulo)? <bloco>              // laço infinito
+break (rótulo)? (valor)?              // sai do loop, opcionalmente com valor
+continue (rótulo)?                    // volta ao topo do loop
+```
+
+Detalhes de superfície, Core, checker, evaluator e PE: **plano 26**.
+
+**Por que isso resolve a §25.4, e não só contorna.** O problema era join com
+predecessores heterogêneos. `if`/`loop` não têm join: cada um é um bloco léxico
+comum, com uma única forma de entrar. `if e is Some(v) { use(v); break; }` amarra
+`v` no mesmo escopo onde `use`/`break` rodam — não existe segundo caminho até ali
+que não passe pela amarração, porque não existe "ali" fora do bloco. A pergunta da
+§25.4 deixa de fazer sentido, do mesmo jeito que a Q27 não foi respondida — foi
+dissolvida.
+
+**Por que agora, e não depois do M16.** O M6 e a regrouping (M11) ainda não tinham
+sido usados como base de nada além de si mesmos — nenhuma milestone entre M12 e
+M15 tocou `goto`/`label`. É o ponto mais barato em que essa troca vai existir:
+depois do M16 ela custaria reabrir também o `is`, e depois do M17-19 custaria
+reabrir o partial evaluator.
+
+**O que se ganha, além de resolver a §25.4:**
+
+| Perde | Ganha |
+|---|---|
+| `goto`/`label`, `LAP0520`–`LAP0522`, `LAP0731`; `LAP0303` muda de "saltos" para "iterações" sem trocar de número | `if`/`loop`/`break`/`continue` — quatro formas em vez de duas mais um mecanismo de join |
+| o trabalho já feito em M6/M11 (join points, regrouping) | controle de fluxo estruturado, que é o substrato padrão da literatura de PE (Jones/Gomard/Sestoft) — `CoreLoop`/`CoreBreak` especializam sem reconstruir ambiente de join |
+| — | `break`/`continue` rotulados resolvem laço aninhado sem o problema que motivou join com parâmetros |
+
+O item da esquerda no meio dói — M6 e a regrouping foram trabalho real —, mas o da
+direita paga na M17-19: os planos 13/14 iam ter que ensinar o especializador a
+lidar com o grafo de joins mais cedo ou mais tarde, e `loop`/`break` chegam nele
+sem essa forma.
+
+**O que não muda:** Q25 (mutação com `var`) continua inteira — um `loop` com
+progresso ainda precisa de `var`, exatamente como um `goto` para trás precisava.
+Só o mecanismo de salto por baixo é que sai.
 
 ## Q28 — `arr[i] = v` ⏳
 
