@@ -14,19 +14,20 @@ public sealed class MutationEvaluationTests : EvaluatorTestBase
         Output("var x = 1;\nx = x + 10;\nprint(x);").ShouldBe("11\n");
 
     /// <summary>
-    /// O que a Q25 destravou. O corpo de um join roda sempre no ambiente do grupo;
-    /// um <c>var</c> declarado antes do rótulo é o slot que atravessa as voltas, e
-    /// é ele que faz a condição de saída chegar.
+    /// O que a Q25 destravou. O corpo de um <c>loop</c> roda sempre no mesmo
+    /// escopo léxico; um <c>var</c> declarado antes dele é o slot que atravessa
+    /// as voltas, e é ele que faz a condição de saída chegar (plano 26, M16).
     /// </summary>
     [Fact]
     public void BackwardLoop_MakesProgress() =>
         Output("""
             var i = 0;
 
-            label repete;
-            i = i + 1;
-            print(i);
-            goto repete if i < 3;
+            loop {
+                i = i + 1;
+                print(i);
+                if i >= 3 { break; }
+            }
             """).ShouldBe("1\n2\n3\n");
 
     [Fact]
@@ -35,10 +36,11 @@ public sealed class MutationEvaluationTests : EvaluatorTestBase
             var soma = 0;
             var i = 1;
 
-            label repete;
-            soma = soma + i;
-            i = i + 1;
-            goto repete if i <= 10;
+            loop {
+                soma = soma + i;
+                i = i + 1;
+                if i > 10 { break; }
+            }
 
             print(soma);
             """).ShouldBe("55\n");
@@ -46,8 +48,8 @@ public sealed class MutationEvaluationTests : EvaluatorTestBase
     /// <summary>Um laço sem condição de saída continua abortando — o orçamento vale.</summary>
     [Fact]
     public void LoopWithoutExit_StillAborts() =>
-        ExpectAbort("var i = 0;\nlabel repete;\ni = i + 1;\ngoto repete;")
-            .ShouldBe(DiagnosticCodes.JumpLimitExceeded);
+        ExpectAbort("var i = 0;\nloop { i = i + 1; }")
+            .ShouldBe(DiagnosticCodes.IterationLimitExceeded);
 
     /// <summary>
     /// Cada chamada tem o seu slot: um <c>var</c> local é criado de novo a cada
@@ -60,10 +62,11 @@ public sealed class MutationEvaluationTests : EvaluatorTestBase
                 var total = 0;
                 var i = 0;
 
-                label repete;
-                total = total + i;
-                i = i + 1;
-                goto repete if i <= ate;
+                loop {
+                    total = total + i;
+                    i = i + 1;
+                    if i > ate { break; }
+                }
 
                 return total;
             };

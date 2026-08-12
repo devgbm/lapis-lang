@@ -130,9 +130,9 @@ public sealed class PartialEvaluator
         CoreIndex n => SpecializeIndex(n, environment),
         CoreMatch n => SpecializeMatch(n, environment),
         CoreAssign n => SpecializeAssign(n, environment),
-        CoreLabeled n => SpecializeLabeled(n, environment),
-        CoreGotoIf n => SpecializeGotoIf(n, environment),
-        CoreGoto or CoreEnumDef or CoreTypeDef => PECompletion.Normal(Keep(node)),
+        CoreLoop n => SpecializeLoop(n, environment),
+        CoreBreak n => SpecializeBreak(n, environment),
+        CoreContinue or CoreEnumDef or CoreTypeDef => PECompletion.Normal(Keep(node)),
         CoreField n => SpecializeField(n, environment),
         CoreInstantiate n => SpecializeInstantiate(n, environment),
         CoreConstruct n => SpecializeConstruct(n, environment),
@@ -913,54 +913,56 @@ public sealed class PartialEvaluator
     }
 
     /// <summary>
-    /// Um grupo de joins é residualizado inteiro: especializar o fluxo de um laço
-    /// exige <i>widening</i> ou combustível, e isso é o plano 14. O que se faz aqui
-    /// é especializar as expressões dentro de cada segmento, que é seguro porque um
-    /// <c>def</c> não muda entre voltas e um <c>var</c> já é desconhecido.
+    /// O corpo é residualizado inteiro: especializar quantas vezes um <c>loop</c>
+    /// itera exige <i>widening</i> ou combustível, e isso são os planos 17-19. O
+    /// que se faz aqui é especializar as expressões dentro do corpo, que é seguro
+    /// porque um <c>def</c> não muda entre voltas e um <c>var</c> já é
+    /// desconhecido — mesmo raciocínio do <c>Labeled</c> que este nó substitui
+    /// (plano 16, retirado no 26).
     /// </summary>
-    private PECompletion SpecializeLabeled(CoreLabeled node, StaticEnvironment environment)
+    private PECompletion SpecializeLoop(CoreLoop node, StaticEnvironment environment)
     {
-        var entry = Specialize(node.Entry, environment.Child());
-        var kind = entry.Kind;
+        var body = Specialize(node.Body, environment.Child());
 
-        var joins = ImmutableArray.CreateBuilder<CoreJoin>(node.Joins.Length);
-
-        foreach (var join in node.Joins)
-        {
-            var body = Specialize(join.Body, environment.Child());
-            kind = PECompletion.Join(kind, body.Kind);
-
-            joins.Add(join with { Body = _residualizer.Residualize(body.Result, join.Body.Span) });
-        }
-
-        var residual = _factory.Labeled(
+        var residual = _factory.Loop(
             node.Span,
-            _residualizer.Residualize(entry.Result, node.Entry.Span),
-            joins.MoveToImmutable());
+            node.Label,
+            _residualizer.Residualize(body.Result, node.Body.Span),
+            node.LabelSpan);
 
-        // Nunca `Returned`: um salto pode desviar do `return` que o segmento
-        // aparenta executar, então o retorno deste grupo é sempre condicional.
+        // Nunca `Returned`: um `break` pode desviar do `return` que o corpo
+        // aparenta executar, então o retorno deste `loop` é sempre condicional —
+        // mesma leitura conservadora que `Labeled` já tinha.
         return new PECompletion(
-            kind == PECompletionKind.Normal ? PECompletionKind.Normal : PECompletionKind.MayReturn,
+            body.Kind == PECompletionKind.Normal ? PECompletionKind.Normal : PECompletionKind.MayReturn,
             new DynamicResult(residual, TypeOf(node)));
     }
 
-    private PECompletion SpecializeGotoIf(CoreGotoIf node, StaticEnvironment environment)
+    /// <summary>
+    /// A própria completion é sempre <c>Normal</c> — como <c>CoreGoto</c> antes
+    /// dele (plano 16): o PE não modela "isto desvia", só "isto retorna". Quem
+    /// protege a leitura conservadora é <see cref="SpecializeLoop"/>, que nunca
+    /// deixa um grupo que contém um <c>break</c> declarar <c>Returned</c>.
+    /// </summary>
+    private PECompletion SpecializeBreak(CoreBreak node, StaticEnvironment environment)
     {
-        var condition = Specialize(node.Condition, environment);
-
-        if (!condition.FlowsThroughStatically)
+        if (node.Value is null)
         {
-            return condition;
+            return PECompletion.Normal(new DynamicResult(
+                _factory.Break(node.Span, node.Label, null, node.LabelSpan), NeverType.Instance));
         }
 
-        return PECompletion.Normal(new DynamicResult(
-            _factory.GotoIf(
-                node.Span,
-                node.Label,
-                _residualizer.Residualize(condition.Result, node.Condition.Span),
-                node.LabelSpan),
-            PrimitiveType.Void));
+        var value = Specialize(node.Value, environment);
+
+        if (!value.FlowsThroughStatically)
+        {
+            return value;
+        }
+
+        var residual = _factory.Break(
+            node.Span, node.Label, _residualizer.Residualize(value.Result, node.Value.Span), node.LabelSpan);
+
+        return PECompletion.Normal(new DynamicResult(residual, NeverType.Instance));
     }
 
     // ----------------------------------------------------------- auxiliar

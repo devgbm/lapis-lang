@@ -402,73 +402,59 @@ public sealed class CoreMatch(
     public ImmutableArray<CoreArm> Arms { get; } = arms;
 }
 
-/// <summary>Salto incondicional. Tipo <c>Never</c>: nada depois dele executa.</summary>
-public sealed class CoreGoto(int nodeId, SourceSpan span, string label) : CoreExpr(nodeId, span)
+/// <summary>
+/// <c>loop { ... }</c> (plano 26, M16). Um escopo léxico só, com uma única forma
+/// de entrar — é o que substitui o grupo de join points que <c>goto</c>/<c>label</c>
+/// precisavam (Q32): não há predecessor nenhum a considerar além deste.
+///
+/// <see cref="Label"/> existe só para <c>break</c>/<c>continue</c> de um <c>loop</c>
+/// aninhado alcançarem este — sem ele, os dois sempre visam o laço mais próximo.
+/// </summary>
+public sealed class CoreLoop(
+    int nodeId,
+    SourceSpan span,
+    string? label,
+    CoreExpr body) : CoreExpr(nodeId, span)
 {
-    public string Label { get; } = label;
+    public string? Label { get; } = label;
 
-    public SourceSpan LabelSpan { get; init; } = span;
+    public CoreExpr Body { get; } = body;
 
-    /// <summary>
-    /// Verdadeiro quando o salto é o que o desugar insere ao fechar um segmento,
-    /// e não algo que alguém escreveu (plano 16 §16.4, regra 1).
-    ///
-    /// A distinção importa em dois lugares: o printer omite o salto implícito (é
-    /// a inversa exata da decomposição) e <c>LAP0273</c> não o trata como código
-    /// inalcançável — depois de um <c>return</c> vem um <c>label</c>, que é
-    /// perfeitamente alcançável por salto.
-    /// </summary>
-    public bool IsImplicit { get; init; }
+    public SourceSpan? LabelSpan { get; init; }
 }
 
 /// <summary>
-/// Salto condicional. É <b>primitivo</b>, e não açúcar para
-/// <c>If(cond, Goto(L), ())</c>, porque uma macro de controle construída sobre
-/// <c>goto</c> não pode depender do <c>if</c> da linguagem — a construção seria
-/// circular (plano 16 §16.2).
+/// <c>break;</c>, <c>break e;</c>, opcionalmente rotulado. Tipo <c>Never</c> —
+/// mesma mecânica de <c>return</c>/<c>throw</c> (Q13): não há regra de tipo nova,
+/// só mais um nó na lista que já sabe propagar <c>Never</c>.
+///
+/// O tipo do <see cref="CoreLoop"/> que este <c>break</c> alcança é a junção de
+/// todo <c>break</c> (<see cref="Value"/> ausente conta como <c>Void</c>) que o
+/// alcança sem atravessar um <c>loop</c> aninhado sem rótulo — plano 26 §26.5.
 /// </summary>
-public sealed class CoreGotoIf(
+public sealed class CoreBreak(
     int nodeId,
     SourceSpan span,
-    string label,
-    CoreExpr condition) : CoreExpr(nodeId, span)
+    string? label,
+    CoreExpr? value) : CoreExpr(nodeId, span)
 {
-    public string Label { get; } = label;
+    public string? Label { get; } = label;
 
-    public CoreExpr Condition { get; } = condition;
+    public CoreExpr? Value { get; } = value;
 
-    public SourceSpan LabelSpan { get; init; } = span;
-}
-
-/// <summary>Um destino de salto dentro de um <see cref="CoreLabeled"/>.</summary>
-public sealed record CoreJoin(string Name, CoreExpr Body, SourceSpan Span)
-{
-    public SourceSpan NameSpan { get; init; } = Span;
+    public SourceSpan? LabelSpan { get; init; }
 }
 
 /// <summary>
-/// Grupo de join points: avalia <see cref="Entry"/> e, se ela terminar em salto
-/// para um dos <see cref="Joins"/>, avalia aquele corpo — que por sua vez pode
-/// saltar de novo.
-///
-/// Join points, e não saltos de verdade, porque a Core não tem nó <c>Block</c>
-/// (Q10): "pular para a instrução 7" não quer dizer nada numa cadeia de
-/// <c>Let</c>. É a forma que compiladores funcionais usam há décadas para casar
-/// fluxo não estruturado com escopo léxico — e é o que mantém substituição e
-/// inlining textuais no partial evaluator.
-///
-/// Com salto para trás os joins podem se referenciar mutuamente: o grafo deixa
-/// de ser um DAG, mas a estrutura não muda.
+/// <c>continue;</c>, opcionalmente rotulado. Tipo <c>Never</c>, como
+/// <see cref="CoreBreak"/> — mas sem valor: um <c>continue</c> reinicia a
+/// iteração, não sai do laço, então não contribui para o tipo do <c>loop</c>.
 /// </summary>
-public sealed class CoreLabeled(
-    int nodeId,
-    SourceSpan span,
-    CoreExpr entry,
-    ImmutableArray<CoreJoin> joins) : CoreExpr(nodeId, span)
+public sealed class CoreContinue(int nodeId, SourceSpan span, string? label) : CoreExpr(nodeId, span)
 {
-    public CoreExpr Entry { get; } = entry;
+    public string? Label { get; } = label;
 
-    public ImmutableArray<CoreJoin> Joins { get; } = joins;
+    public SourceSpan? LabelSpan { get; init; }
 }
 
 /// <summary>Um arquivo <c>.ls</c> inteiro reduzido a uma única expressão.</summary>

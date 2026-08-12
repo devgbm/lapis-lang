@@ -198,10 +198,6 @@ public static class CoreSExprPrinter
                 Close(builder, indent);
                 break;
 
-            case CoreGoto n:
-                Line(builder, indent, $"({tag}goto {n.Label})");
-                break;
-
             case CoreAssign n:
                 Open(
                     builder,
@@ -213,26 +209,24 @@ public static class CoreSExprPrinter
                 Close(builder, indent);
                 break;
 
-            case CoreGotoIf n:
-                Open(builder, indent, $"{tag}goto-if {n.Label}");
-                PrintExpression(builder, n.Condition, indent + 1, ids);
+            case CoreLoop n:
+                Open(builder, indent, n.Label is null ? $"{tag}loop" : $"{tag}loop :{n.Label}");
+                PrintExpression(builder, n.Body, indent + 1, ids);
                 Close(builder, indent);
                 break;
 
-            case CoreLabeled n:
-                Open(builder, indent, $"{tag}labeled");
-                Open(builder, indent + 1, "entry");
-                PrintExpression(builder, n.Entry, indent + 2, ids);
-                Close(builder, indent + 1);
+            case CoreBreak { Value: null } n:
+                Line(builder, indent, n.Label is null ? $"({tag}break)" : $"({tag}break :{n.Label})");
+                break;
 
-                foreach (var join in n.Joins)
-                {
-                    Open(builder, indent + 1, $"join {join.Name}");
-                    PrintExpression(builder, join.Body, indent + 2, ids);
-                    Close(builder, indent + 1);
-                }
-
+            case CoreBreak n:
+                Open(builder, indent, n.Label is null ? $"{tag}break" : $"{tag}break :{n.Label}");
+                PrintExpression(builder, n.Value!, indent + 1, ids);
                 Close(builder, indent);
+                break;
+
+            case CoreContinue n:
+                Line(builder, indent, n.Label is null ? $"({tag}continue)" : $"({tag}continue :{n.Label})");
                 break;
 
             default:

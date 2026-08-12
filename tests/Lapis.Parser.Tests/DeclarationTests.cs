@@ -295,11 +295,16 @@ public sealed class IfTests : ParserTestBase
         var expression = SingleIf("if p { };");
 
         expression.Condition.ShouldBeOfType<IdentifierExpression>().Name.ShouldBe("p");
-        expression.Then.Statements.ShouldBeEmpty();
+        expression.Then.ShouldBeOfType<BlockExpression>().Statements.ShouldBeEmpty();
     }
 
+    /// <summary>
+    /// <c>Then</c> sem chaves aceita qualquer expressão desde o plano 26 §26.9 —
+    /// não é mais erro, é a forma que <c>if c break;</c> usa.
+    /// </summary>
     [Fact]
-    public void If_MissingBrace_ReportsError() => Codes("if x 1;").ShouldNotBeEmpty();
+    public void If_BareThen_IsNotAnError() =>
+        Codes("if x 1;").ShouldBeEmpty();
 
     private static IfExpression SingleIf(string source) =>
         Parse(source).Statements.ShouldHaveSingleItem()

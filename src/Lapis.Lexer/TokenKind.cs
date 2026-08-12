@@ -27,7 +27,9 @@ public enum TokenKind
     IfKeyword,
     ElseKeyword,
     MatchKeyword,
-    GotoKeyword,
+    LoopKeyword,
+    BreakKeyword,
+    ContinueKeyword,
     MacroKeyword,
     ExpandKeyword,
     ConstraintKeyword,
@@ -94,6 +96,9 @@ public static class TokenKindExtensions
         or TokenKind.EnumKeyword
         or TokenKind.MatchKeyword
         or TokenKind.IfKeyword
+        or TokenKind.LoopKeyword
+        or TokenKind.BreakKeyword
+        or TokenKind.ContinueKeyword
         or TokenKind.ReturnKeyword
         or TokenKind.ThrowKeyword
         or TokenKind.OpenParen
@@ -122,7 +127,9 @@ public static class TokenKindExtensions
         TokenKind.IfKeyword => "'if'",
         TokenKind.ElseKeyword => "'else'",
         TokenKind.MatchKeyword => "'match'",
-        TokenKind.GotoKeyword => "'goto'",
+        TokenKind.LoopKeyword => "'loop'",
+        TokenKind.BreakKeyword => "'break'",
+        TokenKind.ContinueKeyword => "'continue'",
         TokenKind.MacroKeyword => "'macro'",
         TokenKind.ExpandKeyword => "'expand'",
         TokenKind.ConstraintKeyword => "'constraint'",

@@ -87,8 +87,11 @@ public sealed class Desugarer
     /// <c>e; resto</c> vira <c>Let($tmpN, e, resto)</c>. A ausência de cauda produz
     /// <c>()</c> (spec §9).
     ///
-    /// Quando a sequência contém <c>label</c>, ela é decomposta em blocos básicos
-    /// primeiro (<see cref="DesugarWithLabels"/>).
+    /// Puramente estrutural desde o plano 26 (Q32): sem <c>goto</c>/<c>label</c>
+    /// não há decomposição em blocos básicos nenhuma a fazer — o que antes era
+    /// particionamento em grupos de join points (plano 16 §16.4) hoje é só esta
+    /// recursão simples. `loop`/`break`/`continue` viram nós de Core de forma
+    /// igualmente direta em <see cref="DesugarExpression"/>.
     /// </summary>
     private CoreExpr DesugarStatements(
         ImmutableArray<Statement> statements,
@@ -104,14 +107,6 @@ public sealed class Desugarer
         }
 
         var statement = statements[index];
-
-        // Um `label` daqui para a frente muda a forma do que vem depois: o resto
-        // da sequência vira um grupo de join points, não uma cadeia de `Let`.
-        if (statement is LabelStatement or GotoStatement && HasLabelFrom(statements, index))
-        {
-            return DesugarWithLabels(statements, index, tail, enclosingSpan);
-        }
-
         var rest = DesugarStatements(statements, index + 1, tail, enclosingSpan);
 
         return statement switch
@@ -144,308 +139,8 @@ public sealed class Desugarer
                 rest,
                 isSynthetic: true),
 
-            // Um `goto` sem `label` correspondente neste bloco salta para um grupo
-            // externo: aqui ele é só mais um statement, e a completion sobe.
-            GotoStatement jump => _factory.Let(
-                jump.Span,
-                _names.Next(),
-                annotation: null,
-                DesugarGoto(jump),
-                rest,
-                isSynthetic: true),
-
-            // `label` sem nenhum `goto`: o grupo existe mesmo assim, com um join
-            // só alcançável pela queda natural — tratado por DesugarWithLabels.
-            _ => throw InternalCompilerException.Unreachable(statement, statement.Span),
+            var other => throw InternalCompilerException.Unreachable(other, other.Span),
         };
-    }
-
-    private static bool HasLabelFrom(ImmutableArray<Statement> statements, int index)
-    {
-        for (var i = index; i < statements.Length; i++)
-        {
-            if (statements[i] is LabelStatement)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /// <summary>
-    /// Decomposição em blocos básicos (plano 16 §16.4).
-    ///
-    /// A sequência a partir do primeiro salto é partida em segmentos por
-    /// <c>label</c>; cada segmento vira um join, e um <c>label</c> encerra o
-    /// segmento anterior com um <c>Goto</c> implícito — o que torna a decomposição
-    /// um sufixo, e não uma cópia.
-    ///
-    /// O que veio antes do primeiro salto continua envolvendo o <c>Labeled</c> como
-    /// <c>Let</c> comum, e portanto continua em escopo nos dois lados. Já o que é
-    /// declarado <b>entre um salto e o seu rótulo</b> não está em escopo no destino
-    /// — não é limitação, é a verdade: o salto pode ter pulado a declaração.
-    ///
-    /// <b>Os rótulos do bloco não formam um grupo só.</b> Eles são particionados
-    /// (<see cref="LastOfGroup"/>), e cada grupo seguinte vira a <b>continuação</b>
-    /// do último join do anterior, aninhado dentro dele. É o que faz dois laços
-    /// independentes no mesmo bloco enxergarem as declarações um do outro:
-    ///
-    /// <code>
-    /// var i = 0;
-    /// label a; ... goto a if ...;
-    /// var k = 0;                      // ← Let dentro do corpo do join `a`
-    /// label b; ... goto b if ...;     // ← grupo aninhado: enxerga `k`
-    /// </code>
-    ///
-    /// Achatar tudo num grupo só tornava `k` invisível em `b`, porque joins irmãos
-    /// rodam no ambiente do grupo e não enxergam o que outro declarou. A verdade
-    /// que a regra protege continua protegida — ver <see cref="CanSplitBefore"/>.
-    /// </summary>
-    private CoreExpr DesugarWithLabels(
-        ImmutableArray<Statement> statements,
-        int index,
-        Expression? tail,
-        SourceSpan enclosingSpan)
-    {
-        // Fronteiras dos segmentos: [index, l1), [l1+1, l2), ... até o fim.
-        var labels = new List<int>();
-
-        for (var i = index; i < statements.Length; i++)
-        {
-            if (statements[i] is LabelStatement)
-            {
-                labels.Add(i);
-            }
-        }
-
-        return DesugarLabelGroup(statements, index, labels, first: 0, tail, enclosingSpan);
-    }
-
-    /// <param name="start">Primeiro statement do segmento de entrada deste grupo.</param>
-    /// <param name="first">Índice, em <paramref name="labels"/>, do primeiro rótulo do grupo.</param>
-    private CoreExpr DesugarLabelGroup(
-        ImmutableArray<Statement> statements,
-        int start,
-        List<int> labels,
-        int first,
-        Expression? tail,
-        SourceSpan enclosingSpan)
-    {
-        var last = LastOfGroup(statements, labels, first);
-        var next = last + 1;
-
-        var span = SourceSpan.FromBounds(statements[start].Span.Start, enclosingSpan.End);
-
-        var entry = DesugarSegment(statements, start, labels[first], FallThrough(statements, labels[first]));
-
-        var joins = ImmutableArray.CreateBuilder<CoreJoin>(last - first + 1);
-
-        for (var i = first; i <= last; i++)
-        {
-            var label = (LabelStatement)statements[labels[i]];
-            var isLast = i == last;
-
-            var end = !isLast ? labels[i + 1]
-                : next < labels.Count ? labels[next]
-                : statements.Length;
-
-            var terminator = !isLast
-                ? FallThrough(statements, labels[i + 1])
-
-                // O grupo seguinte é a **continuação** deste join, não um irmão:
-                // é o que põe o que foi declarado aqui em escopo lá dentro.
-                : next < labels.Count
-                    ? DesugarLabelGroup(statements, labels[next], labels, next, tail, enclosingSpan)
-                    : tail is not null
-                        ? DesugarExpression(tail)
-                        : _factory.Unit(EndOf(enclosingSpan));
-
-            var body = DesugarSegment(statements, labels[i] + 1, end, terminator);
-
-            joins.Add(new CoreJoin(label.Label, body, label.Span) { NameSpan = label.LabelSpan });
-        }
-
-        return _factory.Labeled(span, entry, joins.MoveToImmutable());
-    }
-
-    /// <summary>O salto implícito que fecha um segmento quando o próximo rótulo o segue.</summary>
-    private CoreExpr FallThrough(ImmutableArray<Statement> statements, int labelIndex)
-    {
-        var label = (LabelStatement)statements[labelIndex];
-
-        return _factory.Goto(label.Span, label.Label, label.Span, isImplicit: true);
-    }
-
-    /// <summary>
-    /// O último rótulo do grupo que começa em <paramref name="first"/>: avança
-    /// enquanto não for possível cortar.
-    /// </summary>
-    private static int LastOfGroup(ImmutableArray<Statement> statements, List<int> labels, int first)
-    {
-        for (var i = first; i < labels.Count - 1; i++)
-        {
-            if (CanSplitBefore(statements, labels, i + 1))
-            {
-                return i;
-            }
-        }
-
-        return labels.Count - 1;
-    }
-
-    /// <summary>
-    /// Dá para fechar um grupo antes do rótulo <paramref name="at"/>, aninhando o
-    /// resto dentro do último join?
-    ///
-    /// Duas condições, e as duas são o que mantém a regra antiga válida onde ela
-    /// era verdade:
-    ///
-    /// <list type="number">
-    /// <item>
-    /// <b>Nenhum <c>goto</c> explícito atravessa a fronteira.</b> Um salto para um
-    /// rótulo depois do corte pularia o que foi declarado até lá, e o destino não
-    /// pode enxergar essas declarações. Só a queda natural atravessa, e ela executa
-    /// o segmento inteiro — daí ser seguro aninhar.
-    /// </item>
-    /// <item>
-    /// <b>Nenhum nome se repete dos dois lados.</b> Dois <c>label x</c> no mesmo
-    /// bloco continuam no mesmo grupo, para que <c>LAP0522</c> continue sendo
-    /// reportado em vez de um virar sombra do outro.
-    /// </item>
-    /// </list>
-    /// </summary>
-    private static bool CanSplitBefore(ImmutableArray<Statement> statements, List<int> labels, int at)
-    {
-        var after = new HashSet<string>(StringComparer.Ordinal);
-
-        for (var i = at; i < labels.Count; i++)
-        {
-            after.Add(((LabelStatement)statements[labels[i]]).Label);
-        }
-
-        for (var i = 0; i < at; i++)
-        {
-            if (after.Contains(((LabelStatement)statements[labels[i]]).Label))
-            {
-                return false;
-            }
-        }
-
-        for (var i = 0; i < labels[at]; i++)
-        {
-            if (JumpsTo(statements[i], after))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /// <summary>
-    /// Este statement contém um <c>goto</c> <b>explícito</b> para algum dos nomes?
-    ///
-    /// Desce por expressões, porque <c>if c { goto fim; }</c> é um salto tanto
-    /// quanto um <c>goto</c> no topo do bloco. Não desce por <c>fn</c>: um salto
-    /// não atravessa fronteira de função (<c>LAP0521</c>), então um rótulo homônimo
-    /// lá dentro é outro rótulo.
-    /// </summary>
-    private static bool JumpsTo(Statement statement, HashSet<string> names) => statement switch
-    {
-        GotoStatement s => names.Contains(s.Label)
-            || (s.Condition is not null && JumpsTo(s.Condition, names)),
-
-        DefStatement s => JumpsTo(s.Value, names),
-        AssignStatement s => JumpsTo(s.Value, names),
-        ExpressionStatement s => JumpsTo(s.Expression, names),
-
-        _ => false,
-    };
-
-    private static bool JumpsTo(Expression expression, HashSet<string> names) => expression switch
-    {
-        BlockExpression e => e.Statements.Any(s => JumpsTo(s, names))
-            || (e.Tail is not null && JumpsTo(e.Tail, names)),
-
-        IfExpression e => JumpsTo(e.Condition, names)
-            || JumpsTo(e.Then, names)
-            || (e.Else is not null && JumpsTo(e.Else, names)),
-
-        MatchExpression e => JumpsTo(e.Scrutinee, names) || e.Arms.Any(a => JumpsTo(a.Body, names)),
-
-        UnaryExpression e => JumpsTo(e.Operand, names),
-        BinaryExpression e => JumpsTo(e.Left, names) || JumpsTo(e.Right, names),
-        ReturnExpression e => e.Value is not null && JumpsTo(e.Value, names),
-        ThrowExpression e => JumpsTo(e.Value, names),
-
-        CallExpression e => JumpsTo(e.Callee, names) || e.Arguments.Any(a => JumpsTo(a, names)),
-        InstantiateExpression e => JumpsTo(e.Target, names),
-        SpanExpression e => e.Elements.Any(x => JumpsTo(x, names)),
-        SpanRepeatExpression e => JumpsTo(e.Initializer, names) || JumpsTo(e.Size, names),
-        IndexExpression e => JumpsTo(e.Target, names) || JumpsTo(e.Index, names),
-        MemberExpression e => JumpsTo(e.Target, names),
-        ConstructExpression e => e.Fields.Any(f => JumpsTo(f.Value, names)),
-
-        // `fn` não: um salto não atravessa fronteira de função.
-        _ => false,
-    };
-
-    /// <summary>
-    /// Um segmento: os statements em <c>[start, end)</c> fechados por
-    /// <paramref name="terminator"/> — o salto implícito para o próximo rótulo, o
-    /// grupo aninhado que continua o bloco, ou a cauda.
-    /// </summary>
-    private CoreExpr DesugarSegment(
-        ImmutableArray<Statement> statements,
-        int start,
-        int end,
-        CoreExpr terminator)
-    {
-        // De trás para a frente: cada statement envolve o que já foi montado.
-        for (var i = end - 1; i >= start; i--)
-        {
-            terminator = statements[i] switch
-            {
-                DefStatement def => _factory.Let(
-                    def.Span,
-                    def.Name,
-                    def.Annotation,
-                    DesugarExpression(def.Value),
-                    terminator,
-                    isSynthetic: false,
-                    def.NameSpan,
-                    def.IsMutable),
-
-                ExpressionStatement expression => _factory.Let(
-                    expression.Span,
-                    _names.Next(),
-                    annotation: null,
-                    DesugarExpression(expression.Expression),
-                    terminator,
-                    isSynthetic: true),
-
-                AssignStatement assign => _factory.Let(
-                    assign.Span,
-                    _names.Next(),
-                    annotation: null,
-                    DesugarAssign(assign),
-                    terminator,
-                    isSynthetic: true),
-
-                GotoStatement jump => _factory.Let(
-                    jump.Span,
-                    _names.Next(),
-                    annotation: null,
-                    DesugarGoto(jump),
-                    terminator,
-                    isSynthetic: true),
-
-                var other => throw InternalCompilerException.Unreachable(other, other.Span),
-            };
-        }
-
-        return terminator;
     }
 
     /// <summary>
@@ -473,11 +168,6 @@ public sealed class Desugarer
             node.NameSpan,
             node.Path,
             node.PathSpans);
-
-    private CoreExpr DesugarGoto(GotoStatement node) =>
-        node.Condition is null
-            ? _factory.Goto(node.Span, node.Label, node.LabelSpan)
-            : _factory.GotoIf(node.Span, node.Label, DesugarExpression(node.Condition), node.LabelSpan);
 
     private CoreExpr DesugarExpression(Expression expression)
     {
@@ -513,6 +203,16 @@ public sealed class Desugarer
 
             case IfExpression n:
                 return DesugarIf(n);
+
+            case LoopExpression n:
+                return _factory.Loop(n.Span, n.Label, DesugarExpression(n.Body), n.LabelSpan);
+
+            case BreakExpression n:
+                return _factory.Break(
+                    n.Span, n.Label, n.Value is null ? null : DesugarExpression(n.Value), n.LabelSpan);
+
+            case ContinueExpression n:
+                return _factory.Continue(n.Span, n.Label, n.LabelSpan);
 
             case ReturnExpression n:
                 return _factory.Return(n.Span, n.Value is null ? null : DesugarExpression(n.Value));

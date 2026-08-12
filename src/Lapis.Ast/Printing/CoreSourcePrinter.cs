@@ -98,30 +98,6 @@ public static class CoreSourcePrinter
             current = let.Body;
         }
 
-        if (current is CoreLabeled labeled)
-        {
-            PrintLabeled(builder, labeled, indent, topLevel);
-            return;
-        }
-
-        // Um salto nunca é cauda: `goto` é statement, e imprimi-lo sem `;` daria
-        // texto que não reparseia.
-        if (current is CoreGoto or CoreGotoIf)
-        {
-            // O salto implícito que fecha o segmento não é impresso: o `label`
-            // logo abaixo é o que o recria no reparse. Imprimir daria um `goto`
-            // a mais, e a Core deixaria de ser a mesma.
-            if (current is CoreGoto { IsImplicit: true })
-            {
-                return;
-            }
-
-            Indent(builder, indent);
-            Print(builder, current, indent, Precedence.Lowest);
-            builder.AppendLine(";");
-            return;
-        }
-
         // Uma cauda `()` é sempre omitida: no topo ela é só o fim do arquivo, e
         // dentro de um bloco `{ s; }` e `{ s; () }` desugaram para a mesma Core —
         // omitir mantém o round-trip e deixa a saída bem mais legível.
@@ -155,15 +131,11 @@ public static class CoreSourcePrinter
                 builder.Append(n.Name);
                 break;
 
-            case CoreLet or CoreLabeled:
+            case CoreLet:
                 builder.AppendLine("{");
                 PrintSequence(builder, node, indent + 1, topLevel: false);
                 Indent(builder, indent);
                 builder.Append('}');
-                break;
-
-            case CoreGoto n:
-                builder.Append("goto ").Append(n.Label);
                 break;
 
             case CoreAssign n:
@@ -178,9 +150,26 @@ public static class CoreSourcePrinter
                 Print(builder, n.Value, indent, Precedence.Lowest);
                 break;
 
-            case CoreGotoIf n:
-                builder.Append("goto ").Append(n.Label).Append(" if ");
-                Print(builder, n.Condition, indent, Precedence.Lowest);
+            case CoreLoop n:
+                builder.Append(n.Label is null ? "loop " : $"loop :{n.Label} ").AppendLine("{");
+                PrintBlockBody(builder, n.Body, indent + 1);
+                Indent(builder, indent);
+                builder.Append('}');
+                break;
+
+            case CoreBreak n:
+                builder.Append(n.Label is null ? "break" : $"break :{n.Label}");
+
+                if (n.Value is not null)
+                {
+                    builder.Append(n.Label is null ? " " : ", ");
+                    Print(builder, n.Value, indent, Precedence.Lowest);
+                }
+
+                break;
+
+            case CoreContinue n:
+                builder.Append(n.Label is null ? "continue" : $"continue :{n.Label}");
                 break;
 
             case CoreLambda n:
@@ -342,27 +331,6 @@ public static class CoreSourcePrinter
 
             default:
                 throw InternalCompilerException.Unreachable(node, node.Span);
-        }
-    }
-
-    /// <summary>
-    /// A operação inversa da decomposição em blocos básicos: a entrada, e depois
-    /// <c>label L;</c> seguido do corpo de cada join.
-    /// </summary>
-    private static void PrintLabeled(StringBuilder builder, CoreLabeled node, int indent, bool topLevel)
-    {
-        // A entrada e todo join que não é o último são **seguidos** por um
-        // `label L;`, então o que os fecha é statement, não cauda: precisa de `;`.
-        // Só o último join carrega o valor do construto, e aí a regra volta a ser
-        // a do chamador.
-        PrintSequence(builder, node.Entry, indent, topLevel: true);
-
-        for (var i = 0; i < node.Joins.Length; i++)
-        {
-            Indent(builder, indent);
-            builder.Append("label ").Append(node.Joins[i].Name).AppendLine(";");
-
-            PrintSequence(builder, node.Joins[i].Body, indent, i == node.Joins.Length - 1 && topLevel);
         }
     }
 

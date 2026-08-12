@@ -132,19 +132,22 @@ public sealed class SemanticPropertyTests
     }
 
     /// <summary>
-    /// Todo programa termina <b>ou</b> reporta <c>LAP0303</c> (plano 16).
+    /// Todo programa termina <b>ou</b> reporta <c>LAP0303</c> (plano 16, mantida
+    /// pelo plano 26 sobre <c>loop</c>).
     ///
     /// Até o M4 a terminação era garantida por construção — sem recursão (Q8) e
-    /// sem laços. O salto para trás acaba com isso, e o orçamento de saltos é o
-    /// que troca um travamento por um diagnóstico. Esta propriedade é o que
-    /// impede a garantia de virar promessa.
+    /// sem laços. O salto para trás acabou com isso (M6), e a troca por
+    /// <c>loop</c> (Q32) não devolveu a garantia — um laço com progresso ainda
+    /// não termina por construção. O orçamento de iterações é o que troca um
+    /// travamento por um diagnóstico, e esta propriedade é o que impede a
+    /// garantia de virar promessa.
     /// </summary>
     [Theory]
-    [InlineData("label a;\ngoto a;")]
-    [InlineData("def c = true;\nlabel a;\ngoto a if c;")]
-    [InlineData("label a;\nprint(1);\ngoto a;")]
-    [InlineData("goto b;\nlabel a;\ngoto b;\nlabel b;\ngoto a;")]
-    public void Goto_TerminatesOrAborts(string source)
+    [InlineData("loop { }")]
+    [InlineData("def c = true;\nloop { if c { continue; } }")]
+    [InlineData("loop { print(1); }")]
+    [InlineData("var i = 0;\nloop :fora { loop { i = i + 1; continue :fora; } }")]
+    public void Loop_TerminatesOrAborts(string source)
     {
         var result = Pipeline.Compile(
             SourceText.From(source, "propriedade.ls"),
@@ -157,40 +160,39 @@ public sealed class SemanticPropertyTests
         // Terminou de um jeito ou de outro; o que não pode é travar.
         if (result.Evaluation.Status == ExecutionStatus.Aborted)
         {
-            result.Evaluation.Code.ShouldBe(DiagnosticCodes.JumpLimitExceeded);
+            result.Evaluation.Code.ShouldBe(DiagnosticCodes.IterationLimitExceeded);
         }
     }
 
     /// <summary>
-    /// A forma com <c>goto</c> é equivalente à forma com <c>if</c>.
+    /// A forma com <c>loop</c>/<c>break</c> é equivalente à forma com <c>if</c>.
     ///
-    /// Não é formalidade: é a evidência de que <c>goto</c>/<c>label</c> expressam
-    /// o que <c>If</c> expressa. Sem ela, nenhuma macro de controle construída
-    /// sobre salto (plano 20) merece confiança.
+    /// Não é formalidade: é a evidência de que controle estruturado expressa o
+    /// que <c>If</c> expressa. Sem ela, nenhuma macro de controle construída
+    /// sobre <c>loop</c> (plano 20/26) merece confiança.
     /// </summary>
     [Theory]
     [InlineData("true", "1", "2")]
     [InlineData("false", "1", "2")]
     [InlineData("1 > 0", "10", "20")]
     [InlineData("1 > 2", "10", "20")]
-    public void GotoForm_EquivalentToIf(string condition, string then, string otherwise)
+    public void LoopForm_EquivalentToIf(string condition, string then, string otherwise)
     {
         var comIf = Run($$"""
             def c = {{condition}};
             if c { print({{then}}); } else { print({{otherwise}}); }
             """);
 
-        var comGoto = Run($$"""
+        var comLoop = Run($$"""
             def c = {{condition}};
-            goto entao if c;
-            print({{otherwise}});
-            goto fim;
-            label entao;
-            print({{then}});
-            label fim;
+            loop {
+                if c { print({{then}}); break; }
+                print({{otherwise}});
+                break;
+            }
             """);
 
-        comGoto.ShouldBe(comIf);
+        comLoop.ShouldBe(comIf);
     }
 
     private static string Run(string source)

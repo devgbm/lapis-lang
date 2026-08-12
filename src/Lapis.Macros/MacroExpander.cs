@@ -269,7 +269,6 @@ public sealed class MacroExpander
         DefStatement s => s with { Value = RewriteExpression(s.Value, depth) },
         AssignStatement s => s with { Value = RewriteExpression(s.Value, depth) },
         ExpressionStatement s => s with { Expression = RewriteExpression(s.Expression, depth) },
-        GotoStatement { Condition: not null } s => s with { Condition = RewriteExpression(s.Condition, depth) },
         _ => statement,
     };
 
@@ -312,9 +311,18 @@ public sealed class MacroExpander
                 return n with
                 {
                     Condition = RewriteExpression(n.Condition, depth),
-                    Then = (BlockExpression)RewriteExpression(n.Then, depth),
+                    Then = RewriteExpression(n.Then, depth),
                     Else = n.Else is null ? null : RewriteExpression(n.Else, depth),
                 };
+
+            case LoopExpression n:
+                return n with { Body = (BlockExpression)RewriteExpression(n.Body, depth) };
+
+            case BreakExpression n:
+                return n with { Value = n.Value is null ? null : RewriteExpression(n.Value, depth) };
+
+            case ContinueExpression:
+                return expression;
 
             case ReturnExpression { Value: not null } n:
                 return n with { Value = RewriteExpression(n.Value, depth) };

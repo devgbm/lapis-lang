@@ -9,12 +9,13 @@ def valores = .[10, 20, 30];
 var soma = 0;
 var i = 0;
 
-label repete;
-match valores[i] {
-    Option.Some(v) => { soma = soma + v; },
-    Option.None => { print("fora"); }
+loop {
+    match valores[i] {
+        Option.Some(v) => { soma = soma + v; },
+        Option.None => { print("fora"); }
+    }
+    i = i + 1;
+    if i < 3 { continue; } else { break; }
 }
-i = i + 1;
-goto repete if i < 3;
 
 print(soma);

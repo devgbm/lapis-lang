@@ -1,13 +1,14 @@
 // Controle de fluxo pelo prelude — `@while` e `@unless`.
 //
 //     lapis run    examples/control.ls
-//     lapis expand examples/control.ls    # veja as macros virarem goto/label
+//     lapis expand examples/control.ls    # veja as macros virarem if/loop/break
 //
 // Nenhuma das duas é declarada aqui: elas vêm do `prelude.ls`, escritas na
-// própria LapisLang sobre `goto` e `label` (spec de macros §12).
+// própria LapisLang sobre `if` e `loop` (spec de macros §12; base trocada de
+// `goto`/`label` para `loop`/`break` no plano 26 — Q32).
 //
 // É a tese do sistema de macros em uma frase: **um laço, que em qualquer outra
-// linguagem é trabalho de compilador, aqui são seis linhas de biblioteca.** E
+// linguagem é trabalho de compilador, aqui são poucas linhas de biblioteca.** E
 // nada foi retirado do compilador para isso — `if` e `match` continuam onde
 // estavam —, então um `@while` quebrado não tem como regredir um programa que já
 // funcionava.
@@ -15,9 +16,8 @@
 // Escopo, que é onde a implementação de um laço por macro costuma vazar:
 //
 //   - o corpo é um escopo, como o de um `if` — o que ele declara não escapa;
-//   - um `var` declarado entre dois laços é visível no segundo;
-//   - o que um `goto` explícito pode ter pulado continua invisível no destino,
-//     que é a única forma de o contrário ser mentira.
+//   - um `var` declarado entre dois laços é visível no segundo, porque cada
+//     `loop` é só mais um escopo léxico comum, sem nada de especial a dizer.
 //
 // Saída esperada:
 //   1

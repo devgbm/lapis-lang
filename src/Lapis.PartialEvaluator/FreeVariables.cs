@@ -364,18 +364,12 @@ public static class FreeVariables
                 yield return n.Target;
                 break;
 
-            case CoreGotoIf n:
-                yield return n.Condition;
+            case CoreLoop n:
+                yield return n.Body;
                 break;
 
-            case CoreLabeled n:
-                yield return n.Entry;
-
-                foreach (var join in n.Joins)
-                {
-                    yield return join.Body;
-                }
-
+            case CoreBreak { Value: { } value }:
+                yield return value;
                 break;
         }
     }

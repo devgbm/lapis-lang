@@ -194,7 +194,7 @@ public sealed class ExpansionTests : MacroTestBase
     [InlineData("def x = 1;\nprint(x);")]
     [InlineData("def f = fn(a: Int) Int { return a * 2; };\nprint(f(3));")]
     [InlineData("def C = enum { A, B };\nprint(match C.A { C.A => 1, C.B => 2 });")]
-    [InlineData("var i = 0;\nlabel r;\ni = i + 1;\ngoto r if i < 3;")]
+    [InlineData("var i = 0;\nloop :r { i = i + 1;\nif i < 3 { continue :r; } else { break; } }")]
     public void NoMacros_IsIdentity(string source) => ShouldExpandTo(source, source);
 
     // ------------------------------------------------------------- higiene
@@ -248,14 +248,14 @@ public sealed class ExpansionTests : MacroTestBase
             @example 2;
             """).ShouldNotContain(DiagnosticCodes.DuplicateDefinition);
 
-    /// <summary>Um rótulo introduzido também é higienizado — `@unless` duas vezes no mesmo bloco.</summary>
+    /// <summary>O rótulo de um `loop` introduzido também é higienizado — `@unless` duas vezes no mesmo bloco.</summary>
     [Fact]
     public void Hygiene_LabelsAreRenamed()
     {
         var expanded = Expand("""
             macro unless
                 match Expression:c Block:b
-                expand { goto done if c; b; label done; };
+                expand { loop :done { if c { break :done; } b; break :done; } };
 
             @unless true { print(1); }
             @unless false { print(2); }

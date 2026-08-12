@@ -118,10 +118,17 @@ public static class DiagnosticCodes
     public const string MacroIsNotAValue = "LAP0510";
     public const string DuplicateMacro = "LAP0511";
 
-    // LAP052x — goto e label (plano 16)
-    public const string UnknownLabel = "LAP0520";
-    public const string LabelOutOfScope = "LAP0521";
-    public const string DuplicateLabel = "LAP0522";
+    // LAP052x — goto e label (plano 16, retirado no plano 26 — Q32). LAP0520,
+    // LAP0521 e LAP0522 ficam retirados e não reciclados: código publicado nunca
+    // volta ao pool, mesma regra de LAP0301/LAP0706.
+
+    // Controle de fluxo estruturado (plano 26, M16 — Q32): `loop`/`break`/
+    // `continue` substituem `goto`/`label`.
+    public const string BreakOrContinueOutsideLoop = "LAP0523";
+    public const string UnknownLoopLabel = "LAP0524";
+    public const string LoopLabelOutOfScope = "LAP0525";
+    public const string IncompatibleBreakValues = "LAP0526";
+    public const string BareIfCannotHaveBareIfBody = "LAP0527";
 
     // LAP06xx — reflection (plano 19)
     public const string ReflectExpectsType = "LAP0601";
@@ -173,7 +180,11 @@ public static class DiagnosticCodes
     // a produzir o maior Int (Q9), então a operação é total e não há o que relatar.
     // O código não é reciclado.
     public const string CallDepthExceeded = "LAP0302";
-    public const string JumpLimitExceeded = "LAP0303";
+
+    // Chegou com o `goto` para trás (M6) e continua com `loop` (plano 26, Q32) —
+    // mesmo código, mesmo espírito, mecanismo mais simples por baixo. A mensagem
+    // fala de "iterações", não mais de "saltos".
+    public const string IterationLimitExceeded = "LAP0303";
 
     // Quantidade dinâmica de `.[T; inicial; n]` acima do orçamento. Mesmo espírito
     // do orçamento de saltos: um programa que pede um span grande demais termina

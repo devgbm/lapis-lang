@@ -12,11 +12,16 @@ public enum CompletionKind
     Return,
 
     /// <summary>
-    /// Um <c>goto</c> foi executado; propaga até o grupo de joins que declara o
-    /// rótulo. É o mesmo mecanismo de <see cref="Return"/> — nenhuma exceção C#,
-    /// nenhum caminho novo de propagação.
+    /// Um <c>break</c> foi executado; propaga até o <c>loop</c> que o rótulo (ou
+    /// a ausência dele) alcança — plano 26, M16. Mesmo mecanismo de
+    /// <see cref="Return"/>: nenhuma exceção C#, nenhum caminho novo.
     /// </summary>
-    Goto,
+    Break,
+
+    /// <summary>
+    /// Um <c>continue</c> foi executado; propaga até o <c>loop</c> que reinicia.
+    /// </summary>
+    Continue,
 
     /// <summary>Erro de execução da linguagem (divisão inteira por zero); propaga até o topo.</summary>
     Abort,
@@ -43,8 +48,10 @@ public readonly record struct Completion(
 
     public static Completion Return(Value value) => new(CompletionKind.Return, value);
 
-    public static Completion Goto(string label) =>
-        new(CompletionKind.Goto, VoidValue.Instance, Label: label);
+    public static Completion Break(string? label, Value value) => new(CompletionKind.Break, value, Label: label);
+
+    public static Completion Continue(string? label) =>
+        new(CompletionKind.Continue, VoidValue.Instance, Label: label);
 
     public static Completion Abort(string code, SourceSpan span, string message) =>
         new(CompletionKind.Abort, new StrValue(message), code, span);

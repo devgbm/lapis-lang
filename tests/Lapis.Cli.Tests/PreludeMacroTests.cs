@@ -92,13 +92,14 @@ public sealed class PreludeMacroTests : ConstraintTestBase
 
         result.Evaluation.ShouldNotBeNull();
         result.Evaluation.Status.ShouldBe(Evaluator.ExecutionStatus.Aborted);
-        result.Evaluation.Code.ShouldBe(DiagnosticCodes.JumpLimitExceeded);
+        result.Evaluation.Code.ShouldBe(DiagnosticCodes.IterationLimitExceeded);
     }
 
     /// <summary>
-    /// Um <c>var</c> declarado <b>depois</b> de um <c>label</c> vive dentro daquele
-    /// join. É por isso que as declarações que o laço lê ficam antes da invocação —
-    /// e é o que faz o estado sobreviver de uma volta para a outra.
+    /// O corpo de <c>@while</c> é um <c>loop</c>: um escopo léxico só, reavaliado
+    /// a cada volta (plano 26). É por isso que as declarações que o laço lê ficam
+    /// <b>antes</b> da invocação — dentro do corpo elas seriam recriadas a cada
+    /// passagem — e é o que faz o estado sobreviver de uma volta para a outra.
     /// </summary>
     [Fact]
     public void While_DeclarationsBeforeLabel_SurviveEveryIteration() =>
@@ -188,13 +189,12 @@ public sealed class PreludeMacroTests : ConstraintTestBase
     /// <summary>
     /// Um <c>var</c> declarado <b>entre</b> dois laços é visível no segundo.
     ///
-    /// Foi a restrição que o M11 expôs e que o regrouping do desugar removeu: os
-    /// rótulos do bloco não formam mais um grupo só. Dois <c>@while</c>
-    /// independentes não têm salto entre si, então o segundo vira um grupo
-    /// <b>aninhado</b> no corpo do primeiro, e a declaração o envolve como um
-    /// <c>Let</c> comum.
-    ///
-    /// Este teste já afirmou o contrário. A troca é a melhoria.
+    /// Era a restrição que o M11 expôs e que o regrouping do desugar removeu,
+    /// ainda em cima de <c>goto</c>/<c>label</c> (plano 16). Com <c>loop</c>
+    /// (plano 26) a pergunta nem chega a existir: cada <c>@while</c> vira um
+    /// <c>loop</c>, que é só mais uma expressão numa cadeia de <c>Let</c> comum —
+    /// o que vem declarado entre dois deles está em escopo no segundo do mesmo
+    /// jeito que estaria entre quaisquer duas outras expressões.
     /// </summary>
     [Fact]
     public void While_VarDeclaredBetweenTwoLoops_IsVisible() =>

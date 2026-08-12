@@ -37,12 +37,13 @@ public sealed class Evaluator
     private const int MaxCallDepth = 10_000;
 
     /// <summary>
-    /// Orçamento de saltos do <b>programa inteiro</b>, não de cada laço.
+    /// Orçamento de iterações do <b>programa inteiro</b>, não de cada laço.
     ///
     /// Até o M4 todo programa terminava por construção — sem recursão (Q8) e sem
-    /// laços. O salto para trás acaba com isso, e um orçamento global é o que
-    /// torna "todo programa termina ou reporta <c>LAP0303</c>" uma propriedade
-    /// verificável, em vez de uma esperança.
+    /// laços. Um <c>loop</c> com progresso acaba com isso (chegou com o salto
+    /// para trás no M6, plano 26 trocou o mecanismo sem trocar a garantia), e um
+    /// orçamento global é o que torna "todo programa termina ou reporta
+    /// <c>LAP0303</c>" uma propriedade verificável, em vez de uma esperança.
     /// </summary>
     private const int MaxJumps = 1_000_000;
 
@@ -98,9 +99,12 @@ public sealed class Evaluator
             CompletionKind.Return => throw new InternalCompilerException(
                 "'return' escapou para o topo do programa"),
 
-            // Idem para um salto sem rótulo correspondente: LAP0520 o rejeita.
-            CompletionKind.Goto => throw new InternalCompilerException(
-                $"'goto {completion.Label}' escapou para o topo do programa"),
+            // Idem para break/continue sem loop correspondente: LAP0523 rejeita.
+            CompletionKind.Break => throw new InternalCompilerException(
+                "'break' escapou para o topo do programa"),
+
+            CompletionKind.Continue => throw new InternalCompilerException(
+                "'continue' escapou para o topo do programa"),
 
             _ => new EvaluationResult(completion.Value, ExecutionStatus.Completed),
         };
@@ -156,9 +160,9 @@ public sealed class Evaluator
         CoreMatch n => EvaluateMatch(n, environment),
         CoreTypeDef n => EvaluateTypeDef(n),
         CoreConstruct n => EvaluateConstruct(n, environment),
-        CoreGoto n => Completion.Goto(n.Label),
-        CoreGotoIf n => EvaluateGotoIf(n, environment),
-        CoreLabeled n => EvaluateLabeled(n, environment),
+        CoreLoop n => EvaluateLoop(n, environment),
+        CoreBreak n => EvaluateBreak(n, environment),
+        CoreContinue n => Completion.Continue(n.Label),
         CoreAssign n => EvaluateAssign(n, environment),
         _ => throw InternalCompilerException.Unreachable(node, node.Span),
     };
@@ -390,70 +394,66 @@ public sealed class Evaluator
             DiagnosticCodes.ConstraintRejected, node.Span, ((StrValue)value.Value).Value);
     }
 
-    private Completion EvaluateGotoIf(CoreGotoIf node, Environment environment)
-    {
-        var condition = Evaluate(node.Condition, environment);
-
-        if (!condition.IsNormal)
-        {
-            return condition;
-        }
-
-        return ((BoolValue)condition.Value).Value
-            ? Completion.Goto(node.Label)
-            : Completion.Normal(VoidValue.Instance);
-    }
-
     /// <summary>
-    /// Avalia a entrada; se ela terminar em salto para um dos joins deste grupo,
-    /// avalia aquele corpo — que pode saltar de novo. Qualquer outra completion
-    /// sobe, exatamente como <c>Return</c> sobe até a fronteira de chamada.
+    /// Avalia o corpo repetidamente até um <c>break</c> que este <c>loop</c>
+    /// alcança — direto (<c>Completion.Break</c> capturado aqui) ou de graça
+    /// (completion <c>Normal</c>, que é cair no fim do corpo, o mesmo que um
+    /// <c>continue</c> implícito). Qualquer outra completion sobe intacta,
+    /// exatamente como <c>Return</c> já sobe até a fronteira de chamada.
     ///
-    /// O laço é <b>iteração, não recursão</b>: um salto para trás é mais uma volta
-    /// deste <c>while</c>, e a pilha de C# não cresce. É o que torna
-    /// <c>@while</c> viável sem risco de estouro no interpretador.
+    /// <b>Iteração, não recursão</b>: uma volta a mais é mais uma passada deste
+    /// <c>while</c> em C#, e a pilha não cresce — é o que mantém <c>@while</c> e
+    /// laço aninhado viáveis sem risco de stack overflow no interpretador (plano
+    /// 26, sucessor do plano 16 §16.6).
     /// </summary>
-    private Completion EvaluateLabeled(CoreLabeled node, Environment environment)
+    private Completion EvaluateLoop(CoreLoop node, Environment environment)
     {
-        var completion = Evaluate(node.Entry, environment);
-
-        while (completion.Kind == CompletionKind.Goto && TryFindJoin(node, completion.Label, out var join))
+        while (true)
         {
+            var completion = Evaluate(node.Body, environment);
+
+            if (completion.Kind == CompletionKind.Break && Targets(node.Label, completion.Label))
+            {
+                return Completion.Normal(completion.Value);
+            }
+
+            var repeats = completion.IsNormal
+                || (completion.Kind == CompletionKind.Continue && Targets(node.Label, completion.Label));
+
+            if (!repeats)
+            {
+                return completion;
+            }
+
             if (++_jumps > MaxJumps)
             {
                 return Completion.Abort(
-                    DiagnosticCodes.JumpLimitExceeded,
+                    DiagnosticCodes.IterationLimitExceeded,
                     node.Span,
-                    $"limite de saltos excedido (limite {MaxJumps})");
+                    $"limite de iterações excedido (limite {MaxJumps})");
             }
+        }
+    }
 
-            // O ambiente é o do grupo, não o da entrada: nomes declarados entre o
-            // salto e o rótulo não estão em escopo no destino — o salto pode
-            // tê-los pulado (plano 16 §16.4).
-            completion = Evaluate(join.Body, environment);
+    private Completion EvaluateBreak(CoreBreak node, Environment environment)
+    {
+        if (node.Value is null)
+        {
+            return Completion.Break(node.Label, VoidValue.Instance);
         }
 
-        return completion;
+        var value = Evaluate(node.Value, environment);
+        return value.IsNormal ? Completion.Break(node.Label, value.Value) : value;
     }
 
     /// <summary>
-    /// O primeiro join com o nome procurado. Rótulo repetido no mesmo grupo é
-    /// <c>LAP0522</c>; aqui a escolha só precisa ser determinística.
+    /// Um <c>break</c>/<c>continue</c> sem rótulo alcança o <c>loop</c> mais
+    /// próximo — por isso <paramref name="completionLabel"/> nulo sempre bate.
+    /// Um rotulado alcança só o <c>loop</c> com aquele rótulo, não importa
+    /// quantos outros ele atravessa por cima.
     /// </summary>
-    private static bool TryFindJoin(CoreLabeled node, string? label, out CoreJoin join)
-    {
-        foreach (var candidate in node.Joins)
-        {
-            if (candidate.Name == label)
-            {
-                join = candidate;
-                return true;
-            }
-        }
-
-        join = null!;
-        return false;
-    }
+    private static bool Targets(string? loopLabel, string? completionLabel) =>
+        completionLabel is null || completionLabel == loopLabel;
 
     private Completion EvaluateIf(CoreIf node, Environment environment)
     {
@@ -946,10 +946,14 @@ public sealed class Evaluator
                 // garante (LAP0272) que as demais retornam em todos os caminhos.
                 CompletionKind.Normal => Completion.Normal(VoidValue.Instance),
 
-                // Um salto não atravessa fronteira de função (LAP0520/LAP0521):
-                // chegar aqui significa que o checker deixou passar.
-                CompletionKind.Goto => throw new InternalCompilerException(
-                    $"'goto {completion.Label}' escapou do corpo da função"),
+                // `break`/`continue` não atravessam fronteira de função
+                // (LAP0523-LAP0525): chegar aqui significa que o checker deixou
+                // passar.
+                CompletionKind.Break => throw new InternalCompilerException(
+                    "'break' escapou do corpo da função"),
+
+                CompletionKind.Continue => throw new InternalCompilerException(
+                    "'continue' escapou do corpo da função"),
 
                 _ => completion,
             };

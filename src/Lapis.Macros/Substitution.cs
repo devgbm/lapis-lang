@@ -70,17 +70,6 @@ internal sealed class Substitution
 
         ExpressionStatement s => s with { Expression = ApplyExpression(s.Expression), Span = _invocation },
 
-        // Rótulos também são introduzidos pela macro, e `@unless` usada duas vezes
-        // no mesmo bloco não pode declarar o mesmo `done` duas vezes.
-        GotoStatement s => s with
-        {
-            Label = Rename(s.Label),
-            Condition = s.Condition is null ? null : ApplyExpression(s.Condition),
-            Span = _invocation,
-        },
-
-        LabelStatement s => s with { Label = Rename(s.Label), Span = _invocation },
-
         _ => statement,
     };
 
@@ -125,8 +114,34 @@ internal sealed class Substitution
                 return n with
                 {
                     Condition = ApplyExpression(n.Condition),
-                    Then = (BlockExpression)ApplyExpression(n.Then),
+                    Then = ApplyExpression(n.Then),
                     Else = n.Else is null ? null : ApplyExpression(n.Else),
+                    Span = _invocation,
+                };
+
+            // O rótulo de `loop` também é introduzido pela macro, e `@while` usada
+            // duas vezes no mesmo bloco não pode declarar o mesmo rótulo duas
+            // vezes (mesma razão de `label`/`goto` antes do plano 26).
+            case LoopExpression n:
+                return n with
+                {
+                    Label = n.Label is null ? null : Rename(n.Label),
+                    Body = (BlockExpression)ApplyExpression(n.Body),
+                    Span = _invocation,
+                };
+
+            case BreakExpression n:
+                return n with
+                {
+                    Label = n.Label is null ? null : Rename(n.Label),
+                    Value = n.Value is null ? null : ApplyExpression(n.Value),
+                    Span = _invocation,
+                };
+
+            case ContinueExpression n:
+                return n with
+                {
+                    Label = n.Label is null ? null : Rename(n.Label),
                     Span = _invocation,
                 };
 
