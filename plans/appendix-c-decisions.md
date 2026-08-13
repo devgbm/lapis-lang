@@ -1686,6 +1686,38 @@ passados. Aqui ele já está **escrito** no tipo do receptor — `Caixa<Int>` é
 que o checker tem em mãos —, e o casamento só o transporta para o corpo. Não há
 busca, não há escolha, não há falha parcial. É leitura, não dedução.
 
+**E a exceção não seria nova: a Q7 já a abriu, para si mesma.** O último
+parágrafo dela diz que em padrões de `match` nada disso é necessário, *"ali o
+tipo do escrutinado já fixa os argumentos"*. Verificado:
+
+```c
+def r: Result<Int, Str> = Result<Int, Str>.Ok(7);
+
+print(match r {
+    Result.Ok(v) => v + 1,     // compila; `v` sai Int, e ninguém escreveu <Int, Str>
+    Result.Err(e) => 0
+});
+
+def id = fn<T>(x: T) T { return x; };
+print(id(1));                  // LAP0290: "não há inferência: escreva '<T>' antes de '('"
+```
+
+Ligar `v: Int` a partir de um escrutinado `Result<Int, Str>` é **a mesma
+operação** que ligar `T := Int` a partir de um receptor `Caixa<Int>`: casar um
+tipo que o checker já tem contra um padrão declarado e substituir. A Q41 não
+pede uma exceção nova — pede a exceção existente aplicada ao **receptor** em vez
+do escrutinado.
+
+**Se a Q41 for adotada, convém enunciar a regra em vez de acumular exceções:**
+
+> Um argumento genérico pode ser **lido** de um tipo que o checker já tem
+> (escrutinado de `match`, receptor de membro). Nunca é **deduzido** de valores
+> num ponto de chamada.
+
+Isso cobre `match` e padrão de dono com um princípio só, e transforma o recorte
+da Q7 — hoje um caso especial — em consequência. A Q7 continua valendo onde
+sempre valeu: `id(1)` segue `LAP0290`.
+
 ### Custo concreto
 
 1. **Parser:** aceitar `? as IDENT` onde hoje só cabe `?`, dentro do `<>` do
