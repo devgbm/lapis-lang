@@ -15,6 +15,7 @@ public static class DiagnosticCodes
     public const string UnterminatedString = "LAP0004";
     public const string UnterminatedBlockComment = "LAP0005";
     public const string MalformedFloatLiteral = "LAP0006";
+    public const string UnterminatedCharLiteral = "LAP0007";
 
     // LAP01xx — Parser
     public const string UnexpectedToken = "LAP0101";
@@ -33,6 +34,13 @@ public static class DiagnosticCodes
     public const string ChainedComparison = "LAP0114";
     public const string ExpressionTooDeep = "LAP0115";
     public const string EmptyGenericArgumentList = "LAP0116";
+
+    /// <summary>
+    /// Um literal de <c>Char</c> tem exatamente um ponto de código (Q35). Aspas
+    /// simples com outro conteúdo só fazem sentido como pseudo-palavra-chave de
+    /// macro (Q38), e fora de um padrão de macro não há o que fazer com elas.
+    /// </summary>
+    public const string CharLiteralMustBeOneCodepoint = "LAP0117";
 
     // LAP02xx — Type checker
     public const string UnknownVariable = "LAP0201";

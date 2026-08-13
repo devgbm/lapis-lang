@@ -74,6 +74,7 @@ separa:
 | Q37 | módulos sem visibilidade por ora — tudo público | ✅ | 🔴 | plano 27 §B1 | |
 | Q38 | evolução de macros (pseudo-keywords, splice, aninhamento, controle) | 🅿️ | 🔴 | — | pré-requisito de Q22 |
 | Q39 | valor padrão de `T`; `.[T; n]` sem semente | ⏳ | 🔴 | — | recomendação: `def T.default` |
+| Q40 | overload de operadores | ⏳ | 🟡 | plano 27 §E2 | motivada por Q35; não revoga Q13 |
 
 **A spec precisa ser atualizada** por causa destas decisões: §15/§16/§22
 (variantes qualificadas), §44 (tokens `!`, `&&`, `\|\|`), §14/§24 (sintaxe de
@@ -1229,10 +1230,29 @@ sempre, como `[T;?]` (Q31). Literal de string com tamanho no tipo é A2b.
 
 **O que a implementação acrescentou** (plano 27 §A2 tem o detalhe):
 
-- **Não há literal de `Char`.** Um caractere se obtém indexando uma `Str`. As
-  aspas simples não estavam disponíveis: pertencem às pseudo-palavras-chave de
-  macro (Q38). Coerente com A2a não fechar portas — inventar `'a'` agora seria
-  decidir sintaxe antes de precisar dela.
+- **~~Não há literal de `Char`.~~ Revisto pelo autor: `'a'` entra.** Eu tinha
+  registrado que as aspas simples estavam ocupadas pela pseudo-palavra-chave da
+  Q38. **Estava errado, e o erro é de leitura da própria Q38:** a
+  pseudo-palavra-chave só existe **dentro do `match` de uma macro**. Fora dali,
+  aspa simples nunca teve outro dono.
+
+  As duas formas não disputam lugar nenhum, então convivem sem sintaxe nova:
+
+  ```c
+  def c = 'c';                                   // Char
+
+  macro esperaChar
+      match 'pseudopalavra' Char:c ...           // pseudo-palavra-chave e captura
+  ```
+
+  **Como a ambiguidade se resolve:** a lexer emite um token único para tudo entre
+  aspas simples e **não julga o conteúdo** — ela não sabe onde o token está. Quem
+  sabe é o parser: em posição de expressão cobra um ponto de código só
+  (`LAP0117`); no padrão de macro, conteúdo de mais é pseudo-palavra-chave. A
+  categoria `Char:c` entrou junto, ao lado de `Int:n` e `Str:s`.
+
+  Escapa-se a aspa que delimita, e só ela: `'\''` leva barra, `'"'` não — e o
+  simétrico vale para a string, onde `"\'"` passou a ser escape desconhecido.
 - **Um `Char` imprime nu, mesmo aninhado:** `Option.Some(a)`, e não
   `Option.Some("a")`. Aspas duplas diriam `Str`, que é o tipo que ele não é.
 - **`s.length` dobra no PE; `s[i]`, não.** A leitura devolve `Option<Char>`, e
@@ -1246,10 +1266,11 @@ sempre, como `[T;?]` (Q31). Literal de string com tamanho no tipo é A2b.
 instanciado. Vale desde o M12 e não é regressão de A2a; o desembrulho por `is`
 contorna. Fica registrado aqui porque a stdlib vai esbarrar nisso.
 
-**Também em aberto, e que A2a criou:** um `Char` entra na linguagem por
-indexação e **não sai** — `"" + c` não compila, e não há ordenação (`<`). Sem
-uma volta para `Str`, nenhuma função de string escrita em LapisLang consegue
-construir resultado. É pré-requisito da stdlib, não de A2b.
+**Também em aberto, e que A2a criou:** um `Char` **não sai** para `Str` — `"" +
+c` não compila —, e não há ordenação (`<`). O literal resolveu a entrada, não a
+saída: dá para comparar caracteres, não para montar texto com eles. Sem essa
+volta, nenhuma função de string escrita em LapisLang constrói resultado. É
+pré-requisito da stdlib, não de A2b, e é o caso de uso que motiva a **Q40**.
 
 **🔄 Encaminhada:** A2b — unificar `Str` com `[Char;N]` — segue em aberto, e só
 volta à mesa depois que a stdlib de strings existir e mostrar se a unificação
@@ -1373,6 +1394,18 @@ decisão do autor: macro precisa amadurecer antes de virar interface pública. E
 `@match` (Q20/Q22) depende de controle de fluxo no `expand` para ser sequer
 escrevível — esta entrada é pré-requisito daquela.
 
+**Relação com a Q35, e um limite que fica fixado agora.** As aspas simples são
+de **`Char` em toda parte, exceto dentro do `match` de uma macro**, onde
+delimitam uma pseudo-palavra-chave. Não é convenção a combinar depois: já está
+implementado desse jeito — a lexer entrega um token único sem julgar o conteúdo,
+e o parser aplica a regra do lugar onde está. Quando esta entrada sair da
+prateleira, a pseudo-palavra-chave não precisa de sintaxe nova, só de leitura
+nova do mesmo token.
+
+**Consequência para o desenho de `expand`:** um `'x'` que apareça no corpo de um
+`expand` é um `Char`, não uma pseudo-palavra-chave — o `expand` produz código, e
+código é onde a regra geral vale.
+
 ---
 
 ---
@@ -1428,6 +1461,71 @@ nó novo na Core.
 explícita ou com slots `Option<T>`; `.[T; n]` é conveniência que pode entrar na
 fase D sem quebrar o que já estiver escrito.
 
+
+---
+
+## Q40 ⏳🟡 — Overload de operadores
+
+**Problema.** Os operadores são fechados no checker: `+` vale para `Int`,
+`Float` e `Str`, e mais nada. Um tipo escrito pelo usuário nunca soma. O caso que
+tornou isso concreto é a Q35: um `Char` entra na linguagem por literal e por
+indexação, mas não sai — `"" + c` não compila, então nenhuma função de string
+escrita em LapisLang consegue **construir** texto.
+
+**Duas sintaxes propostas pelo autor**, e a preferência dele é a segunda:
+
+```c
+// (a) palavra reservada nova
+def operator + (left: Char, right: Char) [Char;2] { ... }
+
+// (b) operador é nome comum
+def + = fn(left: Char, right: Char) [Char;2] { ... };
+```
+
+**A recomendação acompanha o autor: (b).** Não é preferência estética — (b) é a
+que **não acrescenta conceito**. Um operador vira o que um nome já é, e a
+declaração é o `def` que a linguagem tem desde o M1: mesmo escopo, mesmo
+sombreamento, mesma exportação quando os módulos chegarem (Q37), e o partial
+evaluator continua vendo uma chamada, sem caso novo. Em (a) o `operator` é um
+segundo jeito de declarar função, com regras próprias a manter em paralelo pelo
+resto da vida da linguagem.
+
+**Restrições que (b) exige, e que o autor já enunciou:** o lado direito precisa
+ser sintaticamente uma `fn` de aridade 2, e o tipo do resultado é o `return` —
+sem assinatura implícita, sem inferência (Q7 intacta).
+
+**O que precisa ser resolvido antes de implementar** — nenhum é impeditivo, mas
+nenhum é grátis:
+
+1. **A lexer não sabe que `+` pode ser nome.** Hoje `+` é `TokenKind.Plus` e
+   nunca `Identifier`. `def + = …` exige o parser aceitar um token de operador na
+   posição de nome — local, mas é uma exceção na gramática.
+2. **Resolução: nome ou tabela?** Se `+` é um binding comum, `a + b` precisa
+   procurá-lo no escopo — e hoje `CoreBinary` não é chamada, é nó próprio. O
+   caminho barato é o checker consultar a tabela **só quando os tipos embutidos
+   não servem**, mantendo `Int + Int` como está. O caro, e mais coerente, é
+   `a + b` desugar para `+(a, b)` sempre, e `CoreBinary` sumir da Core.
+3. **Sobrecarga é resolução por tipo**, que a linguagem não faz em lugar nenhum:
+   dois `def +` com assinaturas diferentes são hoje `LAP0202` (duplicata). Ou o
+   `def` de operador é especial nesse ponto, ou cada par de tipos precisa de um
+   nome — o que anula o ganho.
+4. **Precedência e associatividade** ficam as da linguagem. Deixar o usuário
+   mexer nelas é outra decisão, e a recomendação é não mexer.
+5. **Quais símbolos.** O autor cita `+ - / * % << >>`. Nem `%`, nem `<<`, nem
+   `>>` existem hoje (a ausência de `>>` é deliberada: evita fechar dois generics
+   aninhados, spec §44). Aceitar como nome um símbolo que a linguagem não lexa
+   pede lexá-lo primeiro.
+
+**Prioridade: baixa** — registro do autor. Fica na **fase E** do roteiro 0.3
+(§E2), depois dos módulos e da stdlib. O motivo de não ser urgente apesar de
+`Char → Str`: essa volta específica é resolvível com um membro (`def Char.str`),
+que já funciona hoje e não abre nenhuma destas cinco perguntas.
+
+**Relação com a Q13.** A Q13 fixou que os operadores são fechados. Esta entrada
+não a revoga: propõe uma extensão **por cima** do conjunto embutido, que continua
+sendo o que responde primeiro.
+
+---
 
 ## Questões deixadas em aberto
 

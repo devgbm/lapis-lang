@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Lapis.Ast;
 using Lapis.Ast.Surface;
 using Lapis.Lexer;
 using Lapis.Parser;
@@ -223,8 +224,15 @@ public static class MacroMatcher
             SyntaxCategory.Float => token.Kind == TokenKind.FloatLiteral,
             SyntaxCategory.Str => token.Kind == TokenKind.StringLiteral,
             SyntaxCategory.Bool => token.Kind is TokenKind.TrueKeyword or TokenKind.FalseKeyword,
+            // Um token de aspas simples que não seja um caractere só é uma
+            // pseudo-palavra-chave (Q38), não um `Char`: o padrão simplesmente
+            // não casa, e cabe a outra regra tratá-lo.
+            SyntaxCategory.Char => token.Kind == TokenKind.CharLiteral
+                && ConstChar.TrySingleCodepoint(token.StringValue, out _),
             SyntaxCategory.Literal => token.Kind is TokenKind.IntegerLiteral or TokenKind.FloatLiteral
-                or TokenKind.StringLiteral or TokenKind.TrueKeyword or TokenKind.FalseKeyword,
+                or TokenKind.StringLiteral or TokenKind.TrueKeyword or TokenKind.FalseKeyword
+                || (token.Kind == TokenKind.CharLiteral
+                    && ConstChar.TrySingleCodepoint(token.StringValue, out _)),
             _ => false,
         };
 
@@ -240,6 +248,9 @@ public static class MacroMatcher
             TokenKind.IntegerLiteral => new IntLiteral(token.IntegerValue, token.Text) { Span = token.Span },
             TokenKind.FloatLiteral => new FloatLiteral(token.FloatValue, token.Text) { Span = token.Span },
             TokenKind.StringLiteral => new StrLiteral(token.StringValue) { Span = token.Span },
+            TokenKind.CharLiteral => new CharLiteral(
+                ConstChar.TrySingleCodepoint(token.StringValue, out var rune) ? rune : default)
+            { Span = token.Span },
             _ => new BoolLiteral(token.Kind == TokenKind.TrueKeyword) { Span = token.Span },
         };
 

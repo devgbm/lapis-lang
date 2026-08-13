@@ -180,5 +180,5 @@ public sealed class ConstraintRunner : IConstraintRunner
     }
 
     private static bool IsLiteral(Expression expression) =>
-        expression is IntLiteral or FloatLiteral or StrLiteral or BoolLiteral;
+        expression is IntLiteral or FloatLiteral or StrLiteral or CharLiteral or BoolLiteral;
 }

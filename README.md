@@ -56,9 +56,9 @@ lapis hello.ls
 | M18–M21 — módulos, efeitos, biblioteca padrão, metaprogramação++ | ⏳ próximos |
 | M22–M24 — PE: especialização, análise, equivalência | 🅿️ adiado (Q33) |
 
-**1821 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
+**1863 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
 evaluator, partial evaluator e CLI — entre eles uma **suíte de conformidade** de
-217 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
+222 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
 spec é um arquivo, e o nome do teste que falha já é o arquivo a abrir.
 
 A linguagem já roda programas de verdade: funções de primeira classe com
@@ -354,7 +354,7 @@ teto seja o dele, e não o do host.
 def texto = "a𝕏b";
 
 print(texto.length);                              // 3 — pontos de código
-if texto[1] is Some(c) { print(c); }              // 𝕏, inteiro
+if texto[1] is Some(c) { print(c == '𝕏'); }       // true
 print(texto[9]);                                  // Option.None
 ```
 
@@ -365,11 +365,29 @@ programas sobre texto fora do plano básico; o caminho inverso não muda nenhum.
 
 `Str` **não** virou `[Char;N]`: ganhou as duas leituras de um span sem mudar de
 representação. Como o tamanho não está no tipo, `s[i]` é sempre `Option<Char>`,
-como em `[T;?]` — nunca há indexação total. Não há literal de `Char`: um
-caractere se obtém indexando uma `Str`, e as aspas simples estão reservadas às
-pseudo-palavras-chave de macro (Q38). Unificar `Str` com `[Char;N]` continua em
-aberto (A2b no plano 27), agora sem pressa: a semântica já é a certa, e o que
-mudaria é só a implementação.
+como em `[T;?]` — nunca há indexação total. Unificar `Str` com `[Char;N]`
+continua em aberto (A2b no plano 27), agora sem pressa: a semântica já é a
+certa, e o que mudaria é só a implementação.
+
+O literal de `Char` usa **aspas simples**, e elas convivem com a
+pseudo-palavra-chave de macro planejada na Q38 porque as duas nunca disputam o
+mesmo lugar — pseudo-palavra-chave só existe dentro do `match` de uma macro.
+Quem separa os dois é o parser, e não a lexer: ela entrega um token só, sem
+julgar o conteúdo, e a regra "exatamente um ponto de código" vale onde o token
+está em posição de expressão. A categoria de captura acompanha:
+
+```c
+macro comecaCom
+    match Expression:texto Char:esperado
+    expand {
+        if texto[0] is Some(primeiro) { primeiro == esperado } else { false }
+    };
+
+print(@comecaCom "abc" 'a');                      // true
+```
+
+Escapa-se a aspa que delimita, e só ela: `'\''` leva barra, `'"'` não — e o
+simétrico vale para a string.
 
 As duas construções coexistem com papéis distintos: **`is` testa uma variante e
 não é exaustivo; `match` cobre todas e é** (Q6). E é essa divisão que dá a

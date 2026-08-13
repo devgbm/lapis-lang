@@ -107,6 +107,11 @@ public sealed class Lexer
             return ReadString();
         }
 
+        if (c == '\'')
+        {
+            return ReadSingleQuoted();
+        }
+
         return ReadOperator(start);
     }
 
@@ -292,7 +297,7 @@ public sealed class Lexer
 
             if (Current == '\\')
             {
-                ReadEscape(value);
+                ReadEscape(value, '"');
                 continue;
             }
 
@@ -304,7 +309,58 @@ public sealed class Lexer
         return new Token(TokenKind.StringLiteral, fullSpan, _source.GetText(fullSpan), value.ToString());
     }
 
-    private void ReadEscape(StringBuilder value)
+    /// <summary>
+    /// Tudo entre aspas simples, <b>sem julgar o conteúdo</b>.
+    ///
+    /// Em expressão isto é um literal de <c>Char</c> e o parser cobra que haja um
+    /// ponto de código só (<c>LAP0117</c>). Dentro do <c>match</c> de uma macro o
+    /// mesmo token será uma pseudo-palavra-chave (Q38), onde o conteúdo é um
+    /// identificador inteiro. A lexer não distingue os dois porque não sabe onde
+    /// está — e dar-lhe modos para saber custaria mais do que a checagem tardia.
+    /// </summary>
+    private Token ReadSingleQuoted()
+    {
+        var start = _position;
+        _position++; // aspa de abertura
+
+        var value = new StringBuilder();
+
+        while (true)
+        {
+            if (AtEnd || Current == '\n' || Current == '\r')
+            {
+                var span = SourceSpan.FromBounds(start, _position);
+                _diagnostics.ReportError(
+                    DiagnosticCodes.UnterminatedCharLiteral, span, "literal de caractere não terminado");
+                return new Token(TokenKind.CharLiteral, span, _source.GetText(span), value.ToString());
+            }
+
+            if (Current == '\'')
+            {
+                _position++;
+                break;
+            }
+
+            if (Current == '\\')
+            {
+                ReadEscape(value, '\'');
+                continue;
+            }
+
+            value.Append(Current);
+            _position++;
+        }
+
+        var fullSpan = SourceSpan.FromBounds(start, _position);
+        return new Token(TokenKind.CharLiteral, fullSpan, _source.GetText(fullSpan), value.ToString());
+    }
+
+    /// <param name="quote">
+    /// A aspa que delimita o literal — e a única que se escapa dentro dele.
+    /// <c>'"'</c> e <c>"'"</c> dispensam escape, cada um por estar dentro do
+    /// outro.
+    /// </param>
+    private void ReadEscape(StringBuilder value, char quote)
     {
         var escapeStart = _position;
         _position++; // a barra
@@ -319,7 +375,7 @@ public sealed class Lexer
 
         switch (escape)
         {
-            case '"': value.Append('"'); break;
+            case var q when q == quote: value.Append(quote); break;
             case '\\': value.Append('\\'); break;
             case 'n': value.Append('\n'); break;
             case 't': value.Append('\t'); break;

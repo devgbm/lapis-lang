@@ -280,6 +280,7 @@ public sealed class TypeResolver(DiagnosticBag diagnostics)
         FloatLiteral v => new ConstFloat(v.Value),
         BoolLiteral v => v.Value ? ConstBool.True : ConstBool.False,
         StrLiteral v => new ConstStr(v.Value),
+        CharLiteral v => new ConstChar(v.Value),
         _ => null,
     };
 

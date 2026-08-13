@@ -131,6 +131,10 @@ public static class SurfaceSExprPrinter
                 Line(builder, indent, $"(str {new ConstStr(n.Value).ToDisplayString()})");
                 break;
 
+            case CharLiteral n:
+                Line(builder, indent, $"(char {new ConstChar(n.Value).ToDisplayString()})");
+                break;
+
             case UnitLiteral:
                 Line(builder, indent, "(unit)");
                 break;
@@ -409,6 +413,7 @@ public static class SurfaceSExprPrinter
         ValueArgumentSyntax { Value: FloatLiteral v } => new ConstFloat(v.Value).ToDisplayString(),
         ValueArgumentSyntax { Value: BoolLiteral v } => new ConstBool(v.Value).ToDisplayString(),
         ValueArgumentSyntax { Value: StrLiteral v } => new ConstStr(v.Value).ToDisplayString(),
+        ValueArgumentSyntax { Value: CharLiteral v } => new ConstChar(v.Value).ToDisplayString(),
 
         // Uma função literal como argumento só é escrevível em posição de
         // expressão (Q17), onde quem imprime é o CoreSourcePrinter, a partir da

@@ -185,6 +185,9 @@ public sealed class Desugarer
             case StrLiteral n:
                 return _factory.Literal(n.Span, new ConstStr(n.Value));
 
+            case CharLiteral n:
+                return _factory.Literal(n.Span, new ConstChar(n.Value));
+
             case UnitLiteral n:
                 return _factory.Unit(n.Span);
 

@@ -85,4 +85,40 @@ public sealed class StrIntrinsicTests : TypeCheckerTestBase
     [Fact]
     public void Str_HasNoOtherMember() =>
         Codes("def x = \"abc\".size;").ShouldNotBeEmpty();
+
+    // ------------------------------------------------- literal de Char (Q35)
+
+    [Fact]
+    public void CharLiteral_IsChar() => TypeOfDef("def c = 'a';", "c").ShouldBe(PrimitiveType.Char);
+
+    [Fact]
+    public void CharLiteral_MatchesAnAnnotation() => ShouldPass("def c: Char = 'a';");
+
+    [Fact]
+    public void CharLiteral_IsNotStr() =>
+        ShouldFailWith("def c: Str = 'a';", DiagnosticCodes.TypeMismatch);
+
+    /// <summary>
+    /// O que fecha o circuito da A2a: antes do literal, um <c>Char</c> entrava
+    /// por indexação e não havia como escrever o caractere de referência.
+    /// </summary>
+    [Fact]
+    public void CharLiteral_ComparesWithAnIndexedChar() =>
+        ShouldPass("def igual = if \"abc\"[0] is Some(c) { c == 'a' } else { false };");
+
+    /// <summary>
+    /// <c>Char</c> não é ordenável, só comparável por igualdade — ordenação
+    /// segue em aberto no plano 27 §A2.
+    /// </summary>
+    [Fact]
+    public void CharLiteral_IsNotOrdered() =>
+        ShouldFailWith("def b = 'a' < 'b';", DiagnosticCodes.OperatorNotApplicable);
+
+    /// <summary>
+    /// <c>Char</c> ainda não concatena com <c>Str</c>: é a volta que falta para
+    /// a stdlib, e o candidato natural ao overload de operadores (plano 27 §E2).
+    /// </summary>
+    [Fact]
+    public void CharLiteral_DoesNotConcatenateWithStr() =>
+        ShouldFailWith("def s = \"\" + 'a';", DiagnosticCodes.OperatorNotApplicable);
 }

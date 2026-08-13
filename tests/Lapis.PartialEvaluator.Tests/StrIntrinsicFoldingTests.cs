@@ -45,4 +45,35 @@ public sealed class StrIntrinsicFoldingTests : PETestBase
     [Fact]
     public void Index_StillTypeChecks() =>
         ShouldStillTypeCheck("def s = \"abc\";\nif s[0] is Some(c) { print(c); }");
+
+    // ------------------------------------------------- literal de Char (Q35)
+
+    /// <summary>
+    /// Com o literal, um <c>Char</c> passou a ter forma escrita — e por isso
+    /// volta ao residual. Sem ele o valor era conhecido e mudo: o PE tinha de
+    /// manter a expressão original por não saber escrever a resposta.
+    /// </summary>
+    [Fact]
+    public void CharLiteral_Residualizes() =>
+        ShouldSpecializeTo("def c = 'a';\nprint(c);", "print('a');");
+
+    [Fact]
+    public void CharLiteral_EqualityFolds() =>
+        ShouldSpecializeTo("def c = 'a';\nprint(c == 'a');", "print(true);");
+
+    /// <summary>A aspa escapada sobrevive à ida e à volta — senão o residual não reparseia.</summary>
+    [Fact]
+    public void CharLiteral_EscapedQuote_RoundTrips() =>
+        ShouldSpecializeTo("def c = '\\'';\nprint(c);", "print('\\'');");
+
+    [Fact]
+    public void CharLiteral_Astral_RoundTrips() =>
+        ShouldSpecializeTo("def c = '𝕏';\nprint(c);", "print('𝕏');");
+
+    [Fact]
+    public void CharLiteral_PreservesBehaviour() =>
+        ShouldPreserveBehaviour("def c = '𝕏';\nprint(c);\nprint(c == '𝕏');");
+
+    [Fact]
+    public void CharLiteral_IsIdempotent() => ShouldBeIdempotent("def c = 'a';\nprint(c);");
 }

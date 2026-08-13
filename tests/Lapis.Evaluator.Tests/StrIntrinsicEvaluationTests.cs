@@ -69,6 +69,39 @@ public sealed class StrIntrinsicEvaluationTests : EvaluatorTestBase
             """)
             .ShouldBe("true\nfalse\n");
 
+    // ------------------------------------------------- literal de Char (Q35)
+
+    [Fact]
+    public void CharLiteral_Evaluates() => Eval("'a'").ShouldBe("a");
+
+    [Fact]
+    public void CharLiteral_Astral() => Eval("'𝕏'").ShouldBe("𝕏");
+
+    /// <summary>
+    /// Escapa-se a aspa que delimita, e só ela — <c>'"'</c> dispensa barra pelo
+    /// mesmo motivo que <c>"'"</c> dispensa.
+    /// </summary>
+    [Fact]
+    public void CharLiteral_Quotes()
+    {
+        Eval("'\\''").ShouldBe("'");
+        Eval("'\"'").ShouldBe("\"");
+    }
+
+    [Fact]
+    public void CharLiteral_EqualsAnIndexedChar() =>
+        Output("if \"abc\"[1] is Some(c) { print(c == 'b'); print(c == 'z'); }")
+            .ShouldBe("true\nfalse\n");
+
+    /// <summary>
+    /// O caractere literal e o indexado são o <b>mesmo</b> valor mesmo fora do
+    /// plano básico: se o literal fosse lido por unidade UTF-16 e a indexação
+    /// por ponto de código, isto daria <c>false</c> sem nada acusar.
+    /// </summary>
+    [Fact]
+    public void CharLiteral_AgreesWithIndexingOnAstralText() =>
+        Output("if \"a𝕏b\"[1] is Some(c) { print(c == '𝕏'); }").ShouldBe("true\n");
+
     /// <summary>
     /// <c>length</c> e indexação falam da mesma unidade: percorrer
     /// <c>0..length</c> visita todo caractere e nenhuma posição inválida. Se as

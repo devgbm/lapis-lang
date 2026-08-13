@@ -219,10 +219,13 @@ de implementação.
 
 Três detalhes que só apareceram ao escrever o código:
 
-1. **Não há literal de `Char`.** Um caractere se obtém indexando uma `Str`, e
-   ponto. Aspas simples não estão disponíveis: pertencem às pseudo-palavras-chave
-   de macro (Q38). A escolha é consistente com A2a não fechar portas — introduzir
-   `'a'` agora seria decidir sintaxe antes de precisar dela.
+1. **~~Não há literal de `Char`.~~ Corrigido pelo autor: `'a'` entra.** Eu tinha
+   lido a Q38 como se as aspas simples estivessem ocupadas. Não estão: a
+   pseudo-palavra-chave só existe **dentro do `match` de uma macro**, e fora dali
+   aspa simples nunca teve outro dono. As duas convivem sem sintaxe nova — a
+   lexer emite um token só, sem julgar o conteúdo, e o parser aplica a regra do
+   lugar onde está (`LAP0117` em expressão, pseudo-palavra-chave no padrão). A
+   categoria de captura `Char:c` entrou junto.
 2. **Um `Char` imprime nu, mesmo aninhado:** `Option.Some(a)`, não
    `Option.Some("a")`. Aspas duplas diriam `Str`, que é o tipo que ele não é.
 3. **`s.length` dobra no PE, `s[i]` não.** A contagem é constante com a string em
@@ -338,10 +341,32 @@ amadurecer antes de virar interface pública.
 **D · Biblioteca padrão.** `Str`, `Array<T>`, `File`, `Console` — escritos em
 LapisLang sempre que possível, pelo princípio §58.2.
 
-**E · Metaprogramação++.** Reflection sobre AST (hoje só existe sobre tipos) e a
-evolução de macros da Q38.
+**E · Metaprogramação++.**
 
-**F · Partial evaluator.** M17–M19, com o custo extra que a Q34 introduziu.
+- **E1 — reflection sobre AST** (hoje só existe sobre tipos) e a evolução de
+  macros da Q38.
+- **E2 — overload de operadores (Q40), prioridade baixa.** Registro do autor,
+  com duas sintaxes na mesa e a preferência dele pela segunda:
+
+  ```c
+  def operator + (left: Char, right: Char) [Char;2] { ... }   // (a) palavra reservada
+  def + = fn(left: Char, right: Char) [Char;2] { ... };        // (b) operador é nome comum
+  ```
+
+  A recomendação acompanha (b), e não por gosto: é a que **não acrescenta
+  conceito**. Um operador vira o que um nome já é — mesmo `def`, mesmo escopo,
+  mesmo sombreamento, mesma exportação quando os módulos chegarem, e o PE
+  continua vendo uma chamada. Em (a), `operator` é um segundo jeito de declarar
+  função, a manter em paralelo para sempre. O lado direito é obrigatoriamente uma
+  `fn` de aridade 2, e o `return` dá o tipo do resultado.
+
+  Fica em E, e não antes, porque o caso de uso que a motiva — `Char` virar `Str`
+  — tem saída mais barata por membro (`def Char.str`), que já funciona hoje. A
+  análise das cinco perguntas em aberto (lexar `+` como nome, resolver por tabela
+  ou por desugar para chamada, sobrecarga por tipo contra `LAP0202`, precedência,
+  quais símbolos) está na **Q40**.
+
+**F · Partial evaluator.** M22–M24, com o custo extra que a Q34 introduziu.
 
 ---
 
@@ -365,10 +390,11 @@ evolução de macros da Q38.
 2. **Recursão mútua** entra junto com A1 ou depois?
 3. **`def T.default`** (Q39) entra na fase D, ou `Array<T>` arranca com slots
    `Option<T>`?
-4. **`Char` → `Str`.** Hoje um caractere entra na linguagem por indexação e não
-   sai: `"" + c` não compila. Sem uma volta, nenhuma função de string escrita em
-   LapisLang consegue *construir* resultado. É pré-requisito da fase D, e a
-   escolha é entre `+` aceitar `Str + Char`, um `def Char.str`, ou o literal de
-   `Char` que A2a não introduziu.
-5. **Ordenação de `Char`.** `==` funciona; `<` não. Sem literal, `c >= '0'` nem é
-   escrevível — a pergunta volta junto com (4).
+4. **`Char` → `Str`.** O literal resolveu a **entrada**, não a saída: `"" + c`
+   continua não compilando, e sem essa volta nenhuma função de string escrita em
+   LapisLang *constrói* resultado. É pré-requisito da fase D. Três saídas:
+   `+` aceitar `Str + Char` (embutido), `def Char.str` (barato, já funciona), ou
+   overload de operadores (Q40 / §E2, prioridade baixa).
+5. **Ordenação de `Char`.** `==` funciona; `<` não. Com o literal, `c >= '0'`
+   passou a ser **escrevível** — o que torna a pergunta real, e não mais teórica
+   como era antes dele.

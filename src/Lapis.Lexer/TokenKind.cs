@@ -15,6 +15,17 @@ public enum TokenKind
     FloatLiteral,
     StringLiteral,
 
+    /// <summary>
+    /// Tudo entre aspas simples, sem julgar o conteúdo (Q35/Q38).
+    ///
+    /// Em posição de expressão é um literal de <c>Char</c> e precisa ter
+    /// exatamente um ponto de código — quem cobra isso é o parser. Dentro do
+    /// <c>match</c> de uma macro o mesmo token é uma <b>pseudo-palavra-chave</b>,
+    /// e aí o conteúdo é um identificador. A lexer não tem contexto para separar
+    /// os dois, e forçá-la a ter exigiria modos — é o parser que sabe onde está.
+    /// </summary>
+    CharLiteral,
+
     // palavras-chave
     DefKeyword,
     VarKeyword,
@@ -90,6 +101,7 @@ public static class TokenKindExtensions
         or TokenKind.IntegerLiteral
         or TokenKind.FloatLiteral
         or TokenKind.StringLiteral
+        or TokenKind.CharLiteral
         or TokenKind.TrueKeyword
         or TokenKind.FalseKeyword
         or TokenKind.FnKeyword
@@ -117,6 +129,7 @@ public static class TokenKindExtensions
         TokenKind.IntegerLiteral => "literal inteiro",
         TokenKind.FloatLiteral => "literal float",
         TokenKind.StringLiteral => "literal de string",
+        TokenKind.CharLiteral => "literal de caractere",
         TokenKind.DefKeyword => "'def'",
         TokenKind.VarKeyword => "'var'",
         TokenKind.FnKeyword => "'fn'",

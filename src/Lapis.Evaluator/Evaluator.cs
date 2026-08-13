@@ -218,6 +218,7 @@ public sealed class Evaluator
         ConstFloat c => new FloatValue(c.Value),
         ConstBool c => BoolValue.Of(c.Value),
         ConstStr c => new StrValue(c.Value),
+        ConstChar c => new CharValue(c.Value),
         ConstUnit => VoidValue.Instance,
         _ => throw InternalCompilerException.Unreachable(constant),
     };

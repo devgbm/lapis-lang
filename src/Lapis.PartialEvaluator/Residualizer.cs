@@ -32,7 +32,7 @@ public sealed class Residualizer(CoreFactory factory)
     /// </summary>
     public static bool CanResidualize(Value value) => value switch
     {
-        IntValue or FloatValue or BoolValue or StrValue or VoidValue => true,
+        IntValue or FloatValue or BoolValue or StrValue or CharValue or VoidValue => true,
 
         // Um array **vazio** não diz o que carrega: `[]` sozinho não é programa
         // válido (spec §18, LAP0241), e a anotação que o tornava válido some
@@ -49,6 +49,7 @@ public sealed class Residualizer(CoreFactory factory)
         FloatValue v => factory.Literal(span, new ConstFloat(v.Value)),
         BoolValue v => factory.Literal(span, v.Value ? ConstBool.True : ConstBool.False),
         StrValue v => factory.Literal(span, new ConstStr(v.Value)),
+        CharValue v => factory.Literal(span, new ConstChar(v.Value)),
         VoidValue => factory.Unit(span),
 
         SpanValue v => factory.Array(span, [.. v.Elements.Select(e => Residualize(e, span))]),

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Text;
 using Lapis.Ast;
 using Lapis.Ast.Surface;
 using Lapis.Diagnostics;
@@ -1129,6 +1130,10 @@ public sealed class Parser
                 _tokens.Advance();
                 return new StrLiteral(token.StringValue) { Span = token.Span };
 
+            case TokenKind.CharLiteral:
+                _tokens.Advance();
+                return ParseCharLiteral(token);
+
             case TokenKind.TrueKeyword:
             case TokenKind.FalseKeyword:
                 _tokens.Advance();
@@ -1185,6 +1190,33 @@ public sealed class Parser
                 Report(code, token.Span, $"esperado uma expressão, encontrado {token.Kind.Describe()}");
                 return ErrorExpr(token.Span);
         }
+    }
+
+    /// <summary>
+    /// A lexer entrega o que estava entre aspas simples sem julgar o conteúdo,
+    /// porque não sabe onde o token está: em expressão isto é um <c>Char</c>, e
+    /// dentro do <c>match</c> de uma macro será uma pseudo-palavra-chave (Q38).
+    /// É aqui, onde o lugar é conhecido, que a regra de "exatamente um ponto de
+    /// código" se aplica.
+    ///
+    /// Em erro devolve <c>'?'</c> — um <c>Char</c> qualquer, para que o resto do
+    /// arquivo continue sendo checado em vez de cascatear.
+    /// </summary>
+    private Expression ParseCharLiteral(Token token)
+    {
+        if (ConstChar.TrySingleCodepoint(token.StringValue, out var rune))
+        {
+            return new CharLiteral(rune) { Span = token.Span };
+        }
+
+        Report(
+            DiagnosticCodes.CharLiteralMustBeOneCodepoint,
+            token.Span,
+            token.StringValue.Length == 0
+                ? "literal de caractere vazio"
+                : $"literal de caractere tem mais de um ponto de código: {token.Text}");
+
+        return new CharLiteral(new Rune('?')) { Span = token.Span };
     }
 
     /// <summary><c>()</c> é o literal Void; <c>(e)</c> apenas agrupa.</summary>

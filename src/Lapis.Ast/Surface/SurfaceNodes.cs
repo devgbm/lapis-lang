@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Text;
 using Lapis.Diagnostics;
 using Lapis.Lexer;
 
@@ -121,6 +122,7 @@ public enum SyntaxCategory
     Float,
     Str,
     Bool,
+    Char,
 }
 
 public abstract record MacroPattern : SurfaceNode;
@@ -172,6 +174,15 @@ public sealed record FloatLiteral(double Value, string RawText) : Expression;
 public sealed record BoolLiteral(bool Value) : Expression;
 
 public sealed record StrLiteral(string Value) : Expression;
+
+/// <summary>
+/// <c>'a'</c> — um ponto de código (Q35).
+///
+/// Dentro do <c>match</c> de uma macro as mesmas aspas simples delimitam uma
+/// pseudo-palavra-chave (Q38); é o parser que separa os dois casos pelo lugar
+/// onde o token aparece, e só aqui o conteúdo precisa ser um caractere só.
+/// </summary>
+public sealed record CharLiteral(Rune Value) : Expression;
 
 /// <summary>O literal <c>()</c>, de tipo <c>Void</c> (spec §6).</summary>
 public sealed record UnitLiteral : Expression;

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using Lapis.Ast.Types;
 
 namespace Lapis.Ast;
@@ -109,6 +110,60 @@ public sealed record ConstStr(string Value) : ConstantValue
         .Replace("\r", "\\r", StringComparison.Ordinal)
         .Replace("\t", "\\t", StringComparison.Ordinal)
         .Replace("\0", "\\0", StringComparison.Ordinal);
+}
+
+/// <summary>
+/// Literal de caractere: <c>'a'</c> (Q35).
+///
+/// Um <see cref="Rune"/>, e não um <c>char</c> de C#: a unidade da linguagem é o
+/// ponto de código, e um <c>char</c> não comporta os que estão fora do plano
+/// básico.
+/// </summary>
+public sealed record ConstChar(Rune Value) : ConstantValue
+{
+    /// <summary>
+    /// O texto entre aspas simples é um <c>Char</c>? Vive aqui porque a lexer
+    /// entrega o conteúdo sem julgá-lo (Q35/Q38), e são dois os interessados: o
+    /// parser, que reporta <c>LAP0117</c> em posição de expressão, e o matcher
+    /// de macro, para quem "não é um caractere" significa apenas que o padrão
+    /// não casa.
+    /// </summary>
+    public static bool TrySingleCodepoint(string text, out Rune rune)
+    {
+        var runes = text.EnumerateRunes();
+
+        if (runes.MoveNext())
+        {
+            rune = runes.Current;
+
+            if (!runes.MoveNext())
+            {
+                return true;
+            }
+        }
+
+        rune = default;
+        return false;
+    }
+
+    public override LapisType Type => PrimitiveType.Char;
+
+    /// <summary>
+    /// As mesmas regras de <see cref="ConstStr"/> com a aspa trocada: é <c>'</c>
+    /// que leva barra aqui, e <c>"</c> que dispensa — cada aspa só se escapa
+    /// dentro do literal que ela delimita. O round-trip do
+    /// <c>CoreSourcePrinter</c> depende de isto reparsear.
+    /// </summary>
+    public override string ToDisplayString() => "'" + Value.Value switch
+    {
+        '\\' => "\\\\",
+        '\'' => "\\'",
+        '\n' => "\\n",
+        '\r' => "\\r",
+        '\t' => "\\t",
+        '\0' => "\\0",
+        _ => Value.ToString(),
+    } + "'";
 }
 
 public sealed record ConstUnit : ConstantValue
