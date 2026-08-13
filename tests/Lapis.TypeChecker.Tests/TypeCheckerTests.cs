@@ -14,12 +14,18 @@ public sealed class ScopeTests : TypeCheckerTestBase
         ShouldFailWith("x; def x = 1;", DiagnosticCodes.UnknownVariable);
 
     /// <summary>
-    /// Q8: <c>Let(x, v, body)</c> não expõe <c>x</c> em <c>v</c>, logo não há
-    /// recursão na v0.2.
+    /// <c>Let(x, v, body)</c> continua não expondo <c>x</c> em <c>v</c> — a
+    /// exceção da Q34 é só para <b>função</b>, onde a assinatura dá o tipo sem
+    /// olhar o corpo. Fora dela a Q8 segue valendo.
     /// </summary>
     [Fact]
     public void SelfReference_InOwnInitializer_ReportsLap0201() =>
-        ShouldFailWith("def f = fn() Int { return f(); };", DiagnosticCodes.UnknownVariable);
+        ShouldFailWith("def x = x + 1;", DiagnosticCodes.UnknownVariable);
+
+    /// <summary>E a exceção: uma função enxerga a si mesma (Q34).</summary>
+    [Fact]
+    public void SelfReference_InsideALambda_Recurses() =>
+        ShouldPass("def f = fn(n: Int) Int { if n <= 0 { return 0; } return f(n - 1); };");
 
     [Fact]
     public void Shadowing_InInnerScope_IsAllowed() =>

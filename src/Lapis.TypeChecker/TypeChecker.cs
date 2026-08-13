@@ -71,6 +71,13 @@ public sealed class TypeChecker
     /// </summary>
     private MemberOwner? _pendingSelfOwner;
 
+    /// <summary>
+    /// O nome a que a próxima <c>CoreLambda</c> está sendo ligada, quando ela
+    /// pode se referenciar (Q34). Consumido por <see cref="CheckLambdaBody"/>,
+    /// que o declara no escopo do corpo assim que a assinatura existe.
+    /// </summary>
+    private string? _pendingSelfName;
+
     private PreludeScope? _prelude;
 
     /// <summary>
@@ -231,6 +238,18 @@ public sealed class TypeChecker
         var previousSelfOwner = _pendingSelfOwner;
         _pendingSelfOwner = owner;
 
+        // Recursão (Q34): o corpo pode citar o próprio nome. Só um `def` cujo
+        // valor é **sintaticamente** uma lambda — de onde a assinatura sai sem
+        // inferência (Q7 intacta), porque parâmetro é anotado por obrigação
+        // (§26) e retorno omitido é `Void`.
+        //
+        // `def x = x + 1;` continua LAP0201, e deve continuar: não há assinatura
+        // de onde tirar tipo. A Q8 estava certa sobre esse caso.
+        var previousSelfName = _pendingSelfName;
+        _pendingSelfName = !node.IsMutable && !node.IsSynthetic && node.Value is CoreLambda
+            ? node.Name
+            : null;
+
         LapisType valueType;
 
         try
@@ -240,6 +259,7 @@ public sealed class TypeChecker
         finally
         {
             _pendingSelfOwner = previousSelfOwner;
+            _pendingSelfName = previousSelfName;
         }
 
         // Um `type`/`enum` não tem nome próprio (spec §14, §15): ele recebe o nome
@@ -440,6 +460,10 @@ public sealed class TypeChecker
         var owner = _pendingSelfOwner;
         _pendingSelfOwner = null;
 
+        // Idem para o nome próprio: uma `fn` aninhada não é a função recursiva.
+        var selfName = _pendingSelfName;
+        _pendingSelfName = null;
+
         for (var i = 0; i < node.Parameters.Length; i++)
         {
             var parameter = node.Parameters[i];
@@ -465,6 +489,18 @@ public sealed class TypeChecker
 
         var returnType = _types.Resolve(node.ReturnType, inner);
         var signature = new FunctionType(parameterTypes.ToImmutable(), returnType, typeParameters);
+
+        // O nome próprio entra **depois** dos parâmetros e só se nenhum deles já o
+        // ocupou: parâmetro homônimo sombreia a função, que é a regra usual — e é
+        // a mesma ordem que o evaluator aplica ao religar `SelfName`.
+        if (selfName is not null && !inner.TryLookupLocal(selfName, out _))
+        {
+            inner.Declare(new BindingInfo(
+                NextBindingId(), selfName, signature, node.Span, BindingKind.Value)
+            {
+                FunctionDepth = _functions.Count + 1,
+            });
+        }
 
         _functions.Push(new FunctionContext(returnType));
 

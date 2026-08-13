@@ -174,6 +174,22 @@ public sealed record VariantConstructorValue(
 /// </summary>
 public sealed record ClosureValue(CoreLambda Lambda, Environment Captured, FunctionType Signature) : Value
 {
+    /// <summary>
+    /// O nome pelo qual esta closure se referencia (Q34), ou <c>null</c> quando
+    /// ela não é recursiva.
+    ///
+    /// A recursão precisa que o corpo enxergue a própria função, e o ambiente
+    /// capturado é o do **ponto de definição** — onde o nome ainda não existe.
+    /// Fechar esse ciclo dentro do ambiente exigiria uma célula mutável, e o
+    /// <see cref="Environment"/> é imutável de propósito: é o que garante que
+    /// uma closure não veja o ambiente mudar de forma.
+    ///
+    /// A saída é não formar ciclo nenhum: guarda-se o **nome**, e quem religa é
+    /// a chamada, que já tem a closure em mãos. Custo O(1) por chamada, e a
+    /// premissa da Q25 fica intacta.
+    /// </summary>
+    public string? SelfName { get; init; }
+
     public override LapisType Type => Signature;
 
     public bool Equals(ClosureValue? other) =>

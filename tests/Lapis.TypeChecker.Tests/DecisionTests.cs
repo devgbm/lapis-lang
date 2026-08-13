@@ -46,17 +46,37 @@ public sealed class DecisionTests : TypeCheckerTestBase
     public void Q7_PrintStillChecksArity() =>
         ShouldFailWith("print(1, 2);", DiagnosticCodes.ArgumentCountMismatch);
 
-    // -------------------------------------------------- Q8: sem recursão
+    // ------------------------------- Q34: recursão entra (revoga a Q8)
 
     [Fact]
-    public void Q8_DirectRecursion_IsRejected() =>
-        ShouldFailWith("def f = fn() Int { return f(); };", DiagnosticCodes.UnknownVariable);
+    public void Q34_DirectRecursion_IsAllowed() =>
+        ShouldPass("def f = fn(n: Int) Int { if n <= 0 { return 0; } return f(n - 1); };");
 
+    /// <summary>
+    /// O que a Q8 acertou e continua valendo: sem lambda não há assinatura de
+    /// onde tirar o tipo, e o nome segue invisível na própria expressão que o
+    /// define. A recursão vale para função, não para binding qualquer.
+    /// </summary>
     [Fact]
-    public void Q8_MutualRecursion_IsRejected() =>
+    public void Q34_SelfReferenceOutsideALambda_IsStillRejected() =>
+        ShouldFailWith("def x = x + 1;", DiagnosticCodes.UnknownVariable);
+
+    /// <summary>Um `var` não recursa: o valor de hoje não é o de amanhã (Q25).</summary>
+    [Fact]
+    public void Q34_MutableBinding_DoesNotRecurse() =>
+        ShouldFailWith("var f = fn() Int { return f(); };", DiagnosticCodes.UnknownVariable);
+
+    /// <summary>Recursão **mútua** fica fora do escopo da Q34, e continua recusada.</summary>
+    [Fact]
+    public void Q34_MutualRecursion_IsStillRejected() =>
         ShouldFailWith(
             "def a = fn() Int { return b(); }; def b = fn() Int { return a(); };",
             DiagnosticCodes.UnknownVariable);
+
+    /// <summary>Parâmetro homônimo sombreia a função, como qualquer binding interno.</summary>
+    [Fact]
+    public void Q34_ParameterShadowsTheFunction() =>
+        TypeOfFirstDef("def f = fn(f: Int) Int { return f; };").ToDisplayString().ShouldBe("fn(Int) Int");
 
     // -------------------------------------------------- Q9: divisão total
 

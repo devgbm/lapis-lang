@@ -107,13 +107,23 @@ só entra no escopo do corpo (`inner`), que é o que faz `LAP0201` disparar.
 > `def x = x + 1;` continua `LAP0201`, e deve continuar — não há assinatura de
 > onde tirar tipo, e a Q8 estava certa sobre esse caso.
 
-**② Orçamento de profundidade — já existe e está isento.**
+**② Orçamento de profundidade — existia, mas era inalcançável por dois motivos.**
 
-`MaxCallDepth = 10_000` e `LAP0302` estão implementados desde o M1, hoje
-inalcançáveis. `DiagnosticCoverageTests.Exempt` registra literalmente
-*"inalcançável sem recursão (spec §8)"*. **Essa isenção sai**, e o caso de
-conformidade que a substitui é uma recursão infinita — o primeiro programa que
-consegue alcançá-la.
+`MaxCallDepth = 10_000` e `LAP0302` estão implementados desde o M1.
+`DiagnosticCoverageTests.Exempt` registrava *"inalcançável sem recursão (spec
+§8)"* — **essa isenção saiu**, e o caso que a substitui é
+`eval/functions/infinite_recursion_aborts.ls`.
+
+> **Achado da implementação: o orçamento era inalcançável mesmo com recursão.**
+> O evaluator é recursivo em C#, e cada chamada LapisLang custa vários frames.
+> Na pilha padrão de 1 MB o programa estourava por volta da **chamada 1.300** —
+> `StackOverflowException`, que derruba o processo sem chance de virar
+> diagnóstico. Baixar o orçamento resolveria o sintoma e estragaria recursão
+> legítima, que é justamente o que a stdlib vai pedir.
+>
+> A saída foi rodar o programa numa **thread com pilha própria** (64 MB), de
+> modo que o limite volte a ser o **da linguagem** e não o do host. Custo: uma
+> thread por execução, ~100 µs, irrelevante ao lado do resto do pipeline.
 
 **③ O ambiente cíclico da closure — o trabalho real.**
 
@@ -126,9 +136,16 @@ capturado precisa conter a própria closure. Duas saídas conhecidas:
 | **atar o nó** (*knot-tying*) | criar a closure, depois preencher a célula do ambiente que aponta para ela | uma célula mutável no `Environment`, que hoje é imutável |
 | **resolver no ponto da chamada** | closure guarda o ambiente **definidor**; o nome é procurado nele quando a chamada acontece | nenhuma mutação; muda a ordem de resolução |
 
-A segunda é mais alinhada ao projeto — `Environment` imutável é premissa do PE
-("a closure segue sendo (código, ambiente imutável)") e mexer nisso mexeria na
-fase F. Decidir na implementação, com testes que distingam as duas.
+**✅ Escolhida: a segunda**, numa forma que não forma ciclo nenhum. A closure
+guarda o **nome** por que se referencia (`ClosureValue.SelfName`), e quem religa
+é a chamada, que já tem a closure em mãos. `Environment` continua imutável — o
+que preserva a premissa do PE ("a closure segue sendo (código, ambiente
+imutável)") — e o custo é O(1) por chamada.
+
+A condição para marcar `SelfName` espelha a do checker: só um `def` cujo valor é
+**sintaticamente** uma lambda. Assim `def g = f;` não faz o corpo de `f`
+enxergar `g`. E o nome próprio entra **antes** dos parâmetros, para que um
+parâmetro homônimo o sombreie — a mesma ordem que o checker aplica.
 
 **O que precisa ser revisto além disso:**
 
@@ -136,10 +153,15 @@ fase F. Decidir na implementação, com testes que distingam as duas.
   vira código morto ou, pior, o PE elimina a definição que a chamada usa.
 - `ReturnAnalysis` — sem mudança esperada: a chamada recursiva é `CoreCall`, já
   coberta.
-- **PE (fase F):** especializar chamada recursiva sem terminação é *hang*, não
-  erro. Enquanto F não chega, o especializador precisa de uma guarda explícita
-  que trate função recursiva como opaca. **Não pode ficar para depois** — o PE
-  roda hoje sobre o corpus inteiro a cada suíte.
+- **PE:** ✅ **já coberto, e não por acaso.** A preocupação era hang:
+  especializar chamada recursiva sem terminação não dá erro, trava. Verificado
+  na implementação — `SpecializeCall` **nunca entra no corpo** da função, só
+  residualiza a chamada com os argumentos especializados (inlining é M22, plano
+  13). Recursão é naturalmente opaca ao PE de hoje. A prova está no corpus:
+  `spec/s08_recursion.ls` e `eval/functions/infinite_recursion_aborts.ls`
+  passam por `PartialEvaluationPropertyTests`, que roda o PE sobre todo caso
+  que compila. Quando o M22 ligar inlining, **aí** a guarda passa a ser
+  necessária.
 
 **Fora de escopo:** recursão **mútua**. Exige olhar declarações adiante, o que a
 Q8 nunca precisou responder. Fica em aberto.

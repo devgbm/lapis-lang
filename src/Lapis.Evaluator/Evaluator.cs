@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Runtime.ExceptionServices;
 using Lapis.Ast;
 using Lapis.Ast.Core;
 using Lapis.Ast.Typed;
@@ -35,6 +36,13 @@ public sealed record EvaluationResult(
 public sealed class Evaluator
 {
     private const int MaxCallDepth = 10_000;
+
+    /// <summary>
+    /// Pilha da thread em que o programa roda. Dimensionada para
+    /// <see cref="MaxCallDepth"/> chamadas com folga — medido em ~800 bytes por
+    /// chamada LapisLang, que são vários frames de C#.
+    /// </summary>
+    private const int EvaluationStackBytes = 64 * 1024 * 1024;
 
     /// <summary>
     /// Orçamento de iterações do <b>programa inteiro</b>, não de cada laço.
@@ -81,9 +89,45 @@ public sealed class Evaluator
         ArgumentNullException.ThrowIfNull(program);
         ArgumentNullException.ThrowIfNull(context);
 
-        var evaluator = new Evaluator(program, prelude, context, compileTime);
-        var environment = CreateRootEnvironment(prelude, compileTime);
-        var completion = evaluator.Evaluate(program.Program.Body, environment);
+        // Pilha própria (Q34): o evaluator é recursivo em C#, e cada chamada
+        // LapisLang custa vários frames. Na pilha padrão de 1 MB o programa
+        // estoura por volta de 1.300 chamadas — **antes** de alcançar
+        // MaxCallDepth, e um StackOverflowException derruba o processo sem
+        // chance de virar diagnóstico.
+        //
+        // Antes da recursão isso nunca aparecia: nenhum programa chegava a
+        // aninhar chamadas assim. Baixar o orçamento resolveria o sintoma e
+        // estragaria recursão legítima — que é justamente o que a stdlib vai
+        // pedir. Dar pilha grande ao evaluator preserva o orçamento como o
+        // limite **da linguagem**, não do host.
+        Completion completion = default!;
+        Exception? failure = null;
+
+        var thread = new Thread(
+            () =>
+            {
+                try
+                {
+                    var evaluator = new Evaluator(program, prelude, context, compileTime);
+                    var environment = CreateRootEnvironment(prelude, compileTime);
+                    completion = evaluator.Evaluate(program.Program.Body, environment);
+                }
+                catch (Exception exception)
+                {
+                    failure = exception;
+                }
+            },
+            EvaluationStackBytes);
+
+        thread.Start();
+        thread.Join();
+
+        if (failure is not null)
+        {
+            // Relançar preservando a pilha original: o erro é do avaliador, e
+            // esconder de onde veio atrapalharia justamente quem o depura.
+            ExceptionDispatchInfo.Capture(failure).Throw();
+        }
 
         return completion.Kind switch
         {
@@ -199,7 +243,15 @@ public sealed class Evaluator
             return value;
         }
 
-        return Evaluate(node.Body, environment.Extend(node.Name, value.Value, node.IsMutable));
+        // `def foo = fn(...) { ... foo(...) ... }` (Q34): a closure guarda o nome
+        // pelo qual se referencia, e a chamada o religa. A condição espelha a do
+        // checker — só vale para um `def` cujo valor é **sintaticamente** uma
+        // lambda —, de modo que `def g = f;` não faça o corpo de `f` enxergar `g`.
+        var bound = !node.IsMutable && node.Value is CoreLambda && value.Value is ClosureValue closure
+            ? closure with { SelfName = node.Name }
+            : value.Value;
+
+        return Evaluate(node.Body, environment.Extend(node.Name, bound, node.IsMutable));
     }
 
     /// <summary>
@@ -969,7 +1021,14 @@ public sealed class Evaluator
                 bindings[i] = (closure.Lambda.Parameters[i].Name, arguments[i]);
             }
 
-            var completion = Evaluate(closure.Lambda.Body, closure.Captured.ExtendAll(bindings));
+            // O nome próprio entra **antes** dos parâmetros, para que um parâmetro
+            // homônimo o sombreie — que é a regra que o checker aplica ao declarar
+            // o self só quando nenhum parâmetro já ocupou o nome.
+            var captured = closure.SelfName is null
+                ? closure.Captured
+                : closure.Captured.Extend(closure.SelfName, closure);
+
+            var completion = Evaluate(closure.Lambda.Body, captured.ExtendAll(bindings));
 
             return completion.Kind switch
             {

@@ -19,8 +19,6 @@ public sealed class DiagnosticCoverageTests
     private static readonly Dictionary<string, string> Exempt = new(StringComparer.Ordinal)
     {
         [DiagnosticCodes.UnusedBinding] = "reservado: warning ainda não emitido",
-        [DiagnosticCodes.CallDepthExceeded] =
-            "inalcançável sem recursão (spec §8) — ver eval/functions/call_depth_limit.ls",
         [DiagnosticCodes.QualifiedAssignmentReserved] =
             "reservado, nunca emitido: a regra que ele cobriria foi corrigida antes de existir "
             + "— `varInstance.campo = e` é válido (plano 21 §21.3b)",
