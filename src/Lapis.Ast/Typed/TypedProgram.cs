@@ -61,6 +61,27 @@ public sealed record FieldResolution(int FieldIndex) : Resolution;
 public sealed record SpanLengthResolution(int? Known) : Resolution;
 
 /// <summary>
+/// <c>s.length</c> e <c>s[i]</c> sobre um <c>Str</c> (Q35/A2a).
+///
+/// <c>Str</c> não é um span — a unificação é A2b, e pode nem acontecer —, mas
+/// as duas operações que a stdlib de strings precisa saem como
+/// <b>intrínsecos</b>, do mesmo jeito que <see cref="SpanLengthResolution"/>
+/// sai para span. É o que destrava a biblioteca sem pagar a troca de
+/// representação.
+///
+/// Não há <c>Known</c>: <c>Str</c> não carrega tamanho no tipo, então o
+/// comprimento é sempre de execução e a indexação sempre devolve
+/// <c>Option&lt;Char&gt;</c>, como um <c>[T;?]</c> (Q31).
+/// </summary>
+public sealed record StrIntrinsicResolution(StrIntrinsic Which) : Resolution;
+
+public enum StrIntrinsic
+{
+    Length,
+    Index,
+}
+
+/// <summary>
 /// A indexação é <b>total</b>: tamanho e índice eram conhecidos, e o checker já
 /// provou que ele está dentro dos limites (plano 24 §24.5).
 ///

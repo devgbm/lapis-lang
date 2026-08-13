@@ -1,3 +1,4 @@
+using System.Text;
 using Lapis.Ast;
 using Lapis.Diagnostics;
 
@@ -138,6 +139,56 @@ public static class Primitives
         index >= 0 && index < array.Elements.Length
             ? IndexOutcome.InBounds(array.Elements[(int)index])
             : IndexOutcome.OutOfBounds;
+
+    /// <summary>
+    /// Quantos pontos de código o texto tem (Q35/A2a).
+    ///
+    /// Linear por construção: a <c>string</c> de C# é UTF-16 e um ponto de
+    /// código fora do plano básico ocupa duas unidades, então não há como
+    /// responder em O(1) sem mudar a representação — que é justamente o que A2b
+    /// faria, e o que A2a decidiu não fazer agora.
+    ///
+    /// Vive aqui, e não no evaluator, porque o partial evaluator dobra
+    /// <c>s.length</c> com a mesma contagem: se as duas divergissem, o residual
+    /// deixaria de significar o mesmo que o original.
+    /// </summary>
+    public static int StrLength(string text)
+    {
+        var count = 0;
+
+        foreach (var _ in text.EnumerateRunes())
+        {
+            count++;
+        }
+
+        return count;
+    }
+
+    /// <summary>
+    /// O ponto de código na posição dada, ou <c>null</c> fora dos limites — o
+    /// <c>null</c> é o que o evaluator vira <c>Option.None</c>.
+    /// </summary>
+    public static Rune? StrAt(string text, long position)
+    {
+        if (position < 0)
+        {
+            return null;
+        }
+
+        var seen = 0L;
+
+        foreach (var rune in text.EnumerateRunes())
+        {
+            if (seen == position)
+            {
+                return rune;
+            }
+
+            seen++;
+        }
+
+        return null;
+    }
 
     private static InternalCompilerException Mismatch(string op, Value left, Value right) =>
         new($"'{op}' não se aplica a {left.Type.ToDisplayString()} e {right.Type.ToDisplayString()}");

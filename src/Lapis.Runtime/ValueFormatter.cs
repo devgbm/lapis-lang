@@ -24,6 +24,16 @@ public static class ValueFormatter
         FloatValue v => new ConstFloat(v.Value).ToDisplayString(),
         BoolValue v => v.Value ? "true" : "false",
         StrValue v => quoteStrings ? new ConstStr(v.Value).ToDisplayString() : v.Value,
+
+        // Um Char imprime como o texto que ele é — `print(s[0])` mostrando `a`,
+        // e não `U+0061` —, e **sem aspas** mesmo aninhado: `Option.Some(a)`.
+        //
+        // Aspas duplas diriam Str, que é o tipo que ele não é. Aspas simples
+        // sugeririam uma forma literal que a linguagem não tem e não vai ter
+        // com esse significado, porque elas pertencem às pseudo-palavras-chave
+        // de macro (Q38). Sem literal de Char, não há forma escrita a imitar —
+        // e sair nu é o que distingue `Option.Some(a)` de `Option.Some("a")`.
+        CharValue v => v.Value.ToString(),
         VoidValue => "()",
         SpanValue v => "[" + string.Join(", ", v.Elements.Select(e => Format(e, quoteStrings: true))) + "]",
 

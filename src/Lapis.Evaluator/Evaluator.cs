@@ -665,6 +665,25 @@ public sealed class Evaluator
             return index;
         }
 
+        // `s[i]` sobre Str (Q35/A2a). Indexa por **ponto de código**, não por
+        // unidade UTF-16: `Rune` é a unidade, e por isso a busca é linear — o
+        // custo aceito por A2a em troca de não fechar a porta de A2b.
+        if (_program.ResolutionOf<StrIntrinsicResolution>(node) is { Which: StrIntrinsic.Index })
+        {
+            if (target.Value is not StrValue text || index.Value is not IntValue position)
+            {
+                throw new InternalCompilerException(
+                    "indexação de Str sobre valores inesperados; o checker deveria ter rejeitado", node.Span);
+            }
+
+            var strPrelude = _prelude
+                ?? throw new InternalCompilerException("indexação de Str sem prelude carregado", node.Span);
+
+            return Completion.Normal(Primitives.StrAt(text.Value, position.Value) is { } rune
+                ? strPrelude.MakeSome(new CharValue(rune), PrimitiveType.Char)
+                : strPrelude.MakeNone(PrimitiveType.Char));
+        }
+
         if (target.Value is not SpanValue span || index.Value is not IntValue offset)
         {
             throw new InternalCompilerException(
@@ -703,6 +722,17 @@ public sealed class Evaluator
             return span.IsNormal
                 ? Completion.Normal(new IntValue(((SpanValue)span.Value).Elements.Length))
                 : span;
+        }
+
+        // `s.length` sobre Str (Q35/A2a): conta **pontos de código**, não
+        // unidades UTF-16 — `"𝕏".length` é 1, e não 2.
+        if (_program.ResolutionOf<StrIntrinsicResolution>(node) is { Which: StrIntrinsic.Length })
+        {
+            var text = Evaluate(node.Target, environment);
+
+            return text.IsNormal
+                ? Completion.Normal(new IntValue(Primitives.StrLength(((StrValue)text.Value).Value)))
+                : text;
         }
 
         // `T.m` — membro de tipo (plano 21 §21.6). O alvo é o **tipo**, e um tipo

@@ -1227,6 +1227,30 @@ muda resultado nenhum. O custo aceito é `length` e indexação em O(n) sobre a
 `Str` continua **sem tamanho no tipo**, então `s[i]` devolve `Option<Char>`
 sempre, como `[T;?]` (Q31). Literal de string com tamanho no tipo é A2b.
 
+**O que a implementação acrescentou** (plano 27 §A2 tem o detalhe):
+
+- **Não há literal de `Char`.** Um caractere se obtém indexando uma `Str`. As
+  aspas simples não estavam disponíveis: pertencem às pseudo-palavras-chave de
+  macro (Q38). Coerente com A2a não fechar portas — inventar `'a'` agora seria
+  decidir sintaxe antes de precisar dela.
+- **Um `Char` imprime nu, mesmo aninhado:** `Option.Some(a)`, e não
+  `Option.Some("a")`. Aspas duplas diriam `Str`, que é o tipo que ele não é.
+- **`s.length` dobra no PE; `s[i]`, não.** A leitura devolve `Option<Char>`, e
+  nem enum construído nem `Char` têm forma escrita para voltar ao residual.
+  Evaluator e PE contam pela **mesma** função (`Primitives.StrLength`), de
+  propósito: contagens divergentes quebrariam a equivalência da spec §40.
+
+**Limitação encontrada, e que não é de `Char`:** `a[0] == b[0]` não compila.
+`Option<T>` não é comparável para `T` nenhum, porque
+`TypeRelations.IsComparable` percorre a definição genérica em vez do argumento
+instanciado. Vale desde o M12 e não é regressão de A2a; o desembrulho por `is`
+contorna. Fica registrado aqui porque a stdlib vai esbarrar nisso.
+
+**Também em aberto, e que A2a criou:** um `Char` entra na linguagem por
+indexação e **não sai** — `"" + c` não compila, e não há ordenação (`<`). Sem
+uma volta para `Str`, nenhuma função de string escrita em LapisLang consegue
+construir resultado. É pré-requisito da stdlib, não de A2b.
+
 **🔄 Encaminhada:** A2b — unificar `Str` com `[Char;N]` — segue em aberto, e só
 volta à mesa depois que a stdlib de strings existir e mostrar se a unificação
 compra o suficiente para pagar (2)–(4) acima.

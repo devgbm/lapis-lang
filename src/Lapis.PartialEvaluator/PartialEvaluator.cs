@@ -688,6 +688,18 @@ public sealed class PartialEvaluator
             return PECompletion.Normal(Reduce(new IntValue(span.Elements.Length), node));
         }
 
+        // `s.length` sobre Str (Q35/A2a) dobra pela mesma razão, mas nunca pelo
+        // tipo: `Str` não carrega tamanho, então a contagem só existe com a
+        // string em mãos. Contar aqui é contar pontos de código, exatamente como
+        // o evaluator — se as duas contagens divergissem, o PE deixaria de
+        // preservar significado.
+        if (_options.ConstantFolding
+            && _types?.ResolutionOf<StrIntrinsicResolution>(node) is { Which: StrIntrinsic.Length }
+            && ValueOf(target.Result) is StrValue text)
+        {
+            return PECompletion.Normal(Reduce(new IntValue(Primitives.StrLength(text.Value)), node));
+        }
+
         // O alvo pode ser conhecido sem ser escrevível — um struct de reflection é
         // o caso. Projetar um campo dele pode dar um valor que **é** escrevível, e
         // aí a leitura inteira some do residual.

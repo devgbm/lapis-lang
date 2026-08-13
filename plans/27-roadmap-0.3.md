@@ -42,9 +42,9 @@ exatamente a validação que se queria — ela só começa mais cedo do que pare
 
 ```
 A · Destravar a linguagem      pré-requisito de tudo
-    A1  recursão                                        Q34
-    A2  Str: length, indexação, Char                    Q35
-    A3  escrita em elemento de span                     Q36
+    A1  recursão                                  ✅    Q34
+    A2  Str: length, indexação, Char              ✅    Q35
+    A3  escrita em elemento de span               ⏳    Q36
 
 B · Módulos                    chave do multiarquivo
     B1  import, escopo por unidade, tudo público        Q37
@@ -208,6 +208,32 @@ Fatiar assim tem uma vantagem específica: **A2a não fecha nenhuma porta**. Se 
 unificação vier depois, `length` e indexação já têm a semântica certa e só mudam
 de implementação.
 
+**O que a implementação de A2a fixou:**
+
+| Peça | Onde | Nota |
+|---|---|---|
+| `PrimitiveKind.Char` | `LapisType`, `TypeResolver` | `Char` é nome escrevível, como qualquer primitivo |
+| `CharValue(Rune)` | `Lapis.Runtime` | `Rune`, e não o `char` de C#: um `char` é unidade UTF-16 |
+| `StrIntrinsicResolution` | `TypedProgram` | mesma mecânica de `SpanLengthResolution` — o checker decide, o evaluator lê |
+| `Primitives.StrLength` / `StrAt` | `Lapis.Runtime` | evaluator e PE contam pela **mesma** função, de propósito |
+
+Três detalhes que só apareceram ao escrever o código:
+
+1. **Não há literal de `Char`.** Um caractere se obtém indexando uma `Str`, e
+   ponto. Aspas simples não estão disponíveis: pertencem às pseudo-palavras-chave
+   de macro (Q38). A escolha é consistente com A2a não fechar portas — introduzir
+   `'a'` agora seria decidir sintaxe antes de precisar dela.
+2. **Um `Char` imprime nu, mesmo aninhado:** `Option.Some(a)`, não
+   `Option.Some("a")`. Aspas duplas diriam `Str`, que é o tipo que ele não é.
+3. **`s.length` dobra no PE, `s[i]` não.** A contagem é constante com a string em
+   mãos; a leitura devolve `Option<Char>`, e nem enum construído nem `Char` têm
+   forma escrita para voltar ao residual.
+
+**Limitação encontrada, e que não é de `Char`:** `a[0] == b[0]` não compila —
+`Option<T>` não é comparável para `T` nenhum, porque `TypeRelations.IsComparable`
+olha a definição genérica em vez do argumento instanciado. Vale para
+`Option<Int>` desde o M12. Fica registrado aqui; o desembrulho por `is` contorna.
+
 ---
 
 ### A3 · Escrita em elemento de span (Q36)
@@ -321,10 +347,10 @@ evolução de macros da Q38.
 
 ## Critérios de conclusão da fase A
 
-- [ ] `def foo = fn(n: Int) Int { ... foo(n - 1) ... };` compila e roda.
-- [ ] Recursão infinita aborta com `LAP0302`; a isenção em `DiagnosticCoverageTests` sai.
-- [ ] O PE não trava em função recursiva — guarda explícita, com caso de teste.
-- [ ] `Str` com `length` e indexação; `Char` como tipo.
+- [x] `def foo = fn(n: Int) Int { ... foo(n - 1) ... };` compila e roda.
+- [x] Recursão infinita aborta com `LAP0302`; a isenção em `DiagnosticCoverageTests` sai.
+- [x] O PE não trava em função recursiva — verificado, e a guarda é implícita (`SpecializeCall` não entra no corpo).
+- [x] `Str` com `length` e indexação; `Char` como tipo.
 - [ ] `s[i] = v` sobre `var` de span; `def` continua recusando.
 - [ ] Fora dos limites com tamanho conhecido: erro de compilação. Com `[T;?]`: sem efeito.
 - [ ] `map` acima escrito **em LapisLang**, no corpus de conformidade.
@@ -339,3 +365,10 @@ evolução de macros da Q38.
 2. **Recursão mútua** entra junto com A1 ou depois?
 3. **`def T.default`** (Q39) entra na fase D, ou `Array<T>` arranca com slots
    `Option<T>`?
+4. **`Char` → `Str`.** Hoje um caractere entra na linguagem por indexação e não
+   sai: `"" + c` não compila. Sem uma volta, nenhuma função de string escrita em
+   LapisLang consegue *construir* resultado. É pré-requisito da fase D, e a
+   escolha é entre `+` aceitar `Str + Char`, um `def Char.str`, ou o literal de
+   `Char` que A2a não introduziu.
+5. **Ordenação de `Char`.** `==` funciona; `<` não. Sem literal, `c >= '0'` nem é
+   escrevível — a pergunta volta junto com (4).

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Text;
 using Lapis.Ast.Core;
 using Lapis.Ast.Types;
 using Lapis.Diagnostics;
@@ -39,6 +40,18 @@ public sealed record BoolValue(bool Value) : Value
 public sealed record StrValue(string Value) : Value
 {
     public override LapisType Type => PrimitiveType.Str;
+}
+
+/// <summary>
+/// Um **ponto de código** Unicode (Q35/A2a).
+///
+/// Guardado como <see cref="System.Text.Rune"/>, e não como <c>char</c> de C#:
+/// um `char` é unidade UTF-16, e um ponto de código fora do plano básico ocupa
+/// duas delas. Usar `char` faria `"𝕏"[0]` devolver meia letra.
+/// </summary>
+public sealed record CharValue(Rune Value) : Value
+{
+    public override LapisType Type => PrimitiveType.Char;
 }
 
 public sealed record VoidValue : Value

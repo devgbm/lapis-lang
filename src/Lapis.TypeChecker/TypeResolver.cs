@@ -22,6 +22,7 @@ public sealed class TypeResolver(DiagnosticBag diagnostics)
         ["Float"] = PrimitiveType.Float,
         ["Bool"] = PrimitiveType.Bool,
         ["Str"] = PrimitiveType.Str,
+        ["Char"] = PrimitiveType.Char,
         ["Void"] = PrimitiveType.Void,
     };
 

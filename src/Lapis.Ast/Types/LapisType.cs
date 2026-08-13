@@ -8,6 +8,15 @@ public enum PrimitiveKind
     Float,
     Bool,
     Str,
+
+    /// <summary>
+    /// Um **ponto de código** Unicode (Q35/A2a). Não é unidade UTF-16 nem
+    /// grafema: a escolha é a que preserva portas — começar em unidade UTF-16
+    /// e migrar depois mudaria silenciosamente o resultado de programas sobre
+    /// texto fora do plano básico, e o caminho inverso não muda nenhum.
+    /// </summary>
+    Char,
+
     Void,
 }
 
@@ -31,6 +40,7 @@ public sealed record PrimitiveType(PrimitiveKind Kind) : LapisType
     public static readonly PrimitiveType Float = new(PrimitiveKind.Float);
     public static readonly PrimitiveType Bool = new(PrimitiveKind.Bool);
     public static readonly PrimitiveType Str = new(PrimitiveKind.Str);
+    public static readonly PrimitiveType Char = new(PrimitiveKind.Char);
     public static readonly PrimitiveType Void = new(PrimitiveKind.Void);
 
     public bool IsNumeric => Kind is PrimitiveKind.Int or PrimitiveKind.Float;

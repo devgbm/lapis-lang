@@ -52,16 +52,19 @@ lapis hello.ls
 | **M14** — métodos de instância e `self` | ✅ concluído |
 | **M15** — membros sobre tipos genéricos (`Result<?, ?>`) | ✅ concluído |
 | **M16** — `goto`/`label` saem, `loop`/`break`/`continue` entram; `is` fecha Q23 | ✅ concluído |
-| M17–M19 — PE: especialização, análise, equivalência | ⏳ próximo |
+| **M17** — destravar a linguagem: recursão (Q34), `Str` com `length`/indexação e `Char` (Q35) | 🔄 em curso |
+| M18–M21 — módulos, efeitos, biblioteca padrão, metaprogramação++ | ⏳ próximos |
+| M22–M24 — PE: especialização, análise, equivalência | 🅿️ adiado (Q33) |
 
-**1778 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
+**1821 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
 evaluator, partial evaluator e CLI — entre eles uma **suíte de conformidade** de
-212 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
+217 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
 spec é um arquivo, e o nome do teste que falha já é o arquivo a abrir.
 
 A linguagem já roda programas de verdade: funções de primeira classe com
 closures, `return` explícito com verificação de "retorna em todos os caminhos",
-spans com indexação checada em compilação, enums, `match` exaustivo, `is` para
+spans com indexação checada em compilação, funções recursivas, `Str` com
+`length` e indexação por ponto de código, enums, `match` exaustivo, `is` para
 testar variante e desembrulhar carga sem a cerimônia do `match`, tipos definidos
 pelo usuário, membros de tipo, generics (inclusive const generics),
 controle de fluxo estruturado (`loop`/`break`/`continue`), mutação com `var`,
@@ -322,6 +325,52 @@ qualificação (`Some`, não `Option.Some`): quem resolve o dono é o **tipo do
 escrutinado**, que o checker já conhece; `match` continua exigindo a forma
 qualificada (Q3).
 
+**Recursão** (M17, Q34) entra revogando a Q8, que a proibia — e a proibia para
+manter trivial a terminação do partial evaluator, um custo que deixou de valer
+quando o PE foi adiado (Q33):
+
+```c
+def fatorial = fn(n: Int) Int {
+    if n <= 1 { return 1; }
+
+    return n * fatorial(n - 1);
+};
+```
+
+Só vale para um `def` cujo valor é **sintaticamente** uma lambda: é dela que sai
+a assinatura sem inferência nenhuma — parâmetros são anotados por obrigação, e
+retorno omitido é `Void`. `def x = x + 1;` continua `LAP0201`, e um parâmetro
+homônimo sombreia a função, como qualquer ligação interna. Recursão **mútua**
+fica de fora por ora. Em runtime a closure não contém a si mesma — o
+`Environment` é imutável de propósito —: ela guarda o **nome**, e quem religa é
+a chamada. Recursão infinita termina em `LAP0302`, o limite da linguagem, e não
+numa queda do processo: o evaluator roda em pilha própria justamente para que o
+teto seja o dele, e não o do host.
+
+**`Str` ganhou `length` e indexação** (M17, Q35), junto com o tipo primitivo
+`Char`:
+
+```c
+def texto = "a𝕏b";
+
+print(texto.length);                              // 3 — pontos de código
+if texto[1] is Some(c) { print(c); }              // 𝕏, inteiro
+print(texto[9]);                                  // Option.None
+```
+
+A unidade é o **ponto de código**, não a unidade de armazenamento: `𝕏` ocupa
+duas unidades UTF-16 e conta como um. A escolha custa `O(n)` e preserva portas —
+começar por unidade UTF-16 e migrar depois mudaria em silêncio o resultado de
+programas sobre texto fora do plano básico; o caminho inverso não muda nenhum.
+
+`Str` **não** virou `[Char;N]`: ganhou as duas leituras de um span sem mudar de
+representação. Como o tamanho não está no tipo, `s[i]` é sempre `Option<Char>`,
+como em `[T;?]` — nunca há indexação total. Não há literal de `Char`: um
+caractere se obtém indexando uma `Str`, e as aspas simples estão reservadas às
+pseudo-palavras-chave de macro (Q38). Unificar `Str` com `[Char;N]` continua em
+aberto (A2b no plano 27), agora sem pressa: a semântica já é a certa, e o que
+mudaria é só a implementação.
+
 As duas construções coexistem com papéis distintos: **`is` testa uma variante e
 não é exaustivo; `match` cobre todas e é** (Q6). E é essa divisão que dá a
 `match` um caminho de saída: o que o prende ao compilador não é mais "nenhuma
@@ -330,10 +379,18 @@ macro não sabe provar porque roda antes do checker e não conhece o tipo do
 escrutinado. Quando souber, `match` vira `@match` no prelude sobre uma cadeia de
 `if`/`is`, e `CoreMatch` sai da Core. A Q22 está encaminhada, não fechada.
 
-O que falta: o resto do **PE** (M17–M19) — especialização de chamadas e
-eliminação de bounds check —, agora sobre uma superfície que já fechou: era a
-regra de escopo do `goto` que travava a especificação do `is` em primeiro
-lugar, e o M16 resolveu as duas coisas juntas (Q32). Os membros sobre tipos
+O que falta, e por que a ordem mudou: o **norte do projeto passou de "estudar os
+limites do partial evaluator" para "protótipo de linguagem com foco em
+metaprogramação"** (Q33). Um spike de biblioteca padrão mostrou que o que falta
+não é código de biblioteca, é **primitiva de linguagem** — sem recursão, sem
+`length` de `Str`, sem escrever em elemento de span, não dá para escrever `map`
+na própria linguagem. Daí o M17 (destravar), M18 (módulos), M19 (efeitos e
+bindings C), M20 (a stdlib, que é o teste de aceitação dos três) e M21
+(metaprogramação++). O **PE** vira M22–M24: adiado, não cancelado — e a Q34
+cobrou o primeiro preço disso, porque recursão torna a terminação do PE
+não-trivial. A superfície, essa, já fechou: era a regra de escopo do `goto` que
+travava a especificação do `is` em primeiro lugar, e o M16 resolveu as duas
+coisas juntas (Q32). Os membros sobre tipos
 genéricos já entraram (M15): `def Result<?, ?>.isOk` diz o alcance em vez de
 deduzi-lo, e o `?` curinga dissolveu a Q27 em vez de respondê-la. O **span** já
 entrou (M12): o tamanho no tipo tirou do partial evaluator o caso trivial de

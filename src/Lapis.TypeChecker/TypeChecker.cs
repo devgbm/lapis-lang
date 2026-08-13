@@ -1667,6 +1667,15 @@ public sealed class TypeChecker
             return ErrorType.Instance;
         }
 
+        // `s[i]` sobre Str (Q35/A2a): devolve `Option<Char>`, como um `[T;?]`.
+        // O tamanho não está no tipo, então nunca há indexação total aqui — a
+        // falha aparece no tipo, que é o que a §30 exige (Q31).
+        if (target is PrimitiveType { Kind: PrimitiveKind.Str })
+        {
+            _resolutions[node.NodeId] = new StrIntrinsicResolution(StrIntrinsic.Index);
+            return RequirePrelude().OptionOf(PrimitiveType.Char);
+        }
+
         if (target is not SpanType span)
         {
             _diagnostics.ReportError(
@@ -1726,6 +1735,15 @@ public sealed class TypeChecker
             _resolutions[node.NodeId] = new SpanLengthResolution(
                 spanTarget.Size is FixedSize fixedSize ? fixedSize.Value : null);
 
+            return PrimitiveType.Int;
+        }
+
+        // `s.length` sobre Str (Q35/A2a). Sempre de execução: `Str` não carrega
+        // tamanho no tipo — literal com tamanho é A2b —, então não há constante
+        // a devolver, ao contrário de `[T;N]`.
+        if (target is PrimitiveType { Kind: PrimitiveKind.Str } && node.Name == LengthMember)
+        {
+            _resolutions[node.NodeId] = new StrIntrinsicResolution(StrIntrinsic.Length);
             return PrimitiveType.Int;
         }
 
