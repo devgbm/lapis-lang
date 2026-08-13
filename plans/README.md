@@ -154,7 +154,7 @@ de primitiva.
 | **M14** ✅ | Métodos de instância | `user.hello()` ≡ chamar a função com `user` no argumento 0 | 22 |
 | **M15** ✅ | Membros sobre genéricos | `def Result<?, ?>.isOk` — Q27 decidida | 23 |
 | **M16** ✅ | Controle estruturado + `is` | `goto`/`label` saem; `loop`/`break`/`continue`/`if` sem chaves entram (Q32); `e is Some(v)` — Q23 fechada, `CoreIs` é primitiva | 26, 25 |
-| **M17** | Destravar a linguagem | recursão (Q34); `Str` com `length`/indexação e `Char` (Q35); `s[i] = v` (Q36) — `map` escrito **em LapisLang** | 27 |
+| **M17** ✅ | Destravar a linguagem | recursão (Q34); `Str` com `length`/indexação e `Char` (Q35); `s[i] = v` (Q36) — `map` escrito **em LapisLang** | 27 |
 | **M18** | Módulos | `import`, escopo por unidade, `.lp` sobre a Core impressa; tudo público (Q37) | 27 |
 | **M19** | Efeitos e mundo externo | `Console` com **entrada**, `File`, bindings C em quarentena | 27 |
 | **M20** | Biblioteca padrão | `Str`, `Array<T>`, `File`, `Console` — o teste de aceitação de M17–M19 | 27 |

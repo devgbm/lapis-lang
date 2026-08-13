@@ -65,17 +65,34 @@ public sealed record AssignStatement(string Name, Expression Value) : Statement
     public required SourceSpan NameSpan { get; init; }
 
     /// <summary>
-    /// Os campos percorridos em <c>u.endereco.rua = e;</c> (plano 21 §21.3b).
+    /// O caminho percorrido em <c>u.endereco.rua = e;</c> e em <c>xs[i] = e;</c>
+    /// (plano 21 §21.3b, estendido pela Q36).
     ///
     /// Vazio na forma simples. O receptor é sempre um <b>nome</b>, nunca uma
     /// expressão qualquer: <c>proximo().name = x</c> mutaria um temporário que
     /// ninguém mais vê.
     /// </summary>
-    public ImmutableArray<string> Path { get; init; } = [];
-
-    /// <summary>Um span por segmento de <see cref="Path"/>, para o diagnóstico apontar o certo.</summary>
-    public ImmutableArray<SourceSpan> PathSpans { get; init; } = [];
+    public ImmutableArray<AssignSegment> Path { get; init; } = [];
 }
+
+/// <summary>Um passo do caminho de atribuição: um campo ou um índice.</summary>
+public abstract record AssignSegment
+{
+    public required SourceSpan Span { get; init; }
+}
+
+/// <summary>O <c>.rua</c> de <c>u.endereco.rua = e;</c>.</summary>
+public sealed record FieldSegment(string Name) : AssignSegment;
+
+/// <summary>
+/// O <c>[i]</c> de <c>xs[i] = e;</c> (Q36).
+///
+/// O índice é expressão qualquer, e não constante: é justamente o índice de laço
+/// que torna <c>map</c> escrevível. Que ele possa cair fora dos limites é
+/// esperado, e a resposta é não ter efeito — ver a Q36 para por que essa é a
+/// única resposta coerente com a leitura devolver <c>Option</c>.
+/// </summary>
+public sealed record IndexSegment(Expression Index) : AssignSegment;
 
 // ------------------------------------------------------------------ macros
 

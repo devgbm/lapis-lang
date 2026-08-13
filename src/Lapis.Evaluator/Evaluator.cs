@@ -263,6 +263,33 @@ public sealed class Evaluator
     /// </summary>
     private Completion EvaluateAssign(CoreAssign node, Environment environment)
     {
+        // Os índices do caminho vêm **antes** do valor: `xs[f()] = g()` roda `f`
+        // e depois `g`, que é a ordem em que estão escritos (plano 08 §8.3).
+        // Enquanto o caminho só tinha campos isto não era observável — não havia
+        // nada a avaliar nele.
+        var indices = ImmutableArray.CreateBuilder<long?>(node.Path.Length);
+
+        foreach (var segment in node.Path)
+        {
+            if (segment is not CoreIndexSegment index)
+            {
+                indices.Add(null);
+                continue;
+            }
+
+            var evaluated = Evaluate(index.Index, environment);
+
+            if (!evaluated.IsNormal)
+            {
+                return evaluated;
+            }
+
+            indices.Add(evaluated.Value is IntValue offset
+                ? offset.Value
+                : throw new InternalCompilerException(
+                    "índice de atribuição não é Int; o checker deveria ter rejeitado", index.Span));
+        }
+
         var value = Evaluate(node.Value, environment);
 
         if (!value.IsNormal)
@@ -289,7 +316,15 @@ public sealed class Evaluator
                     $"atribuição a '{node.Name}', que não existe no ambiente", node.Span);
             }
 
-            assigned = Rebuild(current, node.Path, 0, assigned, node.Span);
+            // `null` é escrita fora dos limites: **nada acontece** (Q36). Não
+            // aborta, não avisa em execução, não deixa o `var` num estado
+            // intermediário — o slot não chega a ser tocado.
+            if (Rebuild(current, node.Path, indices.MoveToImmutable(), 0, assigned, node.Span) is not { } rebuilt)
+            {
+                return Completion.Normal(VoidValue.Instance);
+            }
+
+            assigned = rebuilt;
         }
 
         if (!environment.TryAssign(node.Name, assigned))
@@ -302,23 +337,55 @@ public sealed class Evaluator
     }
 
     /// <summary>
-    /// O valor de <paramref name="target"/> com o campo em
-    /// <c>path[index..]</c> trocado por <paramref name="replacement"/>.
+    /// O valor de <paramref name="target"/> com o passo em
+    /// <c>path[at..]</c> trocado por <paramref name="replacement"/>, ou
+    /// <c>null</c> quando um índice do caminho cai fora dos limites.
     ///
-    /// Recursivo porque o caminho pode ser aninhado, e cada nível reconstrói o seu
-    /// próprio struct: nenhum valor existente é alterado.
+    /// Recursivo porque o caminho pode ser aninhado, e cada nível reconstrói o
+    /// seu próprio valor: nenhum valor existente é alterado.
+    ///
+    /// O <c>null</c> sobe até o topo intacto — <c>u.xs[9].a = 1</c> não escreve
+    /// nada em lugar nenhum, e não apenas "não escreve no elemento 9". É o que
+    /// mantém a regra da Q36 sendo uma só: escrita fora dos limites não tem
+    /// efeito, em qualquer profundidade.
     /// </summary>
-    private static Value Rebuild(
+    private static Value? Rebuild(
         Value target,
-        ImmutableArray<string> path,
-        int index,
+        ImmutableArray<CoreAssignSegment> path,
+        ImmutableArray<long?> indices,
+        int at,
         Value replacement,
         SourceSpan span)
     {
-        if (index >= path.Length)
+        if (at >= path.Length)
         {
             return replacement;
         }
+
+        if (path[at] is CoreIndexSegment)
+        {
+            if (target is not SpanValue array)
+            {
+                throw new InternalCompilerException(
+                    "atribuição indexada sobre valor que não é span; "
+                    + "o checker deveria ter rejeitado", span);
+            }
+
+            var offset = indices[at]!.Value;
+
+            if (offset < 0 || offset >= array.Elements.Length)
+            {
+                return null;
+            }
+
+            var element = Rebuild(array.Elements[(int)offset], path, indices, at + 1, replacement, span);
+
+            return element is null
+                ? null
+                : array with { Elements = array.Elements.SetItem((int)offset, element) };
+        }
+
+        var name = ((CoreFieldSegment)path[at]).Name;
 
         if (target is not StructValue instance)
         {
@@ -327,18 +394,18 @@ public sealed class Evaluator
                 + "o checker deveria ter rejeitado", span);
         }
 
-        var field = instance.Definition.IndexOfField(path[index]);
+        var field = instance.Definition.IndexOfField(name);
 
         if (field < 0)
         {
             throw new InternalCompilerException(
-                $"campo '{path[index]}' não existe em '{instance.Definition.Name}'; "
+                $"campo '{name}' não existe em '{instance.Definition.Name}'; "
                 + "o checker deveria ter rejeitado", span);
         }
 
-        var inner = Rebuild(instance.Fields[field], path, index + 1, replacement, span);
+        var inner = Rebuild(instance.Fields[field], path, indices, at + 1, replacement, span);
 
-        return instance with { Fields = instance.Fields.SetItem(field, inner) };
+        return inner is null ? null : instance with { Fields = instance.Fields.SetItem(field, inner) };
     }
 
     private Completion EvaluateLambda(CoreLambda node, Environment environment)

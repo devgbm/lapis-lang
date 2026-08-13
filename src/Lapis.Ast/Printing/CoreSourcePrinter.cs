@@ -143,7 +143,16 @@ public static class CoreSourcePrinter
 
                 foreach (var segment in n.Path)
                 {
-                    builder.Append('.').Append(segment);
+                    if (segment is CoreFieldSegment field)
+                    {
+                        builder.Append('.').Append(field.Name);
+                    }
+                    else if (segment is CoreIndexSegment index)
+                    {
+                        builder.Append('[');
+                        Print(builder, index.Index, indent, Precedence.Lowest);
+                        builder.Append(']');
+                    }
                 }
 
                 builder.Append(" = ");

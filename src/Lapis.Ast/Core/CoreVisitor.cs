@@ -218,6 +218,17 @@ public abstract class CoreWalker
                 break;
 
             case CoreAssign n:
+                // O índice de `xs[i] = e` é expressão, e por isso entra na
+                // travessia: sem isto o `i` some das variáveis livres e da
+                // contagem de nós, e o PE elimina a definição que ele usa.
+                foreach (var segment in n.Path)
+                {
+                    if (segment is CoreIndexSegment index)
+                    {
+                        Visit(index.Index);
+                    }
+                }
+
                 Visit(n.Value);
                 break;
 

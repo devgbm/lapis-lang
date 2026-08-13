@@ -90,8 +90,7 @@ public sealed class FieldAssignmentParseTests : ParserTestBase
             .Statements.ShouldHaveSingleItem().ShouldBeOfType<AssignStatement>();
 
         assign.Name.ShouldBe("u");
-        assign.Path.ShouldBe(["a", "b"]);
-        assign.PathSpans.Length.ShouldBe(2);
+        assign.Path.Select(segment => ((FieldSegment)segment).Name).ShouldBe(["a", "b"]);
     }
 
     [Fact]

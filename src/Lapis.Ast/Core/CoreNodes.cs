@@ -111,17 +111,30 @@ public sealed class CoreAssign(
     public SourceSpan NameSpan { get; init; } = span;
 
     /// <summary>
-    /// Campos percorridos a partir de <see cref="Name"/> — vazio na forma simples.
+    /// Caminho percorrido a partir de <see cref="Name"/> — vazio na forma simples.
     ///
-    /// <c>u.name = e</c> <b>não</b> muda o struct no lugar: reconstrói o valor e
-    /// reatribui o slot (plano 21 §21.3b). Com isso todo <c>Value</c> continua
-    /// imutável, a única coisa mutável continua sendo o slot do ambiente, e não há
-    /// aliasing para o partial evaluator modelar.
+    /// <c>u.name = e</c> e <c>xs[i] = e</c> <b>não</b> mudam o valor no lugar:
+    /// reconstroem-no e reatribuem o slot (plano 21 §21.3b, estendido pela Q36).
+    /// Com isso todo <c>Value</c> continua imutável, a única coisa mutável
+    /// continua sendo o slot do ambiente, e não há aliasing para o partial
+    /// evaluator modelar — é a premissa da Q25 que a Q36 precisava preservar.
     /// </summary>
-    public ImmutableArray<string> Path { get; init; } = [];
-
-    public ImmutableArray<SourceSpan> PathSpans { get; init; } = [];
+    public ImmutableArray<CoreAssignSegment> Path { get; init; } = [];
 }
+
+/// <summary>Um passo do caminho de <see cref="CoreAssign"/>: campo ou índice.</summary>
+public abstract record CoreAssignSegment(SourceSpan Span);
+
+public sealed record CoreFieldSegment(string Name, SourceSpan Span) : CoreAssignSegment(Span);
+
+/// <summary>
+/// <c>[i]</c> num caminho de atribuição (Q36).
+///
+/// Carrega uma <see cref="CoreExpr"/>, e por isso é o único segmento que as
+/// travessias precisam visitar: o índice pode citar variáveis, ter efeito e ser
+/// especializado como qualquer outra expressão.
+/// </summary>
+public sealed record CoreIndexSegment(CoreExpr Index, SourceSpan Span) : CoreAssignSegment(Span);
 
 /// <summary>
 /// Parâmetro de uma função. <see cref="Type"/> é <c>null</c> só para <c>self</c>

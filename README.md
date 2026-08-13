@@ -52,13 +52,13 @@ lapis hello.ls
 | **M14** — métodos de instância e `self` | ✅ concluído |
 | **M15** — membros sobre tipos genéricos (`Result<?, ?>`) | ✅ concluído |
 | **M16** — `goto`/`label` saem, `loop`/`break`/`continue` entram; `is` fecha Q23 | ✅ concluído |
-| **M17** — destravar a linguagem: recursão (Q34), `Str` com `length`/indexação e `Char` (Q35) | 🔄 em curso |
+| **M17** — destravar a linguagem: recursão (Q34), `Str`/`Char` (Q35), `xs[i] = v` (Q36) | ✅ concluído |
 | M18–M21 — módulos, efeitos, biblioteca padrão, metaprogramação++ | ⏳ próximos |
 | M22–M24 — PE: especialização, análise, equivalência | 🅿️ adiado (Q33) |
 
-**1863 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
+**1903 testes** cobrindo lexer, parser, macros, desugar, type checker, runtime,
 evaluator, partial evaluator e CLI — entre eles uma **suíte de conformidade** de
-222 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
+227 programas `.ls` que é a especificação executável do projeto: cada afirmação testável da
 spec é um arquivo, e o nome do teste que falha já é o arquivo a abrir.
 
 A linguagem já roda programas de verdade: funções de primeira classe com
@@ -388,6 +388,45 @@ print(@comecaCom "abc" 'a');                      // true
 
 Escapa-se a aspa que delimita, e só ela: `'\''` leva barra, `'"'` não — e o
 simétrico vale para a string.
+
+**Escrever em elemento de span** (M17, Q36) foi a peça que faltava para a
+linguagem construir dados, e não só lê-los:
+
+```c
+def map = fn(xs: [Int;?], f: fn(Int) Int) [Int;?] {
+    var out = .[Int; 0; xs.length];
+    var i = 0;
+
+    loop {
+        if i >= xs.length { break; }
+
+        if xs[i] is Some(v) { out[i] = f(v); }
+
+        i = i + 1;
+    }
+
+    return out;
+};
+
+print(map(.[1, 2, 3], fn(x: Int) Int { return x * 10; }));   // [10, 20, 30]
+```
+
+Antes disso nenhuma expressão produzia um span de elementos **computados e
+distintos** — havia a lista literal e a repetição, e mais nada —, então `map`
+não era escrevível nem por biblioteca, porque a biblioteca precisaria das mesmas
+primitivas. É por isso que a fase A do roteiro existe.
+
+Não é mutação no lugar: span é **valor**, e `xs[i] = v` reconstrói o span e
+religa o slot, pelo mesmo mecanismo de `u.a.b = 1`. Nenhuma closure captura
+`var`, então não há aliasing a modelar — a premissa que o partial evaluator usa
+continua de pé. E é observável: `def copia = xs;` guarda o span de antes.
+
+Escrever fora dos limites **não tem efeito** — não aborta, e em qualquer
+profundidade do caminho não escreve nada. Onde o compilador consegue ver que a
+escrita vai se perder (tamanho no tipo, índice constante), ele **avisa**
+(`LAP0246`, warning). O silêncio fica só onde ele genuinamente não sabe, que é a
+mesma fronteira em que a leitura devolve `Option` em vez de garantir: as duas
+metades da operação são honestas sobre o mesmo limite de conhecimento.
 
 As duas construções coexistem com papéis distintos: **`is` testa uma variante e
 não é exaustivo; `match` cobre todas e é** (Q6). E é essa divisão que dá a

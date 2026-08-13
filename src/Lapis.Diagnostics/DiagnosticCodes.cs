@@ -71,6 +71,17 @@ public static class DiagnosticCodes
     public const string EmptyArrayNeedsAnnotation = "LAP0241";
     public const string IndexOutOfBounds = "LAP0244";
     public const string InvalidSpanSize = "LAP0245";
+
+    /// <summary>
+    /// <b>Warning</b>, e não erro (Q36): escrever fora dos limites não tem
+    /// efeito em runtime, então o programa continua bem definido. O aviso sai
+    /// onde o compilador **consegue ver** que a escrita vai se perder — tamanho
+    /// no tipo e índice constante.
+    ///
+    /// Ler fora dos limites com tamanho conhecido é <c>LAP0244</c>, erro: uma
+    /// leitura precisa produzir valor, e não há valor a produzir. Escrever, não.
+    /// </summary>
+    public const string SpanWriteOutOfBounds = "LAP0246";
     public const string NotIndexable = "LAP0242";
     public const string IndexMustBeInt = "LAP0243";
 

@@ -44,7 +44,7 @@ exatamente a validação que se queria — ela só começa mais cedo do que pare
 A · Destravar a linguagem      pré-requisito de tudo
     A1  recursão                                  ✅    Q34
     A2  Str: length, indexação, Char              ✅    Q35
-    A3  escrita em elemento de span               ⏳    Q36
+    A3  escrita em elemento de span               ✅    Q36
 
 B · Módulos                    chave do multiarquivo
     B1  import, escopo por unidade, tudo público        Q37
@@ -287,12 +287,30 @@ analisada na **Q39**, e não bloqueia nada agora.
 **A assimetria que fica em aberto.** Ler fora dos limites devolve `Option` — a
 falha aparece no tipo, como a §30 exige. Escrever fora dos limites não devolve
 nada — a falha não aparece em lugar nenhum. Ver Q36 para as saídas consideradas.
-**✅ Decidido: warning de compilação.** A escrita fora dos limites segue sem
+**✅ Decidido: warning de compilação (`LAP0246`).** A escrita fora dos limites segue sem
 efeito em runtime — nada aborta —, mas onde o compilador **consegue ver** que ela
 vai falhar, ele avisa. Assim o silêncio fica só onde o compilador genuinamente
 não sabe, que é a mesma fronteira em que a leitura devolve `Option`: as duas
 metades da operação passam a ser honestas sobre o mesmo limite de conhecimento.
 Mecanismos mais fortes (forma-expressão, `Result`) ficam para depois.
+
+**O que a implementação fixou:**
+
+- **`Path` deixou de ser `string[]`.** Virou segmentos — `CoreFieldSegment` e
+  `CoreIndexSegment` —, e o array paralelo de spans sumiu junto. O índice é
+  `CoreExpr`, então é o primeiro segmento que as travessias precisam visitar:
+  `FreeVariables` sem ele elimina o `Let` que o índice cita, e o residual deixa
+  de compilar.
+- **Fora dos limites não escreve nada**, não "não escreve naquele elemento": em
+  `u.xs[99].a = 1` a reconstrução aborta inteira e o slot não é tocado.
+- **A ordem de avaliação virou observável.** `xs[f()] = g()` roda `f` antes de
+  `g` — a ordem escrita (plano 08 §8.3). Com caminho só de campos não havia nada
+  a avaliar nele, e a pergunta não existia. Evaluator e PE seguem a mesma ordem,
+  de propósito.
+- **O warning alcança menos do que parece, e por um bom motivo.** Alvo de escrita
+  é sempre `var`, e um `var` sem anotação **alarga** para `[T;?]` (Q29). O aviso
+  vive de anotação explícita ou de campo de `type` com tamanho declarado — que é
+  exatamente onde o compilador realmente sabe.
 
 ---
 
@@ -376,10 +394,15 @@ LapisLang sempre que possível, pelo princípio §58.2.
 - [x] Recursão infinita aborta com `LAP0302`; a isenção em `DiagnosticCoverageTests` sai.
 - [x] O PE não trava em função recursiva — verificado, e a guarda é implícita (`SpecializeCall` não entra no corpo).
 - [x] `Str` com `length` e indexação; `Char` como tipo.
-- [ ] `s[i] = v` sobre `var` de span; `def` continua recusando.
-- [ ] Fora dos limites com tamanho conhecido: erro de compilação. Com `[T;?]`: sem efeito.
-- [ ] `map` acima escrito **em LapisLang**, no corpus de conformidade.
-- [ ] Round-trip e equivalência do PE inalterados sobre o corpus.
+- [x] `s[i] = v` sobre `var` de span; `def` continua recusando.
+- [x] Fora dos limites com tamanho conhecido: **warning** (`LAP0246`), não erro — a Q36 mudou isto. Com `[T;?]`: sem efeito e sem aviso.
+- [x] `map` acima escrito **em LapisLang**, no corpus de conformidade (`eval/spans/map_in_lapis.ls`).
+- [x] Round-trip e equivalência do PE inalterados sobre o corpus.
+
+**Fase A concluída.** O que ela destravou, em uma frase: antes dela nenhuma
+expressão da linguagem produzia um span de elementos **computados e distintos**,
+e por isso `map` não era escrevível — nem por biblioteca, porque a biblioteca
+precisaria das mesmas primitivas.
 
 ---
 

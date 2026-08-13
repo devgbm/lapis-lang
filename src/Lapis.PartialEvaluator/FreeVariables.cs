@@ -65,6 +65,18 @@ public static class FreeVariables
             // apagar o efeito.
             case CoreAssign n:
                 free.Add(n.Name);
+
+                // O índice de `xs[i] = e` cita nomes como qualquer expressão.
+                // Sem isto o `i` não conta como usado, e o PE elimina o `Let`
+                // que o define — produzindo residual que não compila.
+                foreach (var segment in n.Path)
+                {
+                    if (segment is CoreIndexSegment index)
+                    {
+                        Collect(index.Index, free, types);
+                    }
+                }
+
                 Collect(n.Value, free, types);
                 break;
 

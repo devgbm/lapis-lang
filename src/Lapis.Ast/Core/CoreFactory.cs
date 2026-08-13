@@ -45,13 +45,11 @@ public sealed class CoreFactory
         string name,
         CoreExpr value,
         SourceSpan nameSpan,
-        ImmutableArray<string> path = default,
-        ImmutableArray<SourceSpan> pathSpans = default) =>
+        ImmutableArray<CoreAssignSegment> path = default) =>
         new(Next(), span, name, value)
         {
             NameSpan = nameSpan,
             Path = path.IsDefault ? [] : path,
-            PathSpans = pathSpans.IsDefault ? [] : pathSpans,
         };
 
     public CoreLambda Lambda(

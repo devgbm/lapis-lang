@@ -209,12 +209,19 @@ public static class CoreSExprPrinter
                 break;
 
             case CoreAssign n:
-                Open(
-                    builder,
-                    indent,
-                    n.Path.IsEmpty
-                        ? $"{tag}assign {n.Name}"
-                        : $"{tag}assign {n.Name}.{string.Join(".", n.Path)}");
+                Open(builder, indent, $"{tag}assign {n.Name}{PathOf(n)}");
+
+                // O índice sai como filho, e não embutido no cabeçalho: ele é
+                // expressão, e uma S-expression que o escondesse mentiria sobre
+                // a forma da árvore.
+                foreach (var segment in n.Path)
+                {
+                    if (segment is CoreIndexSegment index)
+                    {
+                        PrintExpression(builder, index.Index, indent + 1, ids);
+                    }
+                }
+
                 PrintExpression(builder, n.Value, indent + 1, ids);
                 Close(builder, indent);
                 break;
@@ -318,6 +325,18 @@ public static class CoreSExprPrinter
 
     private static void Open(StringBuilder builder, int indent, string head) =>
         builder.Append(' ', indent * 2).Append('(').AppendLine(head);
+
+    /// <summary>
+    /// O caminho no cabeçalho do <c>assign</c>. Um índice vira <c>[]</c> vazio:
+    /// a expressão que está dentro dele é impressa como filho, e repeti-la aqui
+    /// duplicaria a árvore em vez de descrevê-la.
+    /// </summary>
+    private static string PathOf(CoreAssign node) => string.Concat(node.Path.Select(segment => segment switch
+    {
+        CoreFieldSegment field => "." + field.Name,
+        CoreIndexSegment => "[]",
+        _ => throw InternalCompilerException.Unreachable(segment),
+    }));
 
     private static void Close(StringBuilder builder, int indent) =>
         builder.Append(' ', indent * 2).AppendLine(")");

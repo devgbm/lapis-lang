@@ -1117,13 +1117,21 @@ public sealed class TypeChecker
             return PrimitiveType.Void;
         }
 
-        // `u.endereco.rua = e;` — o caminho é percorrido pelos tipos, e o que
-        // precisa caber é o **último** campo (plano 21 §21.3b).
+        // `u.endereco.rua = e;` e `xs[i] = e;` — o caminho é percorrido pelos
+        // tipos, e o que precisa caber é o **último** passo (plano 21 §21.3b,
+        // estendido pela Q36).
         var target = binding.Type;
 
-        for (var i = 0; i < node.Path.Length; i++)
+        foreach (var segment in node.Path)
         {
-            if (WalkFieldForAssignment(node, i, target) is not { } next)
+            var next = segment switch
+            {
+                CoreFieldSegment field => WalkFieldForAssignment(node, field, target),
+                CoreIndexSegment index => WalkIndexForAssignment(index, target, scope),
+                _ => throw InternalCompilerException.Unreachable(segment),
+            };
+
+            if (next is null)
             {
                 return PrimitiveType.Void;
             }
@@ -1198,10 +1206,65 @@ public sealed class TypeChecker
     private static ImmutableArray<GenericArgument> AllWildcards(TypeDefinition definition) =>
         [.. definition.TypeParameters.Select(_ => (GenericArgument)WildcardArgument.Instance)];
 
-    private LapisType? WalkFieldForAssignment(CoreAssign node, int index, LapisType target)
+    /// <summary>
+    /// Um passo <c>[i]</c> do caminho (Q36): o alvo precisa ser span, o índice
+    /// precisa ser <c>Int</c>, e o que segue é o tipo do <b>elemento</b> — nu, e
+    /// não <c>Option</c>, ao contrário da leitura.
+    ///
+    /// A assimetria é deliberada e está no centro da Q36. Ler fora dos limites
+    /// devolve <c>Option</c> porque uma leitura precisa produzir valor e pode não
+    /// haver um; escrever fora dos limites não produz nada, então não há o que
+    /// envelopar — a escrita simplesmente não acontece. Onde o compilador
+    /// consegue ver que ela vai se perder, ele avisa (<c>LAP0246</c>), e é isso
+    /// que responde a objeção que a Q28 tinha levantado.
+    /// </summary>
+    private LapisType? WalkIndexForAssignment(CoreIndexSegment segment, LapisType target, Scope scope)
     {
-        var name = node.Path[index];
-        var span = index < node.PathSpans.Length ? node.PathSpans[index] : node.NameSpan;
+        var indexType = CheckExpression(segment.Index, scope);
+
+        if (indexType is not PrimitiveType { Kind: PrimitiveKind.Int } and not ErrorType and not NeverType)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.IndexMustBeInt,
+                segment.Index.Span,
+                $"índice deve ser Int, encontrado {indexType.ToDisplayString()}");
+        }
+
+        if (target is ErrorType)
+        {
+            return null;
+        }
+
+        if (target is not SpanType span)
+        {
+            _diagnostics.ReportError(
+                DiagnosticCodes.NotIndexable,
+                segment.Span,
+                $"{target.ToDisplayString()} não é indexável");
+
+            return null;
+        }
+
+        // Só há o que avisar quando as duas pontas são conhecidas. Com `[T;?]` o
+        // compilador genuinamente não sabe — a mesma fronteira em que a leitura
+        // devolve `Option` em vez de garantir.
+        if (span.Size is FixedSize size && ConstIntOf(segment.Index, scope) is { } written
+            && (written < 0 || written >= size.Value))
+        {
+            _diagnostics.ReportWarning(
+                DiagnosticCodes.SpanWriteOutOfBounds,
+                segment.Index.Span,
+                $"escrita no índice {written}, fora dos limites de {span.ToDisplayString()}",
+                new DiagnosticNote($"o span tem {size.Value} elemento(s); esta atribuição não terá efeito"));
+        }
+
+        return span.Element;
+    }
+
+    private LapisType? WalkFieldForAssignment(CoreAssign node, CoreFieldSegment segment, LapisType target)
+    {
+        var name = segment.Name;
+        var span = segment.Span;
 
         if (target is ErrorType)
         {

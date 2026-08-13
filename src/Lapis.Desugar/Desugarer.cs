@@ -166,8 +166,14 @@ public sealed class Desugarer
             node.Name,
             DesugarExpression(node.Value),
             node.NameSpan,
-            node.Path,
-            node.PathSpans);
+            [.. node.Path.Select(DesugarAssignSegment)]);
+
+    private CoreAssignSegment DesugarAssignSegment(AssignSegment segment) => segment switch
+    {
+        FieldSegment field => new CoreFieldSegment(field.Name, field.Span),
+        IndexSegment index => new CoreIndexSegment(DesugarExpression(index.Index), index.Span),
+        _ => throw InternalCompilerException.Unreachable(segment),
+    };
 
     private CoreExpr DesugarExpression(Expression expression)
     {

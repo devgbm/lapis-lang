@@ -70,7 +70,7 @@ separa:
 | Q33 | o norte do projeto passa a ser metaprogramação; PE adiado | ✅ | 🔴 | plano 27 | derruba a justificativa de Q8 |
 | Q34 | recursão entra | ✅ | 🔴 | plano 27 §A1 | revoga Q8; encarece o PE |
 | Q35 | `Str`: `length`, indexação e `Char` (A2a) | 🔄 | 🔴 | plano 27 §A2 | A2b em aberto |
-| Q36 | escrita em elemento de span (`s[i] = v`), com warning | 🔄 | 🔴 | plano 27 §A3 | revoga Q28; tensiona Q31 |
+| Q36 | escrita em elemento de span (`s[i] = v`), com warning | ✅ | 🔴 | plano 27 §A3 | revoga Q28; tensiona Q31 |
 | Q37 | módulos sem visibilidade por ora — tudo público | ✅ | 🔴 | plano 27 §B1 | |
 | Q38 | evolução de macros (pseudo-keywords, splice, aninhamento, controle) | 🅿️ | 🔴 | — | pré-requisito de Q22 |
 | Q39 | valor padrão de `T`; `.[T; n]` sem semente | ⏳ | 🔴 | — | recomendação: `def T.default` |
@@ -1278,7 +1278,7 @@ compra o suficiente para pagar (2)–(4) acima.
 
 ---
 
-## Q36 🔄🔴 — Escrita em elemento de span
+## Q36 ✅🔴 — Escrita em elemento de span
 
 **Problema.** Não existe hoje nenhuma expressão que produza um span de elementos
 **computados e distintos**: as duas construções são a lista literal (`.[1,2,3]`)
@@ -1336,6 +1336,35 @@ compilador genuinamente não sabe — que é a mesma fronteira em que a *leitura
 devolve `Option` em vez de garantir, e portanto deixa de ser assimetria
 arbitrária: **as duas metades da operação são honestas sobre o mesmo limite de
 conhecimento.**
+
+**✅ Implementada** (M17/A3, plano 27 §A3). O que a implementação fixou:
+
+| Peça | Decisão |
+|---|---|
+| caminho de atribuição | `Path` deixou de ser `string[]` e virou segmentos: `CoreFieldSegment` e `CoreIndexSegment`. O array paralelo de spans sumiu junto |
+| tipo do passo `[i]` | o do **elemento**, nu — e não `Option<T>` como a leitura |
+| `LAP0246` | **warning**, com tamanho no tipo e índice constante |
+| fora dos limites em runtime | sem efeito, em **qualquer** profundidade do caminho |
+
+Três detalhes que só apareceram ao escrever o código:
+
+1. **Fora dos limites não escreve nada, não "não escreve naquele elemento".**
+   Em `u.xs[99].a = 1`, a reconstrução aborta inteira e o slot não é tocado. É o
+   que mantém a regra sendo uma só em vez de depender da profundidade.
+2. **A ordem de avaliação passou a ser observável.** `xs[f()] = g()` roda `f`
+   antes de `g` — a ordem em que estão escritos (plano 08 §8.3). Enquanto o
+   caminho só tinha campos não havia nada a avaliar nele, e a pergunta não
+   existia.
+3. **O alcance do warning é menor do que parece, e por um motivo bom.** Um `var`
+   sem anotação **alarga** para `[T;?]` (Q29), e alvo de escrita é sempre `var`.
+   O aviso vive de anotação explícita (`var xs: [Int;3]`) ou de campo de `type`
+   com tamanho declarado. Também não dobra aritmética: `xs[0 - 1]` não avisa,
+   porque "constante" aqui é o da Q18 — literal, ou `def` ligado a literal.
+   Provar mais que isso é o M23.
+
+**Q28 fica formalmente revogada por esta entrada.** O que ela rejeitava era
+"ignorar em silêncio" como regra geral; o que existe agora é silêncio só onde o
+compilador não sabe, com aviso onde sabe.
 
 ---
 

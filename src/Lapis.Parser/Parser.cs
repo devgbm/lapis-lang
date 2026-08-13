@@ -167,13 +167,14 @@ public sealed class Parser
     };
 
     /// <summary>
-    /// <c>IDENT ("." IDENT)* "=" expressão ";"</c>. Não há ambiguidade a resolver:
-    /// <c>==</c> é outro token, e um caminho de identificadores seguido de <c>=</c>
-    /// em posição de statement não pode ser mais nada.
+    /// <c>IDENT ("." IDENT | "[" expressão "]")* "=" expressão ";"</c>. Não há
+    /// ambiguidade a resolver: <c>==</c> é outro token, e um caminho seguido de
+    /// <c>=</c> em posição de statement não pode ser mais nada.
     ///
-    /// O caminho existe por <c>u.name = "b";</c> (plano 21 §21.3b). Sem ele o
-    /// parser respondia <c>LAP0102</c> — uma reclamação de pontuação para um
-    /// problema semântico, e a primeira coisa que alguém escreve.
+    /// O caminho de campo existe por <c>u.name = "b";</c> (plano 21 §21.3b); o de
+    /// índice, por <c>xs[i] = v;</c> (Q36). Sem eles o parser respondia
+    /// <c>LAP0102</c> — uma reclamação de pontuação para um problema semântico, e
+    /// a primeira coisa que alguém escreve.
     /// </summary>
     private bool AtAssignment()
     {
@@ -182,16 +183,68 @@ public sealed class Parser
             return false;
         }
 
-        // Anda `IDENT ('.' IDENT)*` sem consumir e pergunta o que vem depois.
+        // Anda o caminho sem consumir e pergunta o que vem depois. O índice é
+        // expressão qualquer, então o passo por cima dele é casamento de
+        // colchetes — não dá para adivinhar o tamanho olhando um token.
         var ahead = 1;
 
-        while (_tokens.Peek(ahead).Kind == TokenKind.Dot
-            && _tokens.Peek(ahead + 1).Kind == TokenKind.Identifier)
+        while (true)
         {
-            ahead += 2;
+            if (_tokens.Peek(ahead).Kind == TokenKind.Dot
+                && _tokens.Peek(ahead + 1).Kind == TokenKind.Identifier)
+            {
+                ahead += 2;
+                continue;
+            }
+
+            if (_tokens.Peek(ahead).Kind == TokenKind.OpenBracket
+                && SkipBracketed(ahead) is { } afterBracket)
+            {
+                ahead = afterBracket;
+                continue;
+            }
+
+            break;
         }
 
         return _tokens.Peek(ahead).Kind == TokenKind.Equals;
+    }
+
+    /// <summary>
+    /// A posição logo depois do <c>]</c> que fecha o <c>[</c> em
+    /// <paramref name="open"/>, ou <c>null</c> se ele não fecha — caso em que não
+    /// há atribuição a reconhecer e o statement segue pelo caminho de expressão.
+    /// </summary>
+    private int? SkipBracketed(int open)
+    {
+        var depth = 0;
+
+        for (var at = open; ; at++)
+        {
+            switch (_tokens.Peek(at).Kind)
+            {
+                case TokenKind.OpenBracket:
+                    depth++;
+                    break;
+
+                case TokenKind.CloseBracket:
+                    depth--;
+
+                    if (depth == 0)
+                    {
+                        return at + 1;
+                    }
+
+                    break;
+
+                // Um `[` sem par não pode engolir o arquivo inteiro à procura do
+                // fecho: parar na fronteira do statement mantém a busca local.
+                case TokenKind.Semicolon:
+                case TokenKind.CloseBrace:
+                case TokenKind.EndOfFile:
+                    return null;
+            }
+        }
     }
 
     private Statement ParseAssignStatement()
@@ -199,15 +252,37 @@ public sealed class Parser
         var start = Current.Span.Start;
         var nameToken = _tokens.Advance();
 
-        var path = ImmutableArray.CreateBuilder<string>();
-        var pathSpans = ImmutableArray.CreateBuilder<SourceSpan>();
+        var path = ImmutableArray.CreateBuilder<AssignSegment>();
 
-        while (Current.Kind == TokenKind.Dot)
+        while (true)
         {
-            _tokens.Advance(); // '.'
-            var segment = _tokens.Advance();
-            path.Add(segment.Text);
-            pathSpans.Add(segment.Span);
+            if (Current.Kind == TokenKind.Dot)
+            {
+                _tokens.Advance(); // '.'
+                var field = _tokens.Advance();
+                path.Add(new FieldSegment(field.Text) { Span = field.Span });
+                continue;
+            }
+
+            if (Current.Kind == TokenKind.OpenBracket)
+            {
+                var bracket = _tokens.Advance().Span.Start; // '['
+                var index = ParseExpression();
+
+                if (Current.Kind == TokenKind.CloseBracket)
+                {
+                    _tokens.Advance();
+                }
+                else
+                {
+                    Report(DiagnosticCodes.ExpectedCloseBracket, Current.Span, "esperado ']'");
+                }
+
+                path.Add(new IndexSegment(index) { Span = SpanFrom(bracket) });
+                continue;
+            }
+
+            break;
         }
 
         _tokens.Advance(); // '='
@@ -224,7 +299,6 @@ public sealed class Parser
             Span = SpanFrom(start),
             NameSpan = nameToken.Span,
             Path = path.ToImmutable(),
-            PathSpans = pathSpans.ToImmutable(),
         };
     }
 

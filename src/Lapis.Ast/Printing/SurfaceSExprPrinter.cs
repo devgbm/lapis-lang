@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Text;
 using Lapis.Ast.Surface;
+using Lapis.Diagnostics;
 
 namespace Lapis.Ast.Printing;
 
@@ -71,12 +72,18 @@ public static class SurfaceSExprPrinter
                 break;
 
             case AssignStatement assign:
-                Open(
-                    builder,
-                    indent,
-                    assign.Path.IsEmpty
-                        ? $"assign {assign.Name}"
-                        : $"assign {assign.Name}.{string.Join(".", assign.Path)}");
+                Open(builder, indent, $"assign {assign.Name}{PathOf(assign)}");
+
+                // O índice sai como filho: é expressão, e escondê-la no
+                // cabeçalho mentiria sobre a forma da árvore.
+                foreach (var segment in assign.Path)
+                {
+                    if (segment is IndexSegment index)
+                    {
+                        PrintExpression(builder, index.Index, indent + 1);
+                    }
+                }
+
                 PrintExpression(builder, assign.Value, indent + 1);
                 Close(builder, indent);
                 break;
@@ -450,6 +457,14 @@ public static class SurfaceSExprPrinter
 
     private static void Open(StringBuilder builder, int indent, string head) =>
         builder.Append(' ', indent * 2).Append('(').AppendLine(head);
+
+    private static string PathOf(AssignStatement node) =>
+        string.Concat(node.Path.Select(segment => segment switch
+        {
+            FieldSegment field => "." + field.Name,
+            IndexSegment => "[]",
+            _ => throw InternalCompilerException.Unreachable(segment),
+        }));
 
     private static void Close(StringBuilder builder, int indent) =>
         builder.Append(' ', indent * 2).AppendLine(")");

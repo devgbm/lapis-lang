@@ -950,6 +950,31 @@ public sealed class PartialEvaluator
     /// </summary>
     private PECompletion SpecializeAssign(CoreAssign node, StaticEnvironment environment)
     {
+        // Os índices do caminho são especializados **antes** do valor, na mesma
+        // ordem em que o evaluator os avalia — se o PE trocasse a ordem, um
+        // índice com efeito passaria a rodar depois do valor no residual.
+        var path = ImmutableArray.CreateBuilder<CoreAssignSegment>(node.Path.Length);
+
+        foreach (var segment in node.Path)
+        {
+            if (segment is not CoreIndexSegment index)
+            {
+                path.Add(segment);
+                continue;
+            }
+
+            var specialized = Specialize(index.Index, environment);
+
+            if (!specialized.FlowsThroughStatically)
+            {
+                return specialized;
+            }
+
+            path.Add(new CoreIndexSegment(
+                _residualizer.Residualize(specialized.Result, index.Index.Span),
+                index.Span));
+        }
+
         var value = Specialize(node.Value, environment);
 
         if (!value.FlowsThroughStatically)
@@ -963,8 +988,7 @@ public sealed class PartialEvaluator
                 node.Name,
                 _residualizer.Residualize(value.Result, node.Value.Span),
                 node.NameSpan,
-                node.Path,
-                node.PathSpans),
+                path.MoveToImmutable()),
             PrimitiveType.Void));
     }
 
