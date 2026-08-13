@@ -69,10 +69,11 @@ separa:
 | Q32 | derrubar `goto`/`label`; controle estruturado | ✅ | 🔴 | M16 · plano 26 | revoga Q24; destrava Q23 |
 | Q33 | o norte do projeto passa a ser metaprogramação; PE adiado | ✅ | 🔴 | plano 27 | derruba a justificativa de Q8 |
 | Q34 | recursão entra | ✅ | 🔴 | plano 27 §A1 | revoga Q8; encarece o PE |
-| Q35 | `Str` como `[Char;N]` | ⏳ | 🔴 | plano 27 §A2 | |
-| Q36 | escrita em elemento de span (`s[i] = v`) | 🔄 | 🔴 | plano 27 §A3 | revoga Q28; tensiona Q31 |
+| Q35 | `Str`: `length`, indexação e `Char` (A2a) | 🔄 | 🔴 | plano 27 §A2 | A2b em aberto |
+| Q36 | escrita em elemento de span (`s[i] = v`), com warning | 🔄 | 🔴 | plano 27 §A3 | revoga Q28; tensiona Q31 |
 | Q37 | módulos sem visibilidade por ora — tudo público | ✅ | 🔴 | plano 27 §B1 | |
 | Q38 | evolução de macros (pseudo-keywords, splice, aninhamento, controle) | 🅿️ | 🔴 | — | pré-requisito de Q22 |
+| Q39 | valor padrão de `T`; `.[T; n]` sem semente | ⏳ | 🔴 | — | recomendação: `def T.default` |
 
 **A spec precisa ser atualizada** por causa destas decisões: §15/§16/§22
 (variantes qualificadas), §44 (tokens `!`, `&&`, `\|\|`), §14/§24 (sintaxe de
@@ -779,39 +780,13 @@ construção só. E Q20 sai do estacionamento.
 
 ## Q24 ⛔🔴 — `goto` pode saltar para trás
 
-> **Esta decisão foi revertida.** `goto`/`label` saem da linguagem — ver **Q32**.
-> A seção abaixo fica como registro histórico: é a razão de `goto` ter existido, e
-> o que ela ensinou (a terceira linha da tabela) é parte do argumento da Q32.
-
-**Problema.** Salto para trás permite laços — e permite programas que não terminam.
-Até o M4 a linguagem não tinha recursão (Q8) nem laços, então **todo programa
-terminava por construção**.
-
-**✅ Decidido pelo autor:** `goto` pode saltar em qualquer direção, desde que o
-rótulo esteja no mesmo escopo ou num que o contenha, **dentro da mesma função**.
-Sair do escopo é `LAP0521`.
-
-**O que se ganha:** `@while` no prelude, sem tocar no compilador e sem precisar de
-recursão.
-
-**O que se perde, com os olhos abertos:**
-
-1. **Terminação por construção.** O evaluator passa a contar saltos e abortar com
-   `LAP0303` — o mesmo tratamento que `LAP0302` já dá à profundidade de chamada.
-2. **O PE passa a enfrentar laços.** Especializar um laço exige *widening* ou
-   combustível, e é problema genuinamente mais difícil que especializar `If`.
-   Registrado nos planos 13 e 14.
-3. **`Never` muda de leitura.** Deixa de significar "não retorna" e passa a
-   significar "não continua daqui" — que é o que sempre foi de fato.
-
-**O que não se perde:** a pilha de C#. Um salto para trás é mais uma volta do laço
-que consome completions no evaluator, não uma chamada recursiva.
-
-**O que o M6 revelou, e a decisão não previa:** o salto para trás, sozinho, **não
-produz laço com progresso** — nada mudava entre as voltas. Resolvido pela Q25, com
-`var`.
-
----
+> **⛔ Revogada pela Q32.** `goto`/`label` saíram da linguagem no M16, e com eles
+> a pergunta. O que esta entrada decidiu e que **sobreviveu**: saltar para trás
+> acabou com a terminação por construção, e a resposta foi orçamento com
+> diagnóstico em vez de travamento. Isso continua valendo sobre `loop`
+> (`LAP0303`, hoje "limite de iterações"). O resto era semântica de uma
+> construção que não existe mais e foi removido daqui — está no histórico do
+> plano 16.
 
 ## Q25 ✅🔴 — Mutação com `var`
 
@@ -975,44 +950,13 @@ uma regra de especificidade — falhar ruidosamente, como a 0.2 já faz com
 
 ## Q28 ⛔🔴 — `arr[i] = v`
 
-> **⛔ Revogada pela Q36 (0.3).** A escrita em elemento entra, com a semântica
-> desenhada lá. Esta entrada recusou "ignorar em silêncio" e apostou que a
-> mutação iria **por API** (`push`, `setElement`) em vez de sintaxe. A aposta não
-> se sustentou: um spike do M17 mostrou que essa API **não é escrevível em
-> LapisLang** — sem escrita em elemento e sem concatenação, não existe expressão
-> que produza um span de elementos computados, então `push` não tem como ser
-> implementado na própria linguagem. A saída que esta entrada apontava não
-> existia.
-
-**Sem decisão.** Ela não sai de graça do mesmo mecanismo de `u.campo = e`.
-
-> **Atualização com o plano 24.** Com o tamanho no tipo, o caso `[T;N]` com índice
-> literal deixa de ser dinâmico: `arr[1] = v` sobre `[Int;3]` teria alvo estático,
-> como um campo. O que continua sem resposta é `[T;?]` e índice dinâmico — e a
-> decisão do autor foi que **nenhuma** das duas formas é permitida por enquanto,
-> com a mutação de array indo por API (`push`, `setElement`) e não por sintaxe.
-
-Atribuição a campo funciona porque o caminho é **estático**: o checker sabe qual
-campo, e a falha possível ("não existe") é de compilação. Um índice é dinâmico, e
-a falha é de execução — `arr[10] = v` num array de 3.
-
-As saídas conhecidas não servem:
-
-| Saída | Por que não |
-|---|---|
-| devolver `Result` | atribuição é **statement**; não há onde o `Result` ir parar |
-| abortar | Q9 eliminou os caminhos de aborto de propósito, e a leitura `arr[i]` já é total por devolver `Result` |
-| ignorar em silêncio | perde escrita sem avisar — pior que as duas |
-
-A leitura de array devolve `Result` justamente para não ter caminho de aborto; a
-escrita precisaria da mesma honestidade em uma posição da gramática que não a
-comporta. Uma saída possível é uma forma que **seja** expressão
-(`def novo = arr.comIndice(i, v);` ou similar), que é biblioteca e não sintaxe.
-
-Fica registrada porque a spec de type members §9.2 a encosta, não porque o
-milestone dependa dela.
-
----
+> **⛔ Revogada pela Q36.** A escrita em elemento entra. Esta entrada a recusou
+> apostando que a mutação iria **por API** (`push`, `setElement`) em vez de
+> sintaxe — e a aposta não se sustentou: o spike do M17 mostrou que essa API não
+> é escrevível em LapisLang, porque sem escrita em elemento não existe expressão
+> que produza um span de elementos computados. A saída que esta entrada apontava
+> não existia. A objeção que **sobreviveu** — "ignorar em silêncio perde escrita
+> sem avisar" — foi respondida na Q36 com um warning.
 
 ## Q29 ✅🔴 — `[T;N]` é atribuível a `[T;?]`?
 
@@ -1223,7 +1167,7 @@ voltar.
 
 ---
 
-## Q35 ⏳🔴 — `Str` como `[Char;N]`
+## Q35 🔄🔴 — `Str`: `length`, indexação e `Char`
 
 **Problema.** `Str` é opaca. Não tem `length`, não é indexável, não há tipo
 `Char`. As únicas operações são `+` (concatenação) e comparação. Nenhuma função
@@ -1265,7 +1209,27 @@ span já é `SpanLengthResolution`), sem prometer que `Str` *é* um span. Destra
 a stdlib de strings com uma fração do custo, e deixa a unificação para quando
 `Char` estiver decidido.
 
-**Sem decisão.** Precisa da resposta a (1) antes de qualquer código.
+**✅ Decidido pelo autor: A2a.** `length` e indexação de `Str` entram como
+**intrínsecos**, mantendo `StrValue` como representação; `Char` entra como tipo
+primitivo. `Str` **não** vira `[Char;N]` agora.
+
+**O que A2a fixa, porque código precisa de resposta:** `Char` é um **ponto de
+código** Unicode. `s.length` conta pontos de código e `s[i]` indexa por ponto de
+código — não por unidade UTF-16.
+
+A escolha é a que preserva portas. Começar em unidade UTF-16 (o que C# dá de
+graça, e O(1)) e migrar para ponto de código depois mudaria **silenciosamente o
+resultado** de programas já escritos, sobre texto fora do plano básico. O
+caminho inverso — começar em ponto de código e otimizar a representação — não
+muda resultado nenhum. O custo aceito é `length` e indexação em O(n) sobre a
+`string` de C#.
+
+`Str` continua **sem tamanho no tipo**, então `s[i]` devolve `Option<Char>`
+sempre, como `[T;?]` (Q31). Literal de string com tamanho no tipo é A2b.
+
+**🔄 Encaminhada:** A2b — unificar `Str` com `[Char;N]` — segue em aberto, e só
+volta à mesa depois que a stdlib de strings existir e mostrar se a unificação
+compra o suficiente para pagar (2)–(4) acima.
 
 ---
 
@@ -1312,12 +1276,21 @@ Saídas possíveis, nenhuma escolhida:
 
 | Saída | Custo |
 |---|---|
-| silêncio (proposta atual) | assimetria com Q31; escrita perdida sem sinal |
-| `warning` quando o índice é constante e o tamanho é `?` | pega o caso comum de engano, não custa tipo novo |
+| silêncio puro | assimetria com Q31; escrita perdida sem sinal nenhum |
+| **`warning` de compilação** | pega o engano detectável sem custar tipo novo nem mexer na gramática |
 | forma-expressão paralela (`def novo = s.comIndice(i, v);`) | precisa de `Option`/`Result` no retorno; é biblioteca, mas exige a escrita primitiva mesmo assim |
 
-**Encaminhada:** a escrita entra com a semântica acima; a assimetria é revisitada
-quando a stdlib de coleções existir e mostrar se ela morde na prática.
+**✅ Decidido pelo autor: warning de compilação.** A escrita fora dos limites
+continua sem efeito em runtime — nada aborta —, mas onde o compilador **consegue
+ver** que ela vai falhar, ele avisa. Mecanismos mais fortes para o usuário
+(forma-expressão, `Result`) ficam para depois.
+
+Isso responde a objeção que a Q28 levantou e que sobreviveu: "perde escrita sem
+avisar". Passa a avisar onde dá para avisar. O silêncio fica só onde o
+compilador genuinamente não sabe — que é a mesma fronteira em que a *leitura*
+devolve `Option` em vez de garantir, e portanto deixa de ser assimetria
+arbitrária: **as duas metades da operação são honestas sobre o mesmo limite de
+conhecimento.**
 
 ---
 
@@ -1378,6 +1351,60 @@ escrevível — esta entrada é pré-requisito daquela.
 
 ---
 
+---
+
+## Q39 ⏳🔴 — Valor padrão de `T` e `.[T; n]` sem semente
+
+**Problema.** `.[T; semente; n]` exige uma semente do tipo `T`. Uma coleção
+genérica não tem uma: `Array.new<T>(n)` não sabe com o que preencher. Hoje a
+saída é o chamador fornecer (`Array.new<T>(semente, n)`), o que vaza um detalhe
+de implementação para toda a API.
+
+**Pergunta do autor.** Quanto custa criar o conceito de valor **padrão** e
+aceitar `.[T; n]`?
+
+**Análise.** O custo não está na sintaxe — está em *quem responde* "qual é o
+padrão de `T`".
+
+| Tipo | Padrão óbvio? |
+|---|---|
+| `Int`, `Float`, `Bool`, `Str`, `Char`, `Void` | sim — `0`, `0.0`, `false`, `""`, … |
+| `type { … }` | sim, se todos os campos tiverem — recursivamente |
+| **`enum`** | **não.** `Option<T>` é `None`? `Result<T,E>` é `Ok` ou `Err`? Um `enum { Red, Green, Blue }` é `Red` **porque foi escrito primeiro**? |
+
+O caso do enum é o que mata a saída "padrão embutido para tudo": escolher a
+primeira variante é arbitrário e **silenciosamente significativo**.
+
+**Três saídas, e uma delas quase não custa nada porque a linguagem já a tem:**
+
+| Saída | Como | Custo |
+|---|---|---|
+| padrão só para primitivos | `.[Int; 3]` vale, `.[MeuEnum; 3]` não | baixo; resolve buffer numérico e nada mais |
+| **`def T.default`** | reusa membros de tipo (M13–M15). `def Int.default = 0;` no prelude; cada tipo declara o seu | **médio, e sem conceito novo** |
+| slots `Option<T>` | `Array<T>` guarda `[Option<T>;?]` | zero de linguagem; custa um desembrulho por leitura |
+
+**Recomendação: `def T.default`.** Ela não inventa nada — é a mesma máquina de
+`def Result<?, ?>.isOk` (Q27), que já existe e já resolve membro sobre tipo
+genérico. E funciona apesar da Q7 (sem inferência) justamente **por causa**
+dela: como todo argumento genérico é explícito, no ponto de uso o `T` de
+`Array.new<Int>(3)` já é `Int`, e o checker resolve `Int.default` ali mesmo.
+
+A propriedade que a torna a saída certa para enums: ela é **opt-in**. Um enum
+sem padrão sensato simplesmente não declara `default`, e `.[MeuEnum; 3]` vira
+erro de compilação com mensagem clara — em vez de escolher `Red` por acidente
+de ordem.
+
+**Custo concreto:** (a) `default` para os primitivos no `prelude.ls`;
+(b) o checker resolvendo `T.default` com `T` vindo de argumento genérico;
+(c) diagnóstico novo para "`T` não declara `default`"; (d) decidir se `.[T; n]`
+é açúcar para `.[T; T.default; n]` no desugar — provavelmente sim, e aí não há
+nó novo na Core.
+
+**Sem decisão, e não bloqueia nada agora.** A stdlib arranca com semente
+explícita ou com slots `Option<T>`; `.[T; n]` é conveniência que pode entrar na
+fase D sem quebrar o que já estiver escrito.
+
+
 ## Questões deixadas em aberto
 
 Sem decisão; listadas para não serem esquecidas. As que ganharam número saíram
@@ -1392,4 +1419,3 @@ desta lista.
 | Dictionaries | §19 os remove explicitamente; reintroduzir quando? |
 | `Never` visível | vale expor o tipo bottom ao usuário? |
 | Overflow de `Int` | hoje é wrap (como C# `unchecked`); deveria ser `Result`? |
-| Valor padrão de `T` | `.[T; inicial; n]` exige uma semente; coleção genérica precisa que o chamador a forneça |

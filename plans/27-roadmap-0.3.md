@@ -1,7 +1,7 @@
 # Plano 27 — Roteiro 0.3: da pesquisa de PE ao protótipo de metaprogramação
 
 **Milestone:** M17 (fase A), M18 (B), M19 (C), M20 (D), M21 (E)
-**Decisões:** Q33 (novo norte), Q34 (recursão), Q35 (`Str`), Q36 (`s[i] = v`), Q37 (visibilidade), Q38 (macros)
+**Decisões:** Q33 (novo norte), Q34 (recursão), Q35 (`Str`/`Char`), Q36 (`s[i] = v`), Q37 (visibilidade), Q38 (macros), Q39 (padrão de `T`)
 **Depende de:** tudo até o M16
 
 ---
@@ -163,13 +163,22 @@ Q8 nunca precisou responder. Fica em aberto.
 4. **Concatenação.** Se `Str` é span, `+` precisa valer para spans — hoje é
    `LAP0280`.
 
-**Recomendação: fatiar em duas etapas.**
+**✅ Decidido: A2a**, fatiando em duas etapas.
 
 - **A2a — destravar sem unificar.** Expor `length` e indexação de `Str` como
   **intrínsecos**, do mesmo jeito que `.length` de span já é
   (`SpanLengthResolution`), mantendo `StrValue` como representação. Introduz
   `Char` como tipo primitivo, sem prometer que `Str` *é* `[Char;N]`. Destrava a
   stdlib de strings com uma fração do custo.
+
+  **`Char` é ponto de código.** A pergunta (1) precisava de resposta para o
+  código existir, e esta é a que preserva portas: começar em unidade UTF-16 (o
+  que C# dá de graça, e O(1)) e migrar depois mudaria **silenciosamente o
+  resultado** de programas sobre texto fora do plano básico; o caminho inverso
+  não muda resultado nenhum. Custo aceito: `length` e indexação em O(n).
+
+  `Str` continua **sem tamanho no tipo**, então `s[i]` devolve `Option<Char>`
+  sempre, como `[T;?]` (Q31). Literal com tamanho no tipo é A2b.
 - **A2b — unificar, se ainda valer a pena.** Depois de A2a e da stdlib, decidir
   se `Str = [Char;N]` compra o suficiente para pagar (1)–(4).
 
@@ -220,14 +229,19 @@ funciona **se o chamador fornecer**:
 def novo = fn<T>(semente: T, n: Int) [T;?] { ... };
 ```
 
-Ou seja: `Array.new<T>` vai pedir uma semente, ou os slots serão `Option<T>`. É
-decisão de API da fase D, registrada nas questões em aberto.
+Ou seja: `Array.new<T>` vai pedir uma semente, ou os slots serão `Option<T>`.
+A saída mais limpa — `def T.default`, reusando membros de tipo (M13–M15) — está
+analisada na **Q39**, e não bloqueia nada agora.
 
 **A assimetria que fica em aberto.** Ler fora dos limites devolve `Option` — a
 falha aparece no tipo, como a §30 exige. Escrever fora dos limites não devolve
 nada — a falha não aparece em lugar nenhum. Ver Q36 para as saídas consideradas.
-A recomendação deste plano é **warning quando o índice é constante e o tamanho é
-`?`**: pega o engano comum sem custar tipo novo, e não mexe na gramática.
+**✅ Decidido: warning de compilação.** A escrita fora dos limites segue sem
+efeito em runtime — nada aborta —, mas onde o compilador **consegue ver** que ela
+vai falhar, ele avisa. Assim o silêncio fica só onde o compilador genuinamente
+não sabe, que é a mesma fronteira em que a leitura devolve `Option`: as duas
+metades da operação passam a ser honestas sobre o mesmo limite de conhecimento.
+Mecanismos mais fortes (forma-expressão, `Result`) ficam para depois.
 
 ---
 
@@ -298,8 +312,8 @@ evolução de macros da Q38.
 
 ## Perguntas que este plano deixa em aberto
 
-1. **`Char` é ponto de código, unidade UTF-16 ou grafema?** Trava A2b e o
-   marshalling de C3.
-2. **A assimetria da Q36** — silêncio, warning ou forma-expressão?
-3. **Recursão mútua** entra junto com A1 ou depois?
-4. **`Array.new<T>`** pede semente ou usa slots `Option<T>`?
+1. **A2b** — unificar `Str` com `[Char;N]` compra o suficiente para pagar o
+   custo de representação? Só volta à mesa depois da stdlib de strings.
+2. **Recursão mútua** entra junto com A1 ou depois?
+3. **`def T.default`** (Q39) entra na fase D, ou `Array<T>` arranca com slots
+   `Option<T>`?
