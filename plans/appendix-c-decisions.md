@@ -75,6 +75,7 @@ separa:
 | Q38 | evolução de macros (pseudo-keywords, splice, aninhamento, controle) | 🅿️ | 🔴 | — | pré-requisito de Q22 |
 | Q39 | valor padrão de `T`; `.[T; n]` sem semente | ⏳ | 🔴 | — | recomendação: `def T.default` |
 | Q40 | overload de operadores | ⏳ | 🟡 | plano 27 §E2 | motivada por Q35; não revoga Q13 |
+| Q41 | nomear o argumento genérico do dono (`def<T> Caixa<T>.m`) | ⏳ | 🔴 | plano 27 §D | reabre Q27; pré-requisito da stdlib |
 
 **A spec precisa ser atualizada** por causa destas decisões: §15/§16/§22
 (variantes qualificadas), §44 (tokens `!`, `&&`, `\|\|`), §14/§24 (sintaxe de
@@ -1553,6 +1554,121 @@ que já funciona hoje e não abre nenhuma destas cinco perguntas.
 **Relação com a Q13.** A Q13 fixou que os operadores são fechados. Esta entrada
 não a revoga: propõe uma extensão **por cima** do conjunto embutido, que continua
 sendo o que responde primeiro.
+
+---
+
+## Q41 ⏳🔴 — Nomear o argumento genérico do dono
+
+**Pergunta do autor.** É viável referenciar o `?` numa declaração?
+
+```c
+def Array<?>.metodo = fn() { def data: [?; 10] = ...; };
+```
+
+**Resposta curta: `?` não, e não por dificuldade — por definição.** Mas a
+pergunta descobriu um buraco maior, e esse precisa ser fechado antes da fase D.
+
+### Por que `?` não pode ser referência
+
+1. **Aridade maior que 1 é ambígua.** Em `Result<?, ?>`, um `?` no corpo não diz
+   qual dos dois. Resolver com `?0`/`?1` é inventar nome — e nome ruim.
+2. **A sintaxe já está ocupada.** `?` significa "tamanho desconhecido" em
+   `[T;?]`. Hoje `[?; 10]` nem parseia: depois de `[` o parser espera um tipo, e
+   `?` só é aceito depois do `;`. Fazer `?` valer nas duas posições do mesmo
+   colchete obrigaria o leitor a desambiguar por posição.
+3. **Contradiz o que `?` afirma.** `?` diz "não me importa qual". Se o corpo usa,
+   importa — e aí não era `?`.
+
+### O buraco que a pergunta revelou
+
+Não é só `?` que não se refere: **nada** se refere. Verificado:
+
+```c
+def Caixa = type<T> { itens: [T;?]; };
+
+def Caixa<T>.primeiro = fn(self) Option<T> { ... };   // LAP0204: 'T' não existe
+
+def Caixa<?>.vazia = fn(self) Bool {
+    return self.itens.length == 0;                    // LAP0250: Caixa<?> não possui
+};                                                    // o campo 'itens' — o tipo dele
+                                                      // depende de um argumento '?'
+```
+
+Sobre um dono genérico, um membro de instância não consegue tocar **nenhum**
+campo cujo tipo mencione o parâmetro — nem para ler `.length`. E o diagnóstico
+diz isso com todas as letras.
+
+**A Q27 previu o preço, mas o subestimou.** Ela escreveu: *"o que precisa do
+argumento se escreve como membro genérico, que já funciona"*. Funciona para
+membro **estático** (`def Result.ok = fn<T>(value: T) ...`), que não tem `self`.
+Não funciona para membro de **instância**, porque o `self` chega com o padrão
+curinga e o campo fica inacessível.
+
+**Consequência: `Array<T>` não é escrevível.** `push`, `get`, `length` — todos
+tocam `itens: [T;?]`. Isto é pré-requisito da fase D, não conveniência.
+
+### Saídas
+
+| Saída | Como | Custo |
+|---|---|---|
+| **A. binder nomeado** *(recomendada)* | `def<T> Caixa<T>.primeiro = fn(self) Option<T>` | reabre a tensão com a Q7; é a única que resolve |
+| B. só containers monomórficos na 0.3 | `ArrayInt`, `ArrayStr`, … | zero de linguagem, e a stdlib vira cópia-e-cola |
+| C. slots `Option<T>` opacos | membro devolve `Option<?>` que ninguém desembrulha | não resolve: o tipo continua ilegível |
+
+**Recomendação: A**, com a sintaxe `def<T>` — a mesma forma de `type<T>` e
+`fn<T>`, onde o `<>` vem logo depois da palavra que introduz. Sem ambiguidade
+com argumento concreto (`def Caixa<Int>.m` continua sendo o tipo `Int`), e sem
+regra mágica de "identificador não resolvido vira parâmetro", que transformaria
+um erro de digitação em binder silencioso.
+
+**Os dois papéis passam a conviver, e é isso que torna a saída boa:**
+
+```c
+def<T> Result<T, ?>.valor = fn(self) Option<T> { ... };
+//     ^^^^^^^^^^^ liga o primeiro, ignora o segundo
+```
+
+`?` continua sendo exatamente "não me importa", e ganha um irmão para "me
+importa, e o nome é este". Nenhum dos dois precisa mudar de significado.
+
+### A tensão com a Q7, encarada
+
+**Isto reabre o que a Q27 fechou.** A Q27 listou esta mesma saída (a notação
+`def<T> Result<T>.isOk` está no corpo dela) e a recusou como opção B, porque
+casar o tipo do receptor contra o padrão e ligar `T` **é** inferência.
+
+O que mudou não é o argumento — é o fato. A Q27 fechou a tensão dizendo que `?`
+tornava a unificação desnecessária; a implementação mostrou que `?` cobre membro
+estático e não cobre membro de instância sobre campo genérico. A saída que ela
+apontava não alcança o caso que a stdlib precisa — o mesmo padrão da Q28, que
+apostou numa API que não era escrevível.
+
+A defesa que a própria Q27 já registrava continua de pé, e agora é a que vale:
+o que a Q7 recusa é **deduzir** o argumento de uma chamada a partir dos valores
+passados. Aqui ele já está **escrito** no tipo do receptor — `Caixa<Int>` é o
+que o checker tem em mãos —, e o casamento só o transporta para o corpo. Não há
+busca, não há escolha, não há falha parcial. É leitura, não dedução.
+
+### Custo concreto
+
+1. **Parser:** aceitar `<...>` depois de `def`. Local; a lista de parâmetros já
+   tem parser (`type<T>`, `fn<T>`).
+2. **Checker:** declarar os binders no escopo **antes** de resolver o padrão do
+   dono — `OwnerOf` roda antes do corpo, e é dele que `self` tira o tipo, então a
+   ordem já favorece. `GenericArguments.Resolve` passa a aceitar um
+   `GenericParameterType` como argumento do padrão, ao lado de tipo concreto e
+   `WildcardArgument`.
+3. **Tabela de membros:** um binder casa como curinga para efeito de **alcance**
+   (`Caixa<T>.m` aplica-se a qualquer `Caixa`), e amarra o argumento para efeito
+   de **corpo**. É um bit novo por posição, não uma tabela nova.
+4. **Resolução no uso:** `c.primeiro()` com `c: Caixa<Int>` substitui `T := Int`
+   na assinatura. `TypeSubstitution.Apply` já existe e já faz isso para campos.
+5. **Sobreposição:** `def<T> Caixa<T>.m` e `def Caixa<Int>.m` coexistindo é o
+   caso da `LAP0720`, que já é erro. Nada novo.
+
+**Sem decisão.** É pré-requisito da fase D, não da B — mas é a fase D que dá
+sentido ao roteiro, então convém decidir antes de começar os módulos, para que o
+formato `.lp` já saiba serializar um padrão de dono com binder.
 
 ---
 

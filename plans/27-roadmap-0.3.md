@@ -359,6 +359,20 @@ amadurecer antes de virar interface pública.
 **D · Biblioteca padrão.** `Str`, `Array<T>`, `File`, `Console` — escritos em
 LapisLang sempre que possível, pelo princípio §58.2.
 
+> **Bloqueio conhecido, e é de linguagem: `Array<T>` não é escrevível hoje**
+> (Q41). Sobre um dono genérico, um membro de instância não alcança nenhum campo
+> cujo tipo mencione o parâmetro — `def Caixa<?>.vazia` não consegue nem ler
+> `self.itens.length`. A Q27 previu este preço mas o subestimou: a saída que ela
+> apontava ("escreva como membro genérico") cobre membro **estático**, não
+> membro de **instância**. A recomendação é o binder nomeado `def<T> Caixa<T>.m`,
+> convivendo com o `?` em vez de substituí-lo. Convém decidir **antes** da fase
+> B, para que o `.lp` já saiba serializar um padrão de dono com binder.
+
+> **Segundo bloqueio, de biblioteca e não de linguagem: `filter`.** Verificado no
+> M17 — `filter` sobre span cru devolve `[3, 4, 0, 0]`, porque não há como
+> encurtar um span. Devolvendo `(itens, tamanho)` num `type`, funciona. Não é
+> primitiva faltando: é exatamente a razão de `Array<T>` existir.
+
 **E · Metaprogramação++.**
 
 - **E1 — reflection sobre AST** (hoje só existe sobre tipos) e a evolução de
