@@ -1,51 +1,88 @@
 # Apêndice C — Decisões de Design e Questões Abertas
 
-Registro das escolhas que a spec 0.2 não determina, ou determina de forma
-ambígua. Cada entrada tem: o problema, a decisão, a justificativa e o estado.
+Registro das escolhas que a spec não determina, ou determina de forma ambígua.
+Este arquivo é **normativo para o projeto**: quando uma decisão nova contradiz uma
+entrada daqui, ou a entrada antiga é revogada explicitamente (com o número de quem
+a revogou), ou a decisão nova está errada. Não há terceira saída, e nenhuma
+entrada some — código e decisão publicados não são reciclados.
 
-**As entradas marcadas 🔴 mudam a linguagem.** As marcadas 🟡 são internas à
-implementação.
+## Como ler uma entrada
 
-## Estado
+Cada entrada tem **problema, decisão, justificativa, estado** e, quando houver,
+**relações** com outras entradas.
 
-| # | Tema | Estado |
+Duas dimensões independentes, que este apêndice já misturou no passado e agora
+separa:
+
+**Estado** — em que ponto a questão está:
+
+| | Estado | Significado |
 |---|---|---|
-| Q1 | declaração de generics com parâmetros nomeados | ✅ decidido · implementado |
-| Q2 | construção de `type` com `.Nome { campo: valor }` | ✅ decidido · implementado |
-| Q3 | variantes de enum sempre qualificadas | ✅ decidido · implementado |
-| Q4 | operadores `!`, `&&`, `\|\|` | ✅ decidido · implementado |
-| Q5 | desambiguação de `<` por backtracking | ✅ decidido · implementado |
-| Q6 | `match` exaustivo | ✅ decidido · implementado |
-| Q7 | argumentos genéricos sempre explícitos | ✅ decidido · implementado |
-| Q8 | sem recursão na v0.2 | ✅ decidido · implementado |
-| Q9 | `x / 0` produz o maior `Int` | ✅ decidido · implementado |
-| Q10–Q15 | decisões internas de implementação | 🟡 em vigor |
-| Q16 | statements que terminam em bloco dispensam `;` | ✅ decidido · implementado |
-| Q17 | função literal como argumento genérico só em posição de expressão | ✅ decidido · implementado |
-| Q18 | argumento const tem de ser resolvível em tempo de compilação | ✅ decidido · implementado |
-| Q19 | macro é declaração nomeada, não valor ligado por `def` | ✅ decidido |
-| Q20 | `@match` compara variantes; sem `enumTag`/`enumPayload` | 🅿️ estacionada com `@match` |
-| Q21 | `constraint` roda na própria LapisLang, no mesmo evaluator | ✅ decidido |
-| Q22 | `if` e `match` continuam no compilador; `match` sai quando macro souber exaustividade | 🔄 encaminhada |
-| Q23 | `is`: construção de linguagem para ler carga de variante com segurança | ✅ decidido · plano 25 |
-| Q24 | `goto` pode saltar para trás; fim da terminação por construção | ⚠️ revertida pela Q32 |
-| Q25 | mutação com `var`; closure não captura `var` | ✅ decidido · implementado |
-| Q26 | resolução de membro é type checking, sem nó novo na Core | ✅ decidido · implementado |
-| Q27 | extension genérica casa receptor contra padrão, com `?` curinga | ✅ decidido · implementado |
-| Q28 | `arr[i] = v` | ⏳ aberta, sem bloquear nada |
-| Q29 | `[T;N]` é atribuível a `[T;?]` | ✅ decidido · implementado |
-| Q30 | aritmética de tamanho no tipo | ⏳ adiada com razão |
-| Q31 | indexação devolve `Option`, não `Result` | ✅ decidido · implementado |
-| Q32 | derrubar `goto`/`label`; controle estruturado com `if`/`loop`/`break`/`continue` | ✅ decidido · plano 26 |
+| ✅ | vigente | decidida e em vigor |
+| 🔄 | encaminhada | decidida em parte, com saída definida para o resto |
+| ⏳ | aberta | sem decisão; anotada para não ser esquecida |
+| 🅿️ | estacionada | sem decisão **de propósito**, presa a outra questão |
+| ⛔ | revogada | substituída por outra entrada, que é nomeada |
 
-**A spec 0.2 precisa ser atualizada** em cinco pontos por causa destas decisões:
-§15/§16/§22 (variantes qualificadas), §44 (tokens `!`, `&&`, `\|\|`), §14/§24
-(sintaxe de construção), §25/§26 (divisão por zero) e §10 da spec de macros
-(`goto`/`label` saem, `loop`/`break`/`continue` entram). Detalhes em cada entrada.
+**Alcance** — quem enxerga a decisão:
+
+| | Alcance | Significado |
+|---|---|---|
+| 🔴 | linguagem | muda o que um programa pode escrever |
+| 🟡 | implementação | interna ao compilador; nenhum programa muda |
+
+## Registro
+
+| # | Tema | Estado | Alcance | Onde | Relações |
+|---|---|---|---|---|---|
+| Q1 | declaração de generics com parâmetros nomeados | ✅ | 🔴 | M4 | |
+| Q2 | construção de `type` com `.Nome { campo: valor }` | ✅ | 🔴 | M3 | |
+| Q3 | variantes de enum sempre qualificadas | ✅ | 🔴 | M2 | relaxada por Q23 dentro de `is` |
+| Q4 | operadores `!`, `&&`, `\|\|` | ✅ | 🔴 | M1 | |
+| Q5 | desambiguação de `<` por backtracking | ✅ | 🟡 | M4 | |
+| Q6 | `match` exaustivo | ✅ | 🔴 | M3 | é o que segura Q22 |
+| Q7 | argumentos genéricos sempre explícitos | ✅ | 🔴 | M4 | |
+| Q8 | sem recursão | ⛔ | 🔴 | M1 | revogada por **Q34** |
+| Q9 | `x / 0` produz o maior `Int` | ✅ | 🔴 | M1 | |
+| Q10 | Core AST sem `Block` | ✅ | 🟡 | M1 | |
+| Q11 | `Field` na Core AST | ✅ | 🟡 | M2 | |
+| Q12 | evaluator sobre a Core, não sobre a Surface | ✅ | 🟡 | M1 | |
+| Q13 | `return` como expressão de tipo `Never` | ✅ | 🟡 | M1 | |
+| Q14 | `Result` do prelude vs. `Result` do usuário | ✅ | 🟡 | M2 | |
+| Q15 | `print` não roda em partial evaluation | ✅ | 🟡 | M7 | |
+| Q16 | statements que terminam em bloco dispensam `;` | ✅ | 🔴 | M1 | estendida por Q32 |
+| Q17 | função literal como argumento genérico só em posição de expressão | ✅ | 🔴 | M4 | |
+| Q18 | argumento const resolvível em tempo de compilação | ✅ | 🔴 | M4 | |
+| Q19 | macro é declaração nomeada, não valor ligado por `def` | ✅ | 🔴 | M8 | |
+| Q20 | `@match` compara variantes; sem `enumTag`/`enumPayload` | 🅿️ | 🔴 | — | presa a Q22 |
+| Q21 | `constraint` roda na própria LapisLang | ✅ | 🔴 | M9 | |
+| Q22 | `if` e `match` no compilador; `match` sai quando macro provar exaustividade | 🔄 | 🔴 | M16 | destravada em parte por Q23; segurada por Q6 |
+| Q23 | `is` como primitiva da Core para ler carga de variante | ✅ | 🔴 | M16 · plano 25 | encaminha Q22; relaxa Q3 |
+| Q24 | `goto` pode saltar para trás | ⛔ | 🔴 | M6 | revogada por **Q32** |
+| Q25 | mutação com `var`; closure não captura `var` | ✅ | 🔴 | M6 | premissa de Q36 |
+| Q26 | resolução de membro é type checking, sem nó novo na Core | ✅ | 🟡 | M13 | |
+| Q27 | extension genérica casa receptor contra padrão, com `?` curinga | ✅ | 🔴 | M15 | |
+| Q28 | `arr[i] = v` | ⛔ | 🔴 | — | revogada por **Q36** |
+| Q29 | `[T;N]` é atribuível a `[T;?]` | ✅ | 🔴 | M12 | |
+| Q30 | aritmética de tamanho no tipo | ⏳ | 🔴 | — | |
+| Q31 | indexação devolve `Option`, não `Result` | ✅ | 🔴 | M12 | simetria questionada em Q36 |
+| Q32 | derrubar `goto`/`label`; controle estruturado | ✅ | 🔴 | M16 · plano 26 | revoga Q24; destrava Q23 |
+| Q33 | o norte do projeto passa a ser metaprogramação; PE adiado | ✅ | 🔴 | plano 27 | derruba a justificativa de Q8 |
+| Q34 | recursão entra | ✅ | 🔴 | plano 27 §A1 | revoga Q8; encarece o PE |
+| Q35 | `Str` como `[Char;N]` | ⏳ | 🔴 | plano 27 §A2 | |
+| Q36 | escrita em elemento de span (`s[i] = v`) | 🔄 | 🔴 | plano 27 §A3 | revoga Q28; tensiona Q31 |
+| Q37 | módulos sem visibilidade por ora — tudo público | ✅ | 🔴 | plano 27 §B1 | |
+| Q38 | evolução de macros (pseudo-keywords, splice, aninhamento, controle) | 🅿️ | 🔴 | — | pré-requisito de Q22 |
+
+**A spec precisa ser atualizada** por causa destas decisões: §15/§16/§22
+(variantes qualificadas), §44 (tokens `!`, `&&`, `\|\|`), §14/§24 (sintaxe de
+construção), §25/§26 (divisão por zero), §10 da spec de macros
+(`goto`/`label` saem) e — pela Q33 — **§61, o objetivo de pesquisa**. Detalhes em
+cada entrada.
 
 ---
 
-## Q1 🔴 — Declaração vs. uso de generics
+## Q1 ✅🔴 — Declaração vs. uso de generics
 
 **Problema.** A spec §13 mostra:
 
@@ -78,7 +115,7 @@ declaração.
 
 ---
 
-## Q2 🔴 — Sintaxe de construção de `type`
+## Q2 ✅🔴 — Sintaxe de construção de `type`
 
 **Problema.** A spec §14 define `type { id: Int; name: Str; }` e §24 lista
 `Construct` na Core AST, mas nenhuma seção mostra como criar uma instância nem
@@ -108,7 +145,7 @@ contextual que o programador teria que carregar na cabeça.
 
 ---
 
-## Q3 🔴 — Variantes de enum: nuas ou qualificadas
+## Q3 ✅🔴 — Variantes de enum: nuas ou qualificadas
 
 **Problema.** A spec usa as duas formas: `Ok(10)` e `Err(error)` (§15, §16) nuas,
 e `IndexError.OutOfBounds` (§21) qualificada.
@@ -139,7 +176,7 @@ forma nua e passam a ser inválidos:
 
 ---
 
-## Q4 🔴 — Operadores `!`, `&&`, `||`
+## Q4 ✅🔴 — Operadores `!`, `&&`, `||`
 
 **Problema.** A lista de tokens da spec §44 não inclui negação lógica nem
 conjunção/disjunção. Sem elas, `Bool` só serve como condição de `if` e não há
@@ -153,7 +190,7 @@ desugarados para `If` (plano 05 §5.2). Implementados no M1.
 
 ---
 
-## Q5 🟡 — Ambiguidade de `<` em chamadas genéricas
+## Q5 ✅🟡 — Ambiguidade de `<` em chamadas genéricas
 
 **Problema.** `identity<Int>(10)` e `a < b > (c)` têm a mesma forma de tokens.
 
@@ -190,7 +227,7 @@ existem mas Q5 já havia decidido (`a < b > (c)`) nada muda.
 
 ---
 
-## Q6 🔴 — Exaustividade de `match`
+## Q6 ✅🔴 — Exaustividade de `match`
 
 **Problema.** A spec §22 não diz se `match` precisa cobrir todas as variantes.
 
@@ -206,7 +243,7 @@ impossíveis com segurança (plano 14).
 
 ---
 
-## Q7 🔴 — Inferência de argumentos genéricos
+## Q7 ✅🔴 — Inferência de argumentos genéricos
 
 **Problema.** A spec §34 chama `print(result)` sem argumentos genéricos, mas §13
 sempre mostra generics explícitos (`identity<Int>(10)`). E `print` precisa ser
@@ -242,7 +279,14 @@ resolveria justamente esse caso.
 
 ---
 
-## Q8 🔴 — Recursão
+## Q8 ⛔🔴 — Recursão
+
+> **⛔ Revogada pela Q34 (0.3).** A recursão entra. O que sustentava esta
+> proibição era a justificativa (b) abaixo — "sem recursão, a terminação do
+> partial evaluator é trivial" —, e ela servia ao PE, que a Q33 adiou. A própria
+> entrada já previa: "deve ser revisitada na 0.3" e "é reversível". O texto
+> original fica por inteiro, porque é ele que explica por que a linguagem passou
+> quinze milestones sem recursão.
 
 **Problema.** A spec não menciona recursão. `Let(x, v, body)` com `x` invisível
 em `v` (a leitura natural de "bindings são imutáveis", §8) a torna impossível.
@@ -266,7 +310,7 @@ trava o comportamento.
 
 ---
 
-## Q9 🔴 — Divisão inteira por zero
+## Q9 ✅🔴 — Divisão inteira por zero
 
 **Problema.** A spec não define. As opções: retornar `Result` (muda o tipo de
 `/`), produzir um valor indefinido, ou abortar.
@@ -296,7 +340,7 @@ aritmética (`-MinValue == MinValue` em complemento de dois). Coberto por
 
 ---
 
-## Q10 🟡 — Core AST sem `Block`
+## Q10 ✅🟡 — Core AST sem `Block`
 
 **Problema.** A spec §24 lista `Block` na Core AST.
 
@@ -318,7 +362,7 @@ nomes".
 
 ---
 
-## Q11 🟡 — `Field` na Core AST
+## Q11 ✅🟡 — `Field` na Core AST
 
 **Problema.** §24 não lista um nó de acesso a membro, mas `user.id` e
 `IndexError.OutOfBounds` precisam de um.
@@ -329,7 +373,7 @@ de struct **e** para acesso a variante de enum (o checker distingue pela
 
 ---
 
-## Q12 🟡 — Evaluator sobre a Core, não sobre a Surface
+## Q12 ✅🟡 — Evaluator sobre a Core, não sobre a Surface
 
 **Problema.** A spec §43–§48 sugere construir o evaluator (Etapa 4) antes do
 desugar (Etapa 6).
@@ -342,7 +386,7 @@ concorrentes durante várias semanas.
 
 ---
 
-## Q13 🟡 — `return` como expressão de tipo `Never`
+## Q13 ✅🟡 — `return` como expressão de tipo `Never`
 
 **Problema.** `match r { Ok(v) => return v, Err(e) => return f }` exige `return`
 em posição de expressão.
@@ -362,7 +406,7 @@ corpo é inalcançável), e `Binary`, `Unary`, `Call` e a condição de `If` pro
 
 ---
 
-## Q14 🟡 — `Result` do prelude vs. `Result` do usuário
+## Q14 ✅🟡 — `Result` do prelude vs. `Result` do usuário
 
 **Problema.** O usuário pode escrever `def Result = enum { A };`. O que a
 indexação passa a produzir?
@@ -374,7 +418,20 @@ indexação passa a produzir?
 
 ---
 
-## Q16 🔴 — Statements que terminam em bloco dispensam o `;`
+## Q15 ✅🟡 — `print` não é executado em tempo de partial evaluation
+
+**Problema.** `print(30)` tem argumento conhecido. Um PE ingênuo o executaria.
+
+**Decisão.** Efeitos nunca são executados em tempo de PE; `print` é sempre
+residualizado.
+
+**Justificativa.** Executá-lo moveria a saída do programa para o tempo de
+compilação, violando `evaluate(P) ≡ evaluate(PE(P))` (spec §40) na dimensão que
+mais importa observar.
+
+---
+
+## Q16 ✅🔴 — Statements que terminam em bloco dispensam o `;`
 
 **Problema.** O exemplo `abs` da própria spec §12 escreve
 
@@ -399,20 +456,7 @@ exemplos — o `abs` de §12 não parsearia sem isso.
 
 ---
 
-## Q15 🟡 — `print` não é executado em tempo de partial evaluation
-
-**Problema.** `print(30)` tem argumento conhecido. Um PE ingênuo o executaria.
-
-**Decisão.** Efeitos nunca são executados em tempo de PE; `print` é sempre
-residualizado.
-
-**Justificativa.** Executá-lo moveria a saída do programa para o tempo de
-compilação, violando `evaluate(P) ≡ evaluate(PE(P))` (spec §40) na dimensão que
-mais importa observar.
-
----
-
-## Q17 🔴 — Função literal como argumento genérico só em posição de expressão
+## Q17 ✅🔴 — Função literal como argumento genérico só em posição de expressão
 
 **Problema.** A spec §13 admite uma função literal como argumento genérico
 (`Make: fn() Int` recebendo `fn() Int { return 1; }`). Mas `fn(Int) Int` dentro
@@ -444,7 +488,7 @@ a Surface AST (hoje só a Core tem um) só para manter o round-trip do
 
 ---
 
-## Q18 🔴 — Argumento const tem de ser resolvível em tempo de compilação
+## Q18 ✅🔴 — Argumento const tem de ser resolvível em tempo de compilação
 
 **Problema.** Que expressões podem aparecer em posição de argumento const?
 Literais, claro. E um `def`? E o `N` de um `fn<N: Int>` envolvente?
@@ -495,7 +539,7 @@ formatação, que olham definição e campos; quem fecha esses tipos é o PE.
 
 ---
 
-## Q19 ✅ — Como se declara uma macro
+## Q19 ✅🔴 — Como se declara uma macro
 
 **Problema.** A proposta de macros escrevia `macro unless match ... expand { };` —
 uma declaração nomeada. A 0.2 §2 é categórica: *"não existem declarações nomeadas
@@ -531,7 +575,7 @@ porque `@log` e `log` nunca se confundem. Usar uma macro em posição de valor �
 
 ---
 
-## Q20 🅿️ — `@match` compara variantes (estacionada junto com `@match`)
+## Q20 🅿️🔴 — `@match` compara variantes (estacionada junto com `@match`)
 
 **Problema.** Para `@match` ser macro, ele precisa de duas primitivas que
 `goto`/`label` não dão: `enumTag(valor)` e `enumPayload(valor, índice)`. O
@@ -581,7 +625,7 @@ falta não é o despacho — é ler a carga.
 
 ---
 
-## Q21 ✅ — `constraint` roda na própria LapisLang
+## Q21 ✅🔴 — `constraint` roda na própria LapisLang
 
 **Problema.** Que linguagem roda dentro de `constraint`? Uma linguagem de macro
 separada (como `macro_rules!` do Rust) ou a própria linguagem?
@@ -605,7 +649,7 @@ Runtime, `PreludeLoader` carga no Cli): `Lapis.Macros` declara uma interface
 
 ---
 
-## Q22 🔄 — `if` e `match` continuam no compilador (`match`, por ora)
+## Q22 🔄🔴 — `if` e `match` continuam no compilador (`match`, por ora)
 
 **Problema.** Se `@if` e `@match` funcionarem, `if`/`match` viram macros do prelude
 e deixam de ser keywords. Todo programa passa a escrever `@if`.
@@ -662,7 +706,7 @@ reconhecer a forma expandida seria `match` no compilador com outro nome.
 
 ---
 
-## Q23 ✅ — Construção para ler carga de variante com segurança
+## Q23 ✅🔴 — Construção para ler carga de variante com segurança
 
 **Problema.** Para `@match` ser macro, é preciso ler a carga de uma variante fora do
 `match` da Core. Três saídas foram examinadas, e **as três caíram**:
@@ -733,7 +777,7 @@ construção só. E Q20 sai do estacionamento.
 
 ---
 
-## Q24 ⚠️ — `goto` pode saltar para trás *(revertida pela Q32)*
+## Q24 ⛔🔴 — `goto` pode saltar para trás
 
 > **Esta decisão foi revertida.** `goto`/`label` saem da linguagem — ver **Q32**.
 > A seção abaixo fica como registro histórico: é a razão de `goto` ter existido, e
@@ -769,7 +813,7 @@ produz laço com progresso** — nada mudava entre as voltas. Resolvido pela Q25
 
 ---
 
-## Q25 ✅ — Mutação com `var`
+## Q25 ✅🔴 — Mutação com `var`
 
 **Problema.** `goto` para trás funciona (M6), mas nenhum laço escrito com ele
 avançava: a linguagem não tinha como um valor mudar entre iterações.
@@ -850,7 +894,7 @@ porque daria ao partial evaluator um grafo de fluxo em forma canônica.
 
 ---
 
-## Q26 — Onde a resolução de membro acontece ✅
+## Q26 ✅🟡 — Onde a resolução de membro acontece
 
 **Decidida ao avaliar a proposta.** A [spec de type
 members](../spec/lapislang-type-members-0.1.md) §24 da versão original pedia uma
@@ -872,7 +916,9 @@ variante de enum, e registra uma `Resolution` — como `VariantResolution` e
 Consequência que decide o custo da feature: **a Core não ganha nó nenhum e não há
 fase de lowering.**
 
-## Q27 ✅ — Extensions genéricas casam receptor contra padrão?
+---
+
+## Q27 ✅🔴 — Extensions genéricas casam receptor contra padrão?
 
 **Decidida pelo autor — e a decisão dissolve a pergunta.**
 
@@ -925,7 +971,50 @@ uma regra de especificidade — falhar ruidosamente, como a 0.2 já faz com
 > A sobreposição segue sendo `LAP0720`, e a decisão a melhora: com `?` escrito, os
 > dois padrões que se cruzam estão **na fonte**.
 
-## Q29 — `[T;N]` é atribuível a `[T;?]`? ✅
+---
+
+## Q28 ⛔🔴 — `arr[i] = v`
+
+> **⛔ Revogada pela Q36 (0.3).** A escrita em elemento entra, com a semântica
+> desenhada lá. Esta entrada recusou "ignorar em silêncio" e apostou que a
+> mutação iria **por API** (`push`, `setElement`) em vez de sintaxe. A aposta não
+> se sustentou: um spike do M17 mostrou que essa API **não é escrevível em
+> LapisLang** — sem escrita em elemento e sem concatenação, não existe expressão
+> que produza um span de elementos computados, então `push` não tem como ser
+> implementado na própria linguagem. A saída que esta entrada apontava não
+> existia.
+
+**Sem decisão.** Ela não sai de graça do mesmo mecanismo de `u.campo = e`.
+
+> **Atualização com o plano 24.** Com o tamanho no tipo, o caso `[T;N]` com índice
+> literal deixa de ser dinâmico: `arr[1] = v` sobre `[Int;3]` teria alvo estático,
+> como um campo. O que continua sem resposta é `[T;?]` e índice dinâmico — e a
+> decisão do autor foi que **nenhuma** das duas formas é permitida por enquanto,
+> com a mutação de array indo por API (`push`, `setElement`) e não por sintaxe.
+
+Atribuição a campo funciona porque o caminho é **estático**: o checker sabe qual
+campo, e a falha possível ("não existe") é de compilação. Um índice é dinâmico, e
+a falha é de execução — `arr[10] = v` num array de 3.
+
+As saídas conhecidas não servem:
+
+| Saída | Por que não |
+|---|---|
+| devolver `Result` | atribuição é **statement**; não há onde o `Result` ir parar |
+| abortar | Q9 eliminou os caminhos de aborto de propósito, e a leitura `arr[i]` já é total por devolver `Result` |
+| ignorar em silêncio | perde escrita sem avisar — pior que as duas |
+
+A leitura de array devolve `Result` justamente para não ter caminho de aborto; a
+escrita precisaria da mesma honestidade em uma posição da gramática que não a
+comporta. Uma saída possível é uma forma que **seja** expressão
+(`def novo = arr.comIndice(i, v);` ou similar), que é biblioteca e não sintaxe.
+
+Fica registrada porque a spec de type members §9.2 a encosta, não porque o
+milestone dependa dela.
+
+---
+
+## Q29 ✅🔴 — `[T;N]` é atribuível a `[T;?]`?
 
 **Decidida pelo autor: sim, numa direção só.**
 
@@ -955,7 +1044,9 @@ o tipo dizer. No evaluator atual isso já é verdade de graça — `SpanValue` g
 > mesmo elemento e tamanhos diferentes juntam-se em `[T;?]`, o que dá tipo a
 > `if c { .[1] } else { .[1, 2] }` e a `.[.[1], .[2, 3]]`.
 
-## Q30 — aritmética de tamanho no tipo ⏳ *(adiada com razão)*
+---
+
+## Q30 ⏳🔴 — aritmética de tamanho no tipo
 
 `s.concat(.[4,5])` sobre `[Int;3]` daria `[Int;5]`, o que exige somar tamanhos **no
 tipo** — primeiro degrau de tipos dependentes.
@@ -968,7 +1059,9 @@ reformular.
 
 Por enquanto `concat` devolve `[T;?]`.
 
-## Q31 — indexação devolve `Option`, não `Result` ✅
+---
+
+## Q31 ✅🔴 — indexação devolve `Option`, não `Result`
 
 **Decidida pelo autor.** `s[i]` era `Result<T, IndexError>` (spec §21) e passa a
 ser `Option<T>`.
@@ -988,7 +1081,9 @@ tem o seu — e `IndexError` fica sem nenhum, o que abre a pergunta de aposentá
 > direto, e o índice fora dos limites vira `LAP0244` em compilação. `IndexError`
 > saiu do prelude.
 
-## Q32 ✅ — Derrubar `goto`/`label`; controle estruturado
+---
+
+## Q32 ✅🔴 — Derrubar `goto`/`label`; controle estruturado
 
 **Problema.** A §25.4 do plano 25 travou em `goto L if e is Some(value)`: o destino
 de um salto pode ter outros predecessores que não passam pela ligação de `is`, e a
@@ -1051,51 +1146,250 @@ sem essa forma.
 progresso ainda precisa de `var`, exatamente como um `goto` para trás precisava.
 Só o mecanismo de salto por baixo é que sai.
 
-## Q28 — `arr[i] = v` ⏳
+---
 
-**Sem decisão.** Ela não sai de graça do mesmo mecanismo de `u.campo = e`.
+## Q33 ✅🔴 — O norte do projeto passa a ser metaprogramação
 
-> **Atualização com o plano 24.** Com o tamanho no tipo, o caso `[T;N]` com índice
-> literal deixa de ser dinâmico: `arr[1] = v` sobre `[Int;3]` teria alvo estático,
-> como um campo. O que continua sem resposta é `[T;?]` e índice dinâmico — e a
-> decisão do autor foi que **nenhuma** das duas formas é permitida por enquanto,
-> com a mutação de array indo por API (`push`, `setElement`) e não por sintaxe.
+**Problema.** A spec §61 define o objetivo de pesquisa como *"quanto de um
+programa pode ser executado antecipadamente quando parte de seus valores é
+conhecida?"*. Quinze milestones depois, o que ficou mais interessante — e mais
+original — foi outra coisa: uma linguagem que se define em si mesma, com macros
+higiênicas validadas em tempo de compilação, `constraint` rodando no próprio
+evaluator, reflection como valor comum e um prelude escrito na própria
+linguagem.
 
-Atribuição a campo funciona porque o caminho é **estático**: o checker sabe qual
-campo, e a falha possível ("não existe") é de compilação. Um índice é dinâmico, e
-a falha é de execução — `arr[10] = v` num array de 3.
+**Decisão do autor.** O norte passa a ser **desenvolver o protótipo de uma
+linguagem com foco em metaprogramação**. O partial evaluator continua no
+roteiro, mas **adiado** para depois da biblioteca padrão.
 
-As saídas conhecidas não servem:
+**Justificativa.**
 
-| Saída | Por que não |
-|---|---|
-| devolver `Result` | atribuição é **statement**; não há onde o `Result` ir parar |
-| abortar | Q9 eliminou os caminhos de aborto de propósito, e a leitura `arr[i]` já é total por devolver `Result` |
-| ignorar em silêncio | perde escrita sem avisar — pior que as duas |
+1. **Uma stdlib valida a linguagem melhor que qualquer suíte.** Escrever
+   `Str`, `Array<T>`, `File` e `Console` exercita a linguagem como um usuário a
+   exercitaria, e encontra o que testes escritos pelo próprio compilador não
+   encontram. O primeiro spike já provou o ponto: descobriu que **nenhuma
+   dessas bibliotecas é escrevível hoje** (ver Q36).
+2. **Escrever o PE contra uma superfície que ainda cresce significa reabri-lo a
+   cada milestone.** O PE precisa de um caso por construção; fechar a linguagem
+   primeiro é mais barato do que reabrir o especializador seis vezes.
+3. A tese de metaprogramação **já está demonstrada** e sustenta um protótipo
+   sério: `@while` é biblioteca, não compilador (plano 20/26).
 
-A leitura de array devolve `Result` justamente para não ter caminho de aborto; a
-escrita precisaria da mesma honestidade em uma posição da gramática que não a
-comporta. Uma saída possível é uma forma que **seja** expressão
-(`def novo = arr.comIndice(i, v);` ou similar), que é biblioteca e não sintaxe.
+**Consequências.**
 
-Fica registrada porque a spec de type members §9.2 a encosta, não porque o
-milestone dependa dela.
+- **A spec §61 muda**, e o README com ela. É a primeira decisão deste apêndice
+  que altera o objetivo declarado do projeto, e não apenas a linguagem.
+- M17–M19 (PE) vão para o fim do roteiro (plano 27, fase F).
+- **A justificativa (b) da Q8 cai**, o que reabre a recursão — ver Q34.
+- Macros e reflection deixam de ser feature e passam a ser o eixo: Q38 recolhe a
+  evolução pretendida.
+
+**O que *não* muda.** O evaluator continua sendo a referência semântica, a suíte
+de conformidade continua sendo a especificação executável, e a propriedade
+`evaluate(P) ≡ evaluate(PE(P))` continua valendo para o que o PE já faz. Adiar
+não é abandonar: nenhuma garantia existente é relaxada.
 
 ---
 
-## Questões deixadas em aberto para a 0.3
+## Q34 ✅🔴 — Recursão entra
 
-Sem decisão; listadas para não serem esquecidas.
+**Problema.** A Q8 proibiu recursão. Sem ela, metade de uma biblioteca padrão
+não existe — e a Q33 removeu a razão da proibição.
+
+**Decisão do autor.** **Uma função pode referenciar a si mesma.**
+
+```c
+def foo = fn(value: Int) Void { ... foo(2) ... };
+```
+
+**Viabilidade arquitetural** — o levantamento completo está no plano 27 §A1; o
+resumo é que a linguagem já pagou quase tudo:
+
+| Peça | Estado |
+|---|---|
+| tipar `foo` antes de checar o corpo | **já dá**: parâmetros são anotados por obrigação (spec §26) e o retorno omitido é `Void`, então a assinatura é derivável da sintaxe, sem inferência (Q7 intacta) |
+| orçamento de profundidade | **já existe**: `MaxCallDepth = 10_000` e `LAP0302`, hoje inalcançáveis e isentos na cobertura de diagnósticos — a isenção sai |
+| ambiente cíclico da closure | **é o trabalho real**: `Let(x, v, body)` não expõe `x` em `v`, e a closure captura o ambiente por valor |
+
+**Escopo desta decisão.** Só **auto**-recursão. Recursão **mútua** (`a` chama
+`b` declarado depois) é outra questão — exige olhar declarações adiante, o que
+a Q8 nunca precisou responder — e fica em aberto.
+
+**Custo aceito.** A terminação do PE deixa de ser trivial: passa a exigir
+memoização de especializações e generalização de argumentos, ao estilo dos
+supercompiladores. É exatamente o que a Q8 antecipou. A troca é consciente: a
+linguagem vira Turing-completa e ganha uma stdlib, e o PE fica mais caro quando
+voltar.
+
+---
+
+## Q35 ⏳🔴 — `Str` como `[Char;N]`
+
+**Problema.** `Str` é opaca. Não tem `length`, não é indexável, não há tipo
+`Char`. As únicas operações são `+` (concatenação) e comparação. Nenhuma função
+de string é escrevível.
+
+**Proposta do autor.** Introduzir `Char` e tornar `Str` um caso especial de
+span — `[Char;N]` —, ganhando `length` e indexação **de graça**, pelas regras
+que os spans já têm.
+
+**A favor.** É elegante e coerente: `"abc".length` viraria constante de
+compilação pelo mesmo mecanismo de `.[1,2,3].length` (Q29/Q31), literal de
+string teria tamanho no tipo, e `var s` alargaria para `[Char;?]` como qualquer
+span. Zero regra nova para length e indexação.
+
+**Contra, e é o que mantém esta entrada aberta.**
+
+1. **O que é um `Char`?** Ponto de código Unicode, unidade UTF-16 ou grafema?
+   São três linguagens diferentes. `StrValue` guarda um `string` de C#, que é
+   UTF-16; indexar por ponto de código sobre UTF-16 é O(n) ou exige outra
+   representação.
+2. **Representação em runtime.** `StrValue(string)` viraria
+   `SpanValue(ImmutableArray<Value>, Char)` — um `Value` por caractere. Custo de
+   memória e alocação alto, e toda concatenação passa a copiar arrays de
+   ponteiros. Aceitável num protótipo, mas é decisão consciente.
+3. **Alcance da mudança.** `Str` aparece no prelude (`TypeInfo.name`,
+   `FieldInfo.typeName`, `payloadTypeNames: [Str;?]`), na captura de macro
+   (`Str:path`), em `contextGet`, em reflection e em `print`. `[Str;?]` viraria
+   `[[Char;?];?]`.
+4. **Concatenação.** Se `Str` é span, `s1 + s2` exige que spans concatenem — o
+   que hoje é `LAP0280`. Ou `+` vira geral para spans (e aí resolve junto uma
+   peça da Q36), ou `Str` mantém um `+` especial e a unificação fica pela
+   metade.
+5. **FFI depois.** String de C é sequência de **bytes** terminada em NUL, não de
+   pontos de código. A escolha aqui decide o custo do marshalling na fase C.
+
+**Saída intermediária a considerar.** Manter `StrValue` como representação e
+expor `length`/indexação como **intrínsecos** (do mesmo jeito que `.length` de
+span já é `SpanLengthResolution`), sem prometer que `Str` *é* um span. Destrava
+a stdlib de strings com uma fração do custo, e deixa a unificação para quando
+`Char` estiver decidido.
+
+**Sem decisão.** Precisa da resposta a (1) antes de qualquer código.
+
+---
+
+## Q36 🔄🔴 — Escrita em elemento de span
+
+**Problema.** Não existe hoje nenhuma expressão que produza um span de elementos
+**computados e distintos**: as duas construções são a lista literal (`.[1,2,3]`)
+e a repetição (`.[T; inicial; n]`, todos iguais), `a[0] = v` não parseia e spans
+não concatenam. Logo `map`, `filter`, `split`, `sort` e `Array.push` não são
+escrevíveis — o que a Q28 supunha resolvido "por API" não tinha como existir.
+
+**Decisão do autor, na parte que está fechada.**
+
+```c
+var s1 = .[0, 1, 2];   // [Int;?] — var alarga o tamanho
+s1[0] = 1;             // muta: s1 vira .[1, 1, 2]
+s1[99] = 2;            // fora dos limites: nada acontece, sem erro e sem aviso
+var y = s1[0];         // leitura continua devolvendo Option<Int> (Q31)
+
+def s2 = .[0, 1, 2];   // [Int;3]
+s2[0] = 1;             // erro: s2 é def, imutável (Q25)
+var x = s2[4];         // erro de compilação: tamanho conhecido, índice fora
+```
+
+**Por que isto não reincide no que a Q28 recusou.** A Q28 rejeitou "ignorar em
+silêncio" como regra geral. Esta proposta é mais estreita: o silêncio vale
+**apenas onde o tamanho é desconhecido** (`[T;?]`), que é exatamente a situação
+em que a linguagem já admite não saber — e onde a *leitura* já devolve `Option`
+em vez de garantir. Onde o tamanho é conhecido, continua erro de compilação
+(`LAP0244`, já implementado). O silêncio não é a regra; é o resíduo.
+
+**Por que não introduz aliasing.** Span é valor. `s1[0] = 1` é atualização
+funcional do span inteiro religada ao `var` — o mesmo mecanismo de `u.a.b = 1`,
+que já existe (`CoreAssign` com caminho). A premissa da Q25 ("nenhuma closure
+captura `var`, logo não há aliasing") fica intacta, e com ela a premissa do PE.
+
+**O que fica em aberto — a assimetria.** Ler fora dos limites devolve `Option`:
+a falha aparece **no tipo**, como a spec §30 exige. Escrever fora dos limites
+não devolve nada: a falha não aparece **em lugar nenhum**. As duas metades da
+mesma operação tratam a mesma falha de formas opostas, e atribuição é
+*statement* de propósito (Q25), então não há onde um `Bool` de retorno ir parar.
+
+Saídas possíveis, nenhuma escolhida:
+
+| Saída | Custo |
+|---|---|
+| silêncio (proposta atual) | assimetria com Q31; escrita perdida sem sinal |
+| `warning` quando o índice é constante e o tamanho é `?` | pega o caso comum de engano, não custa tipo novo |
+| forma-expressão paralela (`def novo = s.comIndice(i, v);`) | precisa de `Option`/`Result` no retorno; é biblioteca, mas exige a escrita primitiva mesmo assim |
+
+**Encaminhada:** a escrita entra com a semântica acima; a assimetria é revisitada
+quando a stdlib de coleções existir e mostrar se ela morde na prática.
+
+---
+
+## Q37 ✅🔴 — Módulos sem visibilidade, por ora
+
+**Problema.** Um sistema de módulos precisa decidir o que uma unidade exporta.
+Distinguir público de privado é trabalho no checker, no formato de pacote e na
+sintaxe.
+
+**Decisão do autor.** **Tudo é público** na primeira versão. Sem `pub`/`private`.
+
+**Justificativa.** O que trava a stdlib é multiarquivo, não encapsulamento. Uma
+palavra reservada a menos é uma decisão a menos para revisar depois.
+
+**Custo real, e ele não é zero.**
+
+1. **Porta de mão única no formato `.lp`.** Um pacote sem campo de visibilidade
+   obriga, quando ela chegar, a uma quebra de formato ou a um bump de versão.
+   **Mitigação adotada:** o `.lp` v1 **grava o campo**, sempre com `public`.
+   Reservar é grátis; retrofitar não é.
+2. **Toda função auxiliar da stdlib vira superfície de API.** Combinado com a
+   regra da casa — código publicado não é reciclado —, um helper interno passa a
+   ser difícil de remover. É o custo aceito conscientemente.
+3. Não afeta o checker: um escopo por unidade é a mesma estrutura com ou sem
+   filtro de visibilidade.
+
+---
+
+## Q38 🅿️🔴 — Evolução do sistema de macros
+
+**Problema.** O foco em metaprogramação (Q33) só se sustenta se as macros
+crescerem. Hoje elas casam sequências de tokens e substituem — não constroem
+nomes, não se compõem, não têm controle de fluxo na expansão.
+
+**Direção pretendida pelo autor**, registrada agora e **executada depois**:
+
+```c
+macro value-x
+    match 'pseudo-keyword' Type:t Str:i     // 'aspas simples' para pseudo-keyword
+    expand { type { value_#i: $t } };       // splice: #i concatena no nome, $t insere o tipo
+
+macro macro-a match @macro-b:b ...          // capturar outra macro já declarada
+```
+
+Mais: **condicionais e laços dentro do `expand`**.
+
+**Por que está estacionada.** É mudança grande — toca matcher, substituição e
+higiene — e o roteiro 0.3 precisa antes do básico (fases A–D). Além disso,
+`#i`/`$t` introduzem duas formas novas de interpolação cuja interação com a
+higiene (o `temp@1` de hoje) não é óbvia: um nome **construído** por
+concatenação não tem contexto léxico de origem, e a regra de higiene atual
+supõe que todo nome tem um.
+
+**Relação com a Q22.** Exportar macros em pacotes está adiado até aqui, por
+decisão do autor: macro precisa amadurecer antes de virar interface pública. E
+`@match` (Q20/Q22) depende de controle de fluxo no `expand` para ser sequer
+escrevível — esta entrada é pré-requisito daquela.
+
+---
+
+## Questões deixadas em aberto
+
+Sem decisão; listadas para não serem esquecidas. As que ganharam número saíram
+desta lista.
 
 | Tema | Pergunta |
 |---|---|
-| Recursão | `def` recursivo? mutuamente recursivo? qual estratégia de terminação no PE? |
-| Módulos | a spec §3 diz "não existe conceito de módulo"; quando isso muda? |
-| Mutabilidade | resolvido pela Q25 (`var`); falta decidir se `var` sobrevive à especialização do PE |
-| Laços | `for`/`while` continuam candidatos a macro (plano 20), agora que `var` os torna possíveis |
+| Recursão mútua | `a` chama `b` declarado depois? (Q34 cobre só auto-recursão) |
+| Mutabilidade no PE | `var` sobrevive à especialização? |
 | Operador `?` | §23 cita "Result propagation" |
-| Métodos | §23 cita "method syntax" |
 | Conversões numéricas | sem promoção implícita, é preciso `intToFloat` no prelude |
 | Dictionaries | §19 os remove explicitamente; reintroduzir quando? |
 | `Never` visível | vale expor o tipo bottom ao usuário? |
 | Overflow de `Int` | hoje é wrap (como C# `unchecked`); deveria ser `Result`? |
+| Valor padrão de `T` | `.[T; inicial; n]` exige uma semente; coleção genérica precisa que o chamador a forneça |

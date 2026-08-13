@@ -110,6 +110,18 @@ concatenação faz sentido.
 | 26 | [Controle de fluxo estruturado — `if`/`loop`/`break`/`continue`](26-structured-control-flow.md) | `Lapis.Ast` … `Lapis.PartialEvaluator` | M16 |
 | 25 | [`is`: testar variante e desembrulhar carga](25-is-pattern-test.md) | `Lapis.Parser` + `Lapis.Desugar` + `Lapis.TypeChecker` | M16 |
 
+### 0.3 — o norte muda
+
+A **Q33** trocou o objetivo do projeto: de "estudar os limites do partial
+evaluation" para "protótipo de linguagem com foco em metaprogramação". O PE
+continua no roteiro, no fim. O gatilho foi um spike que descobriu que **nenhuma
+biblioteca padrão é escrevível hoje** — não por falta de biblioteca, por falta
+de primitiva.
+
+| # | Plano | Projeto | Milestone |
+|---|---|---|---|
+| 27 | [Roteiro 0.3: da pesquisa de PE ao protótipo de metaprogramação](27-roadmap-0.3.md) | roteiro | M17–M21 |
+
 ### Apêndices normativos
 
 | Apêndice | Conteúdo |
@@ -141,10 +153,20 @@ concatenação faz sentido.
 | **M13** ✅ | Type members | `def User.create`, `User.defaultAge`, `mutavel.campo = e` | 21 |
 | **M14** ✅ | Métodos de instância | `user.hello()` ≡ chamar a função com `user` no argumento 0 | 22 |
 | **M15** ✅ | Membros sobre genéricos | `def Result<?, ?>.isOk` — Q27 decidida | 23 |
-| **M16** | Controle estruturado + `is` | `goto`/`label` saem; `loop`/`break`/`continue`/`if` sem chaves entram (Q32); `e is Some(v)` — Q23 fechada, sem nó novo na Core | 26, 25 |
-| **M17** | PE especialização | beta reduction, inlining, especialização de funções | 13 |
-| **M18** | PE análise | range analysis, bounds-check elimination, `lapis pe --trace` | 14, 15 |
-| **M19** | Equivalência | property-based: `eval(P,S) ≡ eval(PE(P,S),S)` | 11, 14 |
+| **M16** ✅ | Controle estruturado + `is` | `goto`/`label` saem; `loop`/`break`/`continue`/`if` sem chaves entram (Q32); `e is Some(v)` — Q23 fechada, `CoreIs` é primitiva | 26, 25 |
+| **M17** | Destravar a linguagem | recursão (Q34); `Str` com `length`/indexação e `Char` (Q35); `s[i] = v` (Q36) — `map` escrito **em LapisLang** | 27 |
+| **M18** | Módulos | `import`, escopo por unidade, `.lp` sobre a Core impressa; tudo público (Q37) | 27 |
+| **M19** | Efeitos e mundo externo | `Console` com **entrada**, `File`, bindings C em quarentena | 27 |
+| **M20** | Biblioteca padrão | `Str`, `Array<T>`, `File`, `Console` — o teste de aceitação de M17–M19 | 27 |
+| **M21** | Metaprogramação++ | reflection sobre AST; macros com splice, aninhamento e controle (Q38) | 27 |
+| **M22** | PE especialização | beta reduction, inlining, especialização de funções | 13 |
+| **M23** | PE análise | range analysis, bounds-check elimination, `lapis pe --trace` | 14, 15 |
+| **M24** | Equivalência | property-based: `eval(P,S) ≡ eval(PE(P,S),S)` | 11, 14 |
+
+> **A numeração do PE mudou** (era M17–M19). A **Q33** trocou o norte do projeto
+> e adiou o partial evaluator para depois da biblioteca padrão; os planos 13, 14
+> e 15 continuam válidos, só que mais adiante — e mais caros, porque a **Q34**
+> trouxe recursão e com ela o problema de terminação que a Q8 evitava.
 
 **Por que span veio primeiro.** O plano 24 mudou a sintaxe de tipo de sequência e
 o `prelude.ls` junto — `TypeInfo` tem quatro campos de span — e trocou o retorno
