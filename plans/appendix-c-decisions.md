@@ -75,7 +75,7 @@ separa:
 | Q38 | evolução de macros (pseudo-keywords, splice, aninhamento, controle) | 🅿️ | 🔴 | — | pré-requisito de Q22 |
 | Q39 | valor padrão de `T`; `.[T; n]` sem semente | ⏳ | 🔴 | — | recomendação: `def T.default` |
 | Q40 | overload de operadores | ⏳ | 🟡 | plano 27 §E2 | motivada por Q35; não revoga Q13 |
-| Q41 | nomear o argumento genérico do dono (`def<T> Caixa<T>.m`) | ⏳ | 🔴 | plano 27 §D | reabre Q27; pré-requisito da stdlib |
+| Q41 | nomear o argumento genérico do dono (`Caixa<? as T>`) | ⏳ | 🔴 | plano 27 §D | reabre Q27; pré-requisito da stdlib |
 
 **A spec precisa ser atualizada** por causa destas decisões: §15/§16/§22
 (variantes qualificadas), §44 (tokens `!`, `&&`, `\|\|`), §14/§24 (sintaxe de
@@ -1611,31 +1611,68 @@ tocam `itens: [T;?]`. Isto é pré-requisito da fase D, não conveniência.
 
 | Saída | Como | Custo |
 |---|---|---|
-| **A. binder nomeado** *(recomendada)* | `def<T> Caixa<T>.primeiro = fn(self) Option<T>` | reabre a tensão com a Q7; é a única que resolve |
+| **A. binder nomeado** *(recomendada)* | `def Caixa<? as T>.primeiro = fn(self) Option<T>` | reabre a tensão com a Q7; é a única que resolve |
 | B. só containers monomórficos na 0.3 | `ArrayInt`, `ArrayStr`, … | zero de linguagem, e a stdlib vira cópia-e-cola |
 | C. slots `Option<T>` opacos | membro devolve `Option<?>` que ninguém desembrulha | não resolve: o tipo continua ilegível |
 
-**Recomendação: A**, com a sintaxe `def<T>` — a mesma forma de `type<T>` e
-`fn<T>`, onde o `<>` vem logo depois da palavra que introduz. Sem ambiguidade
-com argumento concreto (`def Caixa<Int>.m` continua sendo o tipo `Int`), e sem
-regra mágica de "identificador não resolvido vira parâmetro", que transformaria
-um erro de digitação em binder silencioso.
-
-**Os dois papéis passam a conviver, e é isso que torna a saída boa:**
+**Recomendação: A, com a sintaxe `? as T` — proposta do autor.**
 
 ```c
-def<T> Result<T, ?>.valor = fn(self) Option<T> { ... };
-//     ^^^^^^^^^^^ liga o primeiro, ignora o segundo
+def Arr<? as T>.metodo = fn(self) [T;?] { ... };
+
+def Result<?, ? as E>.erro = fn(self) Option<E> { ... };
+//            ^^^^^^ liga a segunda posição, ignora a primeira
 ```
 
-`?` continua sendo exatamente "não me importa", e ganha um irmão para "me
-importa, e o nome é este". Nenhum dos dois precisa mudar de significado.
+Eu tinha recomendado `def<T> Caixa<T>.m`, pela simetria com `type<T>` e `fn<T>`.
+**A proposta do autor é melhor**, por três razões em ordem de peso:
+
+1. **Elimina uma classe inteira de erro, em vez de tratá-la.** Com `def<T>`,
+   binder e argumento concreto têm a **mesma forma sintática** — um
+   identificador. O checker precisa distingui-los por uma lista declarada, e essa
+   lista pode discordar do padrão: declarado e não usado, usado e não declarado,
+   declarado duas vezes. Com `? as T`, um binder só nasce **num `?`**, então um
+   identificador nu no padrão é sempre concreto. A ambiguidade não é resolvida;
+   ela deixa de ser expressável.
+2. **O binder é declarado na posição que ele nomeia.** `Result<?, ? as E, ?>` diz
+   qual posição num relance. `def<E> Result<?, E, ?>` obriga a varrer e
+   correlacionar, e piora conforme a aridade cresce.
+3. **`?` continua sendo a cabeça da construção.** `as T` **anota** o curinga, não
+   o substitui. A regra da Q27 (*"`<>` à esquerda do `=` fala do dono"*) e a
+   terceira regra de subtipagem (`T<A,B> <: T<?,?>`) seguem literalmente
+   visíveis na sintaxe. E o alcance é preservado: `def Arr<? as T>.m` continua se
+   aplicando a **todo** `Arr<X>`, ligando `T := X` — não estreita nada, ao
+   contrário de `def Arr<Int>.m`.
+
+**O argumento que fecha:** o próprio exemplo do autor desfaz a colisão que
+inviabilizava a pergunta original. `[T;?]` tem `T` na posição de elemento e `?`
+na de tamanho, cada um sem ambiguidade — enquanto `[?; 10]` era ambíguo
+justamente por pôr `?` na posição errada. A sintaxe que nomeia o curinga é a que
+torna o curinga escrevível no corpo.
+
+`?` continua sendo exatamente "não me importa", e ganha uma forma anotada para
+"não me importa **qual**, mas preciso falar dele". Nenhum dos dois muda de
+significado.
+
+**`as` não vira palavra reservada.** É token contextual, só reconhecido dentro do
+`<>` do dono logo após um `?` — o mesmo tratamento que o `in` de
+`match Identifier:i in Expression:c` recebe nos padrões de macro, que
+explicitamente não reserva `in` (`macros/own_syntax.ls`).
+
+**Fora de escopo, e convém dizer agora:** binder em posição **aninhada**
+(`def Arr<Option<? as T>>.m`) é casamento estrutural dentro do argumento, outra
+feature inteira. O binder vale só nas posições de topo do padrão.
+
+**Cai de graça:** parâmetro **const** pelo mesmo mecanismo —
+`def Buf<? as N>.m` com `N: Int` dá ao corpo a constante, porque parâmetro const
+já é valor dentro do corpo (spec §13).
 
 ### A tensão com a Q7, encarada
 
-**Isto reabre o que a Q27 fechou.** A Q27 listou esta mesma saída (a notação
-`def<T> Result<T>.isOk` está no corpo dela) e a recusou como opção B, porque
-casar o tipo do receptor contra o padrão e ligar `T` **é** inferência.
+**Isto reabre o que a Q27 fechou.** A Q27 listou esta mesma saída — a notação
+`def<T> Result<T>.isOk` está no corpo dela — e a recusou como opção B, porque
+casar o tipo do receptor contra o padrão e ligar `T` **é** inferência. A sintaxe
+mudou; a semântica que a Q27 recusou é a mesma.
 
 O que mudou não é o argumento — é o fato. A Q27 fechou a tensão dizendo que `?`
 tornava a unificação desnecessária; a implementação mostrou que `?` cobre membro
@@ -1651,13 +1688,17 @@ busca, não há escolha, não há falha parcial. É leitura, não dedução.
 
 ### Custo concreto
 
-1. **Parser:** aceitar `<...>` depois de `def`. Local; a lista de parâmetros já
-   tem parser (`type<T>`, `fn<T>`).
+1. **Parser:** aceitar `? as IDENT` onde hoje só cabe `?`, dentro do `<>` do
+   dono. É a mudança mais local possível — uma posição, um token contextual.
 2. **Checker:** declarar os binders no escopo **antes** de resolver o padrão do
    dono — `OwnerOf` roda antes do corpo, e é dele que `self` tira o tipo, então a
-   ordem já favorece. `GenericArguments.Resolve` passa a aceitar um
-   `GenericParameterType` como argumento do padrão, ao lado de tipo concreto e
-   `WildcardArgument`.
+   ordem já favorece. `WildcardArgument` ganha um nome opcional; o corpo resolve
+   esse nome para um `GenericParameterType`, que o modelo de tipos já tem.
+
+> **A escolha de sintaxe não muda o custo.** `? as T` e `def<T>` precisam
+> exatamente do mesmo trabalho no checker, na tabela de membros e na resolução do
+> uso. O que `? as T` compra é legibilidade e uma classe de erro a menos — de
+> graça.
 3. **Tabela de membros:** um binder casa como curinga para efeito de **alcance**
    (`Caixa<T>.m` aplica-se a qualquer `Caixa`), e amarra o argumento para efeito
    de **corpo**. É um bit novo por posição, não uma tabela nova.

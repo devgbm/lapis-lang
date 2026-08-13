@@ -364,8 +364,10 @@ LapisLang sempre que possível, pelo princípio §58.2.
 > cujo tipo mencione o parâmetro — `def Caixa<?>.vazia` não consegue nem ler
 > `self.itens.length`. A Q27 previu este preço mas o subestimou: a saída que ela
 > apontava ("escreva como membro genérico") cobre membro **estático**, não
-> membro de **instância**. A recomendação é o binder nomeado `def<T> Caixa<T>.m`,
-> convivendo com o `?` em vez de substituí-lo. Convém decidir **antes** da fase
+> membro de **instância**. A recomendação é o binder nomeado `Caixa<? as T>`
+> (proposta do autor), que anota o curinga em vez de substituí-lo — o binder
+> nasce na posição que nomeia, e um identificador nu no padrão continua sendo
+> sempre um tipo concreto. Convém decidir **antes** da fase
 > B, para que o `.lp` já saiba serializar um padrão de dono com binder.
 
 > **Segundo bloqueio, de biblioteca e não de linguagem: `filter`.** Verificado no
